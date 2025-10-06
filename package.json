@@ -1,0 +1,85 @@
+{
+  "name": "explorer-dates",
+  "displayName": "Explorer Dates",
+  "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
+  "publisher": "incredincomp",
+  "license": "SEE LICENSE IN LICENSE",
+  "version": "2.0.0",
+  "engines": {
+    "vscode": "^1.102.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "file dates",
+    "explorer decorations",
+    "last modified",
+    "file info",
+    "explorer enhancement"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "explorerDates.refreshDateDecorations",
+        "title": "Refresh Date Decorations",
+        "category": "Explorer Dates"
+      }
+    ],
+    "configuration": {
+      "title": "Explorer Dates",
+      "properties": {
+        "explorerDates.showDateDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show last modified dates as decorations in the Explorer",
+          "scope": "window"
+        },
+        "explorerDates.dateDecorationFormat": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute",
+            "smart"
+          ],
+          "default": "smart",
+          "description": "Format for date decorations in Explorer",
+          "enumDescriptions": [
+            "Show relative dates (e.g., '2hr', '3d ago')",
+            "Show absolute dates (e.g., 'Oct 3', 'Mar 23')",
+            "Smart format: relative for recent, absolute for older"
+          ],
+          "scope": "window"
+        }
+      }
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/incredincomp/explorer-dates.git"
+  },
+  "bugs": {
+    "url": "https://github.com/incredincomp/explorer-dates/issues"
+  },
+  "homepage": "https://github.com/incredincomp/explorer-dates#readme",
+  "icon": "icons/explorer-dates.png",
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.102.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^6.4.0"
+  }
+}
