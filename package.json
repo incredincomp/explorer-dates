@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.0.1.1",
+  "version": "1.0.1a",
   "engines": {
     "vscode": "^1.102.0"
   },

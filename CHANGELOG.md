@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1.1
+## 1.0.1a
 Restarted Changelog to clear past project version information.
 
 ## 1.0.1
