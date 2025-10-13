@@ -146,6 +146,39 @@
           "maximum": 50000,
           "description": "Maximum number of cached file decorations",
           "scope": "window"
+        "explorerDates.timeBadgeFormat": {
+          "type": "string",
+          "enum": [
+            "short",
+            "long"
+          ],
+          "default": "short",
+          "description": "Time badge format style",
+          "enumDescriptions": [
+            "Short format (e.g., '5m', '2h', '3d')",
+            "Long format (e.g., '5 mins', '2 hrs', '3 days')"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.enableColorCoding": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable color-coding based on file recency (green: <1 hour, yellow: <1 day, red: >1 day)",
+          "scope": "window"
+        },
+        "explorerDates.timestampFormat": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "Timestamp format for badges",
+          "enumDescriptions": [
+            "Relative timestamps (e.g., '5m ago', '2h ago')",
+            "Absolute timestamps (e.g., 'October 12, 2025')"
+          ],
+          "scope": "window"
         }
       }
     }
