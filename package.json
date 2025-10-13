@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.102.0"
   },
@@ -27,6 +27,16 @@
       {
         "command": "explorerDates.refreshDateDecorations",
         "title": "Refresh Date Decorations",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showMetrics",
+        "title": "Show Performance Metrics",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.openLogs",
+        "title": "Open Logs",
         "category": "Explorer Dates"
       }
     ],
@@ -53,6 +63,88 @@
             "Show absolute dates (e.g., 'Oct 3', 'Mar 23')",
             "Smart format: relative for recent, absolute for older"
           ],
+          "scope": "window"
+        },
+        "explorerDates.excludedFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "build",
+            "out",
+            ".vscode-test"
+          ],
+          "description": "Folders to exclude from date decorations for better performance",
+          "scope": "window"
+        },
+        "explorerDates.excludedPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/*.tmp",
+            "**/*.log",
+            "**/.git/**",
+            "**/node_modules/**"
+          ],
+          "description": "File patterns (glob) to exclude from date decorations",
+          "scope": "window"
+        },
+        "explorerDates.enableLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable detailed logging for debugging purposes",
+          "scope": "window"
+        },
+        "explorerDates.locale": {
+          "type": "string",
+          "enum": [
+            "en",
+            "es",
+            "fr",
+            "de",
+            "ja",
+            "zh",
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Language for date formatting (auto uses VS Code's display language)",
+          "enumDescriptions": [
+            "English",
+            "Spanish",
+            "French",
+            "German",
+            "Japanese",
+            "Chinese",
+            "Automatically detect from VS Code"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.highContrastMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable high-contrast styling for decorations",
+          "scope": "window"
+        },
+        "explorerDates.cacheTimeout": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 5000,
+          "maximum": 300000,
+          "description": "Cache timeout in milliseconds (5000-300000)",
+          "scope": "window"
+        },
+        "explorerDates.maxCacheSize": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 100,
+          "maximum": 50000,
+          "description": "Maximum number of cached file decorations",
           "scope": "window"
         },
         "explorerDates.timeBadgeFormat": {
@@ -114,6 +206,7 @@
     "@types/vscode": "^1.102.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.37.0"
+    "eslint": "^9.37.0",
+    "globals": "^16.4.0"
   }
 }
