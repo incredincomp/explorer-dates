@@ -4,14 +4,14 @@
 
 ## Features
 
-- **📅 Date Decorations**: Shows last modified dates directly in the Explorer sidebar
-- **🧠 Smart Formatting**: Recent files show relative time (e.g., "5min", "2hr", "yesterday"), older files show absolute dates
-- **🎯 Non-intrusive**: Subtle decorations that don't clutter your workspace
-- **⚡ Performance**: Intelligent caching and file watching for smooth performance
-- **🛠️ Configurable**: Toggle decorations on/off, choose formatting style
-- **📅 Creation Dates**: View both file creation and modification dates
-- **👤 Git Blame Integration**: See who last modified the file (when in a Git repository)
-- **ℹ️ Detailed Tooltips**: Hover for comprehensive information including exact timestamps with timezone
+- **Date Decorations**: Shows last modified dates directly in the Explorer sidebar
+- **Smart Formatting**: Recent files show relative time (e.g., "5min", "2hr", "yesterday"), older files show absolute dates
+- **Non-intrusive**: Subtle decorations that don't clutter your workspace
+- **Performance**: Intelligent caching and file watching for smooth performance
+- **Configurable**: Toggle decorations on/off, choose formatting style, enable color-coding
+- **Customizable Time Format**: Choose between short (`5m`) or long (`5 mins`) format
+- **Color-Coding**: Optional color-coding based on file recency (green: <1 hour, yellow: <1 day, red: >1 day)
+- **Flexible Timestamp Display**: Toggle between relative (`5m ago`) and absolute (`October 12, 2025`) timestamps
 
 ## How It Works
 
@@ -34,8 +34,42 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 ## Configuration
 
+The extension provides several configuration options to customize the date decorations:
+
+### Basic Settings
+
 - `explorerDates.showDateDecorations`: Enable/disable date decorations (default: `true`)
 - `explorerDates.dateDecorationFormat`: Choose format style - `smart`, `relative`, or `absolute` (default: `smart`)
+
+### Time Badge Format
+
+- `explorerDates.timeBadgeFormat`: Choose between short or long format (default: `short`)
+  - **short**: Compact format like `5m`, `2h`, `3d`, `1w`
+  - **long**: Descriptive format like `5 mins`, `2 hrs`, `3 days`, `1 week`
+
+### Timestamp Format
+
+- `explorerDates.timestampFormat`: Toggle between relative and absolute timestamps (default: `relative`)
+  - **relative**: Shows time elapsed like `5m`, `2h`, `yesterday`
+  - **absolute**: Shows actual date like `Oct 12`, `Mar 23, 2024`
+
+### Color-Coding
+
+- `explorerDates.enableColorCoding`: Enable color-coding based on file recency (default: `false`)
+  - **Green**: Files modified within the last hour
+  - **Yellow**: Files modified within the last day
+  - **Red**: Files modified more than a day ago
+
+**Example configuration in settings.json:**
+
+```json
+{
+  "explorerDates.showDateDecorations": true,
+  "explorerDates.timeBadgeFormat": "long",
+  "explorerDates.timestampFormat": "relative",
+  "explorerDates.enableColorCoding": true
+}
+```
 
 ## Inspiration & Motivation
 
@@ -47,6 +81,13 @@ This extension addresses popular requests from the VS Code community:
 - [Stack Overflow](https://stackoverflow.com/questions/63381524/show-last-date-modified-in-vs-code) - Show last date modified in VS Code
 
 ## Release Notes
+
+### 1.1.0
+
+- **Customizable Time Badge Format**: Choose between short (`5m`) or long (`5 mins`) format
+- **Color-Coding Based on Recency**: Optional color-coding with green (<1 hour), yellow (<1 day), and red (>1 day)
+- **Toggle Timestamp Format**: Switch between relative (`5m ago`) and absolute (`October 12, 2025`) timestamps
+- **Enhanced Configuration**: New settings for fine-tuned customization
 
 ### 1.0.0
 
