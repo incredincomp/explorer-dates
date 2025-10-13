@@ -5,7 +5,6 @@ const { getLogger } = require('./logger');
 const { getLocalization } = require('./localization');
 const { exec } = require('child_process');
 const { promisify } = require('util');
-const path = require('path');
 
 const execAsync = promisify(exec);
 
