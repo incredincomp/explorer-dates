@@ -451,10 +451,7 @@ class FileDateDecorationProvider {
             // Create decoration with styling
             const decoration = new vscode.FileDecoration(
                 badge,
-                `${this._l10n.getString('lastModified')}: ${readableDate} (${mtime.toLocaleString()})`
-                tooltip
-                // No color specified - let VS Code use default subtle styling
-                `Last modified: ${readableDate} (${mtime.toLocaleString()})`,
+                this._l10n.getString('lastModifiedTooltip', readableDate, mtime.toLocaleString()),
                 color
             );
             
