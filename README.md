@@ -26,7 +26,10 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 1. Install the extension
 2. Date decorations will automatically appear in the Explorer
-3. Hover over any decoration to see the full timestamp
+3. Hover over any decoration to see detailed information:
+   - Last modified date with exact timestamp and timezone
+   - File creation date with exact timestamp and timezone
+   - Git blame information (author name, email, and date) if the file is in a Git repository
 4. Use `Ctrl+Shift+P` → "Refresh Date Decorations" to manually refresh
 
 ## Configuration

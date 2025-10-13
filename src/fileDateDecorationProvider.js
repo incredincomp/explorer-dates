@@ -1,5 +1,10 @@
 const vscode = require('vscode');
 const fs = require('fs').promises;
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const path = require('path');
+
+const execAsync = promisify(exec);
 
 /**
  * Provides file decorations showing last modified dates in the Explorer
@@ -186,6 +191,54 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Get Git blame information for a file
+     */
+    async _getGitBlameInfo(filePath) {
+        try {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+            if (!workspaceFolder) {
+                return null;
+            }
+
+            const relativePath = path.relative(workspaceFolder.uri.fsPath, filePath);
+            const { stdout } = await execAsync(
+                `git log -1 --format="%an|%ae|%ad" -- "${relativePath}"`,
+                { cwd: workspaceFolder.uri.fsPath, timeout: 2000 }
+            );
+
+            if (!stdout || !stdout.trim()) {
+                return null;
+            }
+
+            const [authorName, authorEmail, authorDate] = stdout.trim().split('|');
+            return {
+                authorName: authorName || 'Unknown',
+                authorEmail: authorEmail || '',
+                authorDate: authorDate || ''
+            };
+        } catch (error) {
+            // Git might not be available or file not in a git repo
+            return null;
+        }
+    }
+
+    /**
+     * Format full date with timezone
+     */
+    _formatFullDate(date) {
+        const options = {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZoneName: 'short'
+        };
+        return date.toLocaleString('en-US', options);
+    }
+
+    /**
      * Get file decoration with caching
      */
     async provideFileDecoration(uri, token) {
@@ -233,6 +286,29 @@ class FileDateDecorationProvider {
             }
 
             const mtime = stat.mtime;
+            const ctime = stat.birthtime; // Creation time
+            const badge = this._formatDateBadge(mtime);
+            const readableModified = this._formatDateReadable(mtime);
+            const readableCreated = this._formatDateReadable(ctime);
+            
+            // Get Git blame information (async, with fallback)
+            const gitBlame = await this._getGitBlameInfo(filePath);
+            
+            // Build detailed tooltip
+            let tooltip = `📝 Last Modified: ${readableModified}\n`;
+            tooltip += `   ${this._formatFullDate(mtime)}\n\n`;
+            tooltip += `📅 Created: ${readableCreated}\n`;
+            tooltip += `   ${this._formatFullDate(ctime)}`;
+            
+            if (gitBlame) {
+                tooltip += `\n\n👤 Last Modified By: ${gitBlame.authorName}`;
+                if (gitBlame.authorEmail) {
+                    tooltip += ` (${gitBlame.authorEmail})`;
+                }
+                if (gitBlame.authorDate) {
+                    tooltip += `\n   ${gitBlame.authorDate}`;
+                }
+            }
             
             // Get configuration settings
             const timeBadgeFormat = config.get('timeBadgeFormat', 'short');
@@ -248,6 +324,8 @@ class FileDateDecorationProvider {
             // Create decoration with styling
             const decoration = new vscode.FileDecoration(
                 badge,
+                tooltip
+                // No color specified - let VS Code use default subtle styling
                 `Last modified: ${readableDate} (${mtime.toLocaleString()})`,
                 color
             );
