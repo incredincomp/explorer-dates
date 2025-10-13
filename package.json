@@ -146,6 +146,7 @@
           "maximum": 50000,
           "description": "Maximum number of cached file decorations",
           "scope": "window"
+        },
         "explorerDates.timeBadgeFormat": {
           "type": "string",
           "enum": [
