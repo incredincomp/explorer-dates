@@ -9,6 +9,9 @@
 - **🎯 Non-intrusive**: Subtle decorations that don't clutter your workspace
 - **⚡ Performance**: Intelligent caching and file watching for smooth performance
 - **🛠️ Configurable**: Toggle decorations on/off, choose formatting style
+- **📅 Creation Dates**: View both file creation and modification dates
+- **👤 Git Blame Integration**: See who last modified the file (when in a Git repository)
+- **ℹ️ Detailed Tooltips**: Hover for comprehensive information including exact timestamps with timezone
 
 ## How It Works
 
@@ -23,7 +26,10 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 1. Install the extension
 2. Date decorations will automatically appear in the Explorer
-3. Hover over any decoration to see the full timestamp
+3. Hover over any decoration to see detailed information:
+   - Last modified date with exact timestamp and timezone
+   - File creation date with exact timestamp and timezone
+   - Git blame information (author name, email, and date) if the file is in a Git repository
 4. Use `Ctrl+Shift+P` → "Refresh Date Decorations" to manually refresh
 
 ## Configuration
