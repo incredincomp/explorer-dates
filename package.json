@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "engines": {
     "vscode": "^1.102.0"
   },
@@ -52,6 +52,40 @@
             "Show relative dates (e.g., '2hr', '3d ago')",
             "Show absolute dates (e.g., 'Oct 3', 'Mar 23')",
             "Smart format: relative for recent, absolute for older"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.timeBadgeFormat": {
+          "type": "string",
+          "enum": [
+            "short",
+            "long"
+          ],
+          "default": "short",
+          "description": "Time badge format style",
+          "enumDescriptions": [
+            "Short format (e.g., '5m', '2h', '3d')",
+            "Long format (e.g., '5 mins', '2 hrs', '3 days')"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.enableColorCoding": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable color-coding based on file recency (green: <1 hour, yellow: <1 day, red: >1 day)",
+          "scope": "window"
+        },
+        "explorerDates.timestampFormat": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "Timestamp format for badges",
+          "enumDescriptions": [
+            "Relative timestamps (e.g., '5m ago', '2h ago')",
+            "Absolute timestamps (e.g., 'October 12, 2025')"
           ],
           "scope": "window"
         }
