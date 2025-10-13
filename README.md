@@ -4,22 +4,14 @@
 
 ## Features
 
-- **📅 Date Decorations**: Shows last modified dates directly in the Explorer sidebar
-- **🧠 Smart Formatting**: Recent files show relative time (e.g., "5min", "2hr", "yesterday"), older files show absolute dates
-- **🎯 Non-intrusive**: Subtle decorations that don't clutter your workspace
-- **⚡ Performance**: Intelligent caching and file watching for smooth performance
-- **🛠️ Configurable**: Toggle decorations on/off, choose formatting style
-- **🌍 Localization**: Support for multiple languages (EN, ES, FR, DE, JA, ZH)
-- **♿ Accessibility**: High-contrast theme support and screen reader compatible
-- **🐛 Debugging**: Built-in logging and performance metrics for troubleshooting
 - **Date Decorations**: Shows last modified dates directly in the Explorer sidebar
 - **Smart Formatting**: Recent files show relative time (e.g., "5min", "2hr", "yesterday"), older files show absolute dates
 - **Non-intrusive**: Subtle decorations that don't clutter your workspace
 - **Performance**: Intelligent caching and file watching for smooth performance
-- **Configurable**: Toggle decorations on/off, choose formatting style, enable color-coding
-- **Customizable Time Format**: Choose between short (`5m`) or long (`5 mins`) format
-- **Color-Coding**: Optional color-coding based on file recency (green: <1 hour, yellow: <1 day, red: >1 day)
-- **Flexible Timestamp Display**: Toggle between relative (`5m ago`) and absolute (`October 12, 2025`) timestamps
+- **Configurable**: Toggle decorations on/off, choose formatting style
+- **Localization**: Support for multiple languages (EN, ES, FR, DE, JA, ZH)
+- **Accessibility**: High-contrast theme support and screen reader compatible
+- **Debugging**: Built-in logging and performance metrics for troubleshooting
 
 ## How It Works
 
@@ -42,16 +34,6 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 ## Configuration
 
-3. Hover over any decoration to see detailed information:
-   - Last modified date with exact timestamp and timezone
-   - File creation date with exact timestamp and timezone
-   - Git blame information (author name, email, and date) if the file is in a Git repository
-4. Use `Ctrl+Shift+P` → "Refresh Date Decorations" to manually refresh
-
-## Configuration
-
-The extension provides several configuration options to customize the date decorations:
-
 ### Basic Settings
 
 - `explorerDates.showDateDecorations`: Enable/disable date decorations (default: `true`)
@@ -72,35 +54,6 @@ The extension provides several configuration options to customize the date decor
 ### Debugging
 
 - `explorerDates.enableLogging`: Enable detailed logging for debugging (default: `false`)
-### Time Badge Format
-
-- `explorerDates.timeBadgeFormat`: Choose between short or long format (default: `short`)
-  - **short**: Compact format like `5m`, `2h`, `3d`, `1w`
-  - **long**: Descriptive format like `5 mins`, `2 hrs`, `3 days`, `1 week`
-
-### Timestamp Format
-
-- `explorerDates.timestampFormat`: Toggle between relative and absolute timestamps (default: `relative`)
-  - **relative**: Shows time elapsed like `5m`, `2h`, `yesterday`
-  - **absolute**: Shows actual date like `Oct 12`, `Mar 23, 2024`
-
-### Color-Coding
-
-- `explorerDates.enableColorCoding`: Enable color-coding based on file recency (default: `false`)
-  - **Green**: Files modified within the last hour
-  - **Yellow**: Files modified within the last day
-  - **Red**: Files modified more than a day ago
-
-**Example configuration in settings.json:**
-
-```json
-{
-  "explorerDates.showDateDecorations": true,
-  "explorerDates.timeBadgeFormat": "long",
-  "explorerDates.timestampFormat": "relative",
-  "explorerDates.enableColorCoding": true
-}
-```
 
 ## Inspiration & Motivation
 
@@ -113,27 +66,25 @@ This extension addresses popular requests from the VS Code community:
 
 ## Release Notes
 
-### 1.1.0
+### Version 1.1.0
 
-**🚀 Major Feature Update!**
+**Major Feature Update**
 
-- **Performance Optimization**: Configurable exclusions, intelligent caching, and performance metrics
-- **Accessibility**: High-contrast mode and enhanced screen reader support
-- **Localization**: Support for 6 languages with auto-detection
-- **Debugging Tools**: Built-in logging and performance metrics viewing
+- Performance Optimization: Configurable exclusions, intelligent caching, and performance metrics
+- Accessibility: High-contrast mode and enhanced screen reader support
+- Localization: Support for 6 languages with auto-detection
+- Debugging Tools: Built-in logging and performance metrics viewing
 
 See [CHANGELOG.md](./CHANGELOG.md) for complete details.
-- **Customizable Time Badge Format**: Choose between short (`5m`) or long (`5 mins`) format
-- **Color-Coding Based on Recency**: Optional color-coding with green (<1 hour), yellow (<1 day), and red (>1 day)
-- **Toggle Timestamp Format**: Switch between relative (`5m ago`) and absolute (`October 12, 2025`) timestamps
-- **Enhanced Configuration**: New settings for fine-tuned customization
 
-### 1.0.0
+### Version 1.0.0
 
-- **Native Integration**: Built from the ground up using VS Code's FileDecorationProvider API
-- **Intuitive Time Badges**: Clear format like `5m`, `2h`, `3d`, `1w` - no cryptic single characters!
-- **Smart Performance**: Intelligent caching and file system watching
-- **Lightweight**: No complex UI overlays, just elegant native decorations
+**Initial Release**
+
+- Native Integration: Built from the ground up using VS Code's FileDecorationProvider API
+- Intuitive Time Badges: Clear format like `5m`, `2h`, `3d`, `1w` - no cryptic single characters!
+- Smart Performance: Intelligent caching and file system watching
+- Lightweight: No complex UI overlays, just elegant native decorations
 
 See [CHANGELOG.md](./CHANGELOG.md) for details.
 
