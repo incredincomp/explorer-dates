@@ -9,6 +9,9 @@
 - **🎯 Non-intrusive**: Subtle decorations that don't clutter your workspace
 - **⚡ Performance**: Intelligent caching and file watching for smooth performance
 - **🛠️ Configurable**: Toggle decorations on/off, choose formatting style
+- **🌍 Localization**: Support for multiple languages (EN, ES, FR, DE, JA, ZH)
+- **♿ Accessibility**: High-contrast theme support and screen reader compatible
+- **🐛 Debugging**: Built-in logging and performance metrics for troubleshooting
 
 ## How It Works
 
@@ -24,12 +27,33 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 1. Install the extension
 2. Date decorations will automatically appear in the Explorer
 3. Hover over any decoration to see the full timestamp
-4. Use `Ctrl+Shift+P` → "Refresh Date Decorations" to manually refresh
+4. Use the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) for these commands:
+   - **Refresh Date Decorations**: Manually refresh all decorations
+   - **Show Performance Metrics**: View caching and performance statistics
+   - **Open Logs**: View detailed logs for debugging
 
 ## Configuration
 
+### Basic Settings
+
 - `explorerDates.showDateDecorations`: Enable/disable date decorations (default: `true`)
 - `explorerDates.dateDecorationFormat`: Choose format style - `smart`, `relative`, or `absolute` (default: `smart`)
+
+### Performance Settings
+
+- `explorerDates.excludedFolders`: Folders to exclude from decorations (default: `["node_modules", ".git", "dist", "build", "out", ".vscode-test"]`)
+- `explorerDates.excludedPatterns`: File patterns (glob) to exclude (default: `["**/*.tmp", "**/*.log", "**/.git/**", "**/node_modules/**"]`)
+- `explorerDates.cacheTimeout`: Cache timeout in milliseconds (default: `30000`, range: 5000-300000)
+- `explorerDates.maxCacheSize`: Maximum number of cached file decorations (default: `10000`, range: 100-50000)
+
+### Localization & Accessibility
+
+- `explorerDates.locale`: Language for date formatting - `auto`, `en`, `es`, `fr`, `de`, `ja`, `zh` (default: `auto`)
+- `explorerDates.highContrastMode`: Enable high-contrast styling for better visibility (default: `false`)
+
+### Debugging
+
+- `explorerDates.enableLogging`: Enable detailed logging for debugging (default: `false`)
 
 ## Inspiration & Motivation
 
@@ -41,6 +65,17 @@ This extension addresses popular requests from the VS Code community:
 - [Stack Overflow](https://stackoverflow.com/questions/63381524/show-last-date-modified-in-vs-code) - Show last date modified in VS Code
 
 ## Release Notes
+
+### 1.1.0
+
+**🚀 Major Feature Update!**
+
+- **Performance Optimization**: Configurable exclusions, intelligent caching, and performance metrics
+- **Accessibility**: High-contrast mode and enhanced screen reader support
+- **Localization**: Support for 6 languages with auto-detection
+- **Debugging Tools**: Built-in logging and performance metrics viewing
+
+See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ### 1.0.0
 
