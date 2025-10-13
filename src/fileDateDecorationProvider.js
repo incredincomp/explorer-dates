@@ -190,9 +190,7 @@ class FileDateDecorationProvider {
             });
         }
 
-        // Relative timestamp format
-        const isLongFormat = format === 'long';
-
+        // Relative timestamp format - using localized strings
         // Very recent files (under 1 hour)
         if (diffMins < 1) return this._l10n.getString('now');
         if (diffMins < 60) return `${diffMins}${this._l10n.getString('minutes')}`;
@@ -207,57 +205,16 @@ class FileDateDecorationProvider {
         // This month (1-4 weeks)
         if (diffWeeks < 4) {
             return diffWeeks === 1 ? `1${this._l10n.getString('weeks')}` : `${diffWeeks}${this._l10n.getString('weeks')}`;
-        if (diffMins < 1) return 'now';
-        if (diffMins < 60) {
-            if (isLongFormat) {
-                return diffMins === 1 ? '1 min' : `${diffMins} mins`;
-            }
-            return `${diffMins}m`;
-        }
-        
-        // Today and yesterday (under 48 hours)
-        if (diffHours < 24) {
-            if (isLongFormat) {
-                return diffHours === 1 ? '1 hr' : `${diffHours} hrs`;
-            }
-            return `${diffHours}h`;
-        }
-        if (diffHours < 48) {
-            return isLongFormat ? '1 day' : '1d';
-        }
-        
-        // This week (2-6 days)
-        if (diffDays < 7) {
-            if (isLongFormat) {
-                return `${diffDays} days`;
-            }
-            return `${diffDays}d`;
-        }
-        
-        // This month (1-4 weeks)
-        if (diffWeeks < 4) {
-            if (isLongFormat) {
-                return diffWeeks === 1 ? '1 week' : `${diffWeeks} weeks`;
-            }
-            return diffWeeks === 1 ? '1w' : `${diffWeeks}w`;
         }
         
         // This year (1-11 months)
         if (date.getFullYear() === now.getFullYear()) {
             return diffMonths === 1 ? `1${this._l10n.getString('months')}` : `${diffMonths}${this._l10n.getString('months')}`;
-            if (isLongFormat) {
-                return diffMonths === 1 ? '1 month' : `${diffMonths} months`;
-            }
-            return diffMonths === 1 ? '1mo' : `${diffMonths}mo`;
         }
         
         // Previous years
         const yearDiff = now.getFullYear() - date.getFullYear();
         return yearDiff === 1 ? `1${this._l10n.getString('years')}` : `${yearDiff}${this._l10n.getString('years')}`;
-        if (isLongFormat) {
-            return yearDiff === 1 ? '1 year' : `${yearDiff} years`;
-        }
-        return yearDiff === 1 ? '1y' : `${yearDiff}y`;
     }
 
     /**
@@ -412,7 +369,14 @@ class FileDateDecorationProvider {
 
             const mtime = stat.mtime;
             const ctime = stat.birthtime; // Creation time
-            const badge = this._formatDateBadge(mtime);
+            
+            // Get configuration settings
+            const timeBadgeFormat = config.get('timeBadgeFormat', 'short');
+            const timestampFormat = config.get('timestampFormat', 'relative');
+            const enableColorCoding = config.get('enableColorCoding', false);
+            const highContrastMode = config.get('highContrastMode', false);
+            
+            const badge = this._formatDateBadge(mtime, timeBadgeFormat, timestampFormat);
             const readableModified = this._formatDateReadable(mtime);
             const readableCreated = this._formatDateReadable(ctime);
             
@@ -435,23 +399,13 @@ class FileDateDecorationProvider {
                 }
             }
             
-            // Get configuration settings
-            const timeBadgeFormat = config.get('timeBadgeFormat', 'short');
-            const timestampFormat = config.get('timestampFormat', 'relative');
-            const enableColorCoding = config.get('enableColorCoding', false);
-            
-            const badge = this._formatDateBadge(mtime, timeBadgeFormat, timestampFormat);
-            const readableDate = this._formatDateReadable(mtime);
-            
-            // Check high contrast mode
-            const highContrastMode = config.get('highContrastMode', false);
             // Determine color if color-coding is enabled
             const color = enableColorCoding ? this._getColorByRecency(mtime) : undefined;
             
             // Create decoration with styling
             const decoration = new vscode.FileDecoration(
                 badge,
-                this._l10n.getString('lastModifiedTooltip', readableDate, mtime.toLocaleString()),
+                tooltip,
                 color
             );
             
