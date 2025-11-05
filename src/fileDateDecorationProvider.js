@@ -21,10 +21,13 @@ class FileDateDecorationProvider {
         this._onDidChangeFileDecorations = new vscode.EventEmitter();
         this.onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
         
-        // Cache to avoid repeated file system calls
+        // Enhanced cache to avoid repeated file system calls
         this._decorationCache = new Map();
-        this._cacheTimeout = 30000; // 30 seconds
+        this._cacheTimeout = 120000; // 2 minutes - increased for better hit rate
         this._maxCacheSize = 10000; // Maximum cache entries
+        
+        // Cache performance tracking
+        this._cacheKeyStats = new Map(); // Track cache key usage patterns
         
         // Get logger and localization instances
         this._logger = getLogger();
@@ -104,17 +107,33 @@ class FileDateDecorationProvider {
      * Refresh decoration for a specific file
      */
     refreshDecoration(uri) {
-        // Clear from cache to force refresh
-        this._decorationCache.delete(uri.fsPath);
+        // Clear from both caches to force refresh
+        const cacheKey = this._getCacheKey(uri);
+        this._decorationCache.delete(cacheKey);
+        if (this._advancedCache) {
+            // Advanced cache doesn't have a delete method, use invalidateByPattern instead
+            try {
+                this._advancedCache.invalidateByPattern(cacheKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            } catch (error) {
+                this._logger.debug(`Could not invalidate advanced cache for ${path.basename(uri.fsPath)}: ${error.message}`);
+            }
+        }
         this._onDidChangeFileDecorations.fire(uri);
+        this._logger.debug(`🔄 Refreshed decoration cache for: ${path.basename(uri.fsPath)}`);
     }
 
     /**
      * Clear decoration for a deleted file
      */
     clearDecoration(uri) {
-        this._decorationCache.delete(uri.fsPath);
+        const cacheKey = this._getCacheKey(uri);
+        this._decorationCache.delete(cacheKey);
+        if (this._advancedCache) {
+            // Advanced cache doesn't have a delete method, so we'll let it expire naturally
+            this._logger.debug(`Advanced cache entry will expire naturally: ${path.basename(uri.fsPath)}`);
+        }
         this._onDidChangeFileDecorations.fire(uri);
+        this._logger.debug(`🗑️ Cleared decoration cache for: ${path.basename(uri.fsPath)}`);
     }
 
     /**
@@ -528,7 +547,16 @@ class FileDateDecorationProvider {
     }
 
     /**
-     * Get file decoration with caching
+     * Normalize cache key to handle different URI representations
+     */
+    _getCacheKey(uri) {
+        // Normalize path separators and resolve to canonical form
+        const normalized = path.resolve(uri.fsPath).toLowerCase();
+        return normalized;
+    }
+
+    /**
+     * Get file decoration with enhanced caching
      */
     async provideFileDecoration(uri, token) {
         try {
@@ -546,6 +574,7 @@ class FileDateDecorationProvider {
             }
 
             const filePath = uri.fsPath;
+            const cacheKey = this._getCacheKey(uri);
             
             // Check if file is excluded (simplified logic)
             if (await this._isExcludedSimple(uri)) {
@@ -555,15 +584,33 @@ class FileDateDecorationProvider {
             
             this._logger.debug(`🔍 Processing file: ${path.basename(filePath)}`);
             
-            // Use simple memory cache only to avoid advanced cache issues
-            const cached = this._decorationCache.get(filePath);
+            // Enhanced cache lookup - try advanced cache first, then memory cache
+            let cached = null;
+            
+            // Try advanced cache if available
+            if (this._advancedCache) {
+                try {
+                    cached = await this._advancedCache.get(cacheKey);
+                    if (cached) {
+                        this._metrics.cacheHits++;
+                        this._logger.debug(`🧠 Advanced cache hit for: ${path.basename(filePath)}`);
+                        return cached;
+                    }
+                } catch (error) {
+                    this._logger.debug(`Advanced cache error: ${error.message}`);
+                }
+            }
+            
+            // Try memory cache with normalized key
+            cached = this._decorationCache.get(cacheKey);
             if (cached && (Date.now() - cached.timestamp) < this._cacheTimeout) {
                 this._metrics.cacheHits++;
-                this._logger.debug(`Cache hit for: ${filePath}`);
+                this._logger.debug(`💾 Memory cache hit for: ${path.basename(filePath)}`);
                 return cached.decoration;
             }
 
             this._metrics.cacheMisses++;
+            this._logger.debug(`❌ Cache miss for: ${path.basename(filePath)} (key: ${cacheKey.substring(0, 50)}...)`);
 
             // Check for cancellation
             if (token && token.isCancellationRequested) {
@@ -671,9 +718,17 @@ class FileDateDecorationProvider {
                 }
             }
             
-            // Try without color first to see if that's causing rejection
+            // Get color based on scheme and theme integration
             let color = undefined;
-            this._logger.info(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
+            if (colorScheme !== 'none') {
+                if (this._themeIntegration) {
+                    color = this._themeIntegration.applyThemeAwareColorScheme(colorScheme, filePath, diffMs);
+                } else {
+                    // Fallback to basic color scheme logic
+                    color = this._getColorByScheme(mtime, colorScheme, filePath);
+                }
+            }
+            this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
             
             // Apply fade effect for old files if enabled
             const fadeOldFiles = config.get('fadeOldFiles', false);
@@ -687,10 +742,13 @@ class FileDateDecorationProvider {
                 }
             }
             
-            // Use badge directly - bypass accessibility processing for now
+            // Apply accessibility processing if enabled
             let finalBadge = displayBadge;
+            if (this._accessibility && this._accessibility.shouldEnhanceAccessibility()) {
+                finalBadge = this._accessibility.getAccessibleBadge(displayBadge);
+            }
             
-            // Ensure badge meets VS Code length requirements (max 2 characters typically)
+            // Ensure badge meets VS Code length requirements (max 8 characters for decorations)
             if (finalBadge && finalBadge.length > 8) {
                 finalBadge = finalBadge.substring(0, 8);
             }
@@ -701,8 +759,8 @@ class FileDateDecorationProvider {
             // Create decoration with constructor pattern - VS Code might prefer this
             this._logger.info(`🎨 Creating decoration: badge="${finalBadge}", tooltip length=${tooltip ? tooltip.length : 0}, color=${color ? color.id : 'undefined'}`);
             
-            // Working decoration with badge and tooltip, no color to avoid git conflicts
-            const decoration = new vscode.FileDecoration(finalBadge, tooltip);
+            // Create decoration with badge, tooltip, and color
+            const decoration = new vscode.FileDecoration(finalBadge, tooltip, color);
             decoration.propagate = false;
             
             this._logger.info(`📝 Decoration object created:`, {
@@ -719,15 +777,28 @@ class FileDateDecorationProvider {
             // }
             this._logger.info(`🚫 High contrast disabled for debugging`);
 
-            // Use simple memory cache only
+            // Store in both memory and advanced cache with normalized key
             this._manageCacheSize();
-            this._decorationCache.set(filePath, {
+            const cacheEntry = {
                 decoration,
                 timestamp: Date.now()
-            });
+            };
+            
+            // Store in memory cache
+            this._decorationCache.set(cacheKey, cacheEntry);
+            
+            // Store in advanced cache if available
+            if (this._advancedCache) {
+                try {
+                    await this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
+                    this._logger.debug(`🧠 Stored in advanced cache: ${path.basename(filePath)}`);
+                } catch (error) {
+                    this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
+                }
+            }
 
             this._metrics.totalDecorations++;
-            this._logger.info(`✅ Decoration created for: ${path.basename(filePath)} (badge: ${finalBadge || 'undefined'})`);
+            this._logger.info(`✅ Decoration created for: ${path.basename(filePath)} (badge: ${finalBadge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
 
             return decoration;
 
@@ -740,15 +811,15 @@ class FileDateDecorationProvider {
     }
 
     /**
-     * Get performance metrics
+     * Get enhanced performance metrics with cache debugging
      */
     getMetrics() {
         const baseMetrics = {
             ...this._metrics,
             cacheSize: this._decorationCache.size,
             cacheHitRate: this._metrics.cacheHits + this._metrics.cacheMisses > 0
-                ? (this._metrics.cacheHits / (this._metrics.cacheHits + this._metrics.cacheMisses) * 100).toFixed(2) + '%'
-                : '0%'
+                ? ((this._metrics.cacheHits / (this._metrics.cacheHits + this._metrics.cacheMisses)) * 100).toFixed(2) + '%'
+                : '0.00%'
         };
         
         // Include advanced system metrics if available
@@ -758,6 +829,14 @@ class FileDateDecorationProvider {
         if (this._batchProcessor) {
             baseMetrics.batchProcessor = this._batchProcessor.getMetrics();
         }
+        
+        // Add cache debugging info
+        baseMetrics.cacheDebugging = {
+            memoryCacheKeys: Array.from(this._decorationCache.keys()).slice(0, 5), // First 5 keys for debugging
+            cacheTimeout: this._cacheTimeout,
+            maxCacheSize: this._maxCacheSize,
+            keyStatsSize: this._cacheKeyStats ? this._cacheKeyStats.size : 0
+        };
         
         return baseMetrics;
     }
@@ -770,31 +849,41 @@ class FileDateDecorationProvider {
             // Initialize advanced cache
             this._advancedCache = new AdvancedCache(context);
             await this._advancedCache.initialize();
+            this._logger.info('Advanced cache initialized');
             
             // Initialize batch processor
             this._batchProcessor.initialize();
+            this._logger.info('Batch processor initialized');
             
             // Setup theme integration
             const config = vscode.workspace.getConfiguration('explorerDates');
             if (config.get('autoThemeAdaptation', true)) {
                 await this._themeIntegration.autoConfigureForTheme();
+                this._logger.info('Theme integration configured');
             }
             
             // Apply accessibility recommendations if needed
             if (this._accessibility.shouldEnhanceAccessibility()) {
                 await this._accessibility.applyAccessibilityRecommendations();
+                this._logger.info('Accessibility recommendations applied');
             }
             
             // Suggest smart exclusions for workspace
             if (vscode.workspace.workspaceFolders) {
                 for (const folder of vscode.workspace.workspaceFolders) {
-                    await this._smartExclusion.suggestExclusions(folder.uri);
+                    try {
+                        await this._smartExclusion.suggestExclusions(folder.uri);
+                        this._logger.info(`Smart exclusions analyzed for: ${folder.name}`);
+                    } catch (error) {
+                        this._logger.error(`Failed to analyze smart exclusions for ${folder.name}`, error);
+                    }
                 }
             }
             
             this._logger.info('Advanced systems initialized successfully');
         } catch (error) {
             this._logger.error('Failed to initialize advanced systems', error);
+            // Don't throw - let extension continue with basic functionality
         }
     }
 

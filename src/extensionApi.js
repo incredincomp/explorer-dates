@@ -84,10 +84,10 @@ class ExtensionApiManager extends EventEmitter {
             const stat = await vscode.workspace.fs.stat(uri);
             const lastModified = new Date(stat.mtime);
             
-            // Allow plugins to modify decoration
+            // Basic decoration without relying on external dependencies
             let decoration = {
-                badge: this.formatDate(lastModified),
-                color: this.getColorForAge(lastModified),
+                badge: this.formatDate(lastModified, 'smart'),
+                color: undefined, // Let the main decoration provider handle colors
                 tooltip: `Modified: ${lastModified.toLocaleString()}`
             };
 

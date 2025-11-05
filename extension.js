@@ -274,16 +274,30 @@ function generatePerformanceAnalyticsHTML(metrics) {
                 ${metrics.advancedCache ? `
                 <div class="metric-card">
                     <div class="metric-title">🧠 Advanced Cache</div>
-                    <div class="metric-value">${metrics.advancedCache.memoryItems}</div>
+                    <div class="metric-value">${metrics.advancedCache.memoryItems || 0}</div>
                     <div class="metric-label">Memory Items</div>
-                    <div class="metric-value">${formatBytes(metrics.advancedCache.memoryUsage)}</div>
+                    <div class="metric-value">${formatBytes(metrics.advancedCache.memoryUsage || 0)}</div>
                     <div class="metric-label">Memory Usage</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${metrics.advancedCache.memoryUsagePercent}%"></div>
+                        <div class="progress-fill" style="width: ${metrics.advancedCache.memoryUsagePercent || 0}%"></div>
                     </div>
-                    <div class="metric-label">${metrics.advancedCache.memoryUsagePercent}% of limit</div>
+                    <div class="metric-label">${metrics.advancedCache.memoryUsagePercent || '0.00'}% of limit</div>
+                    <div class="metric-value">${metrics.advancedCache.memoryHitRate || '0%'}</div>
+                    <div class="metric-label">Memory Hit Rate</div>
+                    <div class="metric-value">${metrics.advancedCache.diskHitRate || '0%'}</div>
+                    <div class="metric-label">Disk Hit Rate</div>
                 </div>
-                ` : ''}
+                ` : `
+                <div class="metric-card">
+                    <div class="metric-title">🧠 Advanced Cache</div>
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">Memory Items</div>
+                    <div class="metric-value">0 B</div>
+                    <div class="metric-label">Memory Usage</div>
+                    <div class="metric-value">Inactive</div>
+                    <div class="metric-label">Status</div>
+                </div>
+                `}
                 
                 ${metrics.batchProcessor ? `
                 <div class="metric-card">
@@ -725,6 +739,37 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(showPerformanceAnalytics);
+
+        // Register cache debugging command
+        const debugCache = vscode.commands.registerCommand('explorerDates.debugCache', async () => {
+            try {
+                if (fileDateProvider) {
+                    const metrics = fileDateProvider.getMetrics();
+                    const debugInfo = {
+                        'Cache Summary': {
+                            'Memory Cache Size': metrics.cacheSize,
+                            'Cache Hit Rate': metrics.cacheHitRate,
+                            'Total Hits': metrics.cacheHits,
+                            'Total Misses': metrics.cacheMisses,
+                            'Cache Timeout': `${metrics.cacheDebugging.cacheTimeout}ms`
+                        },
+                        'Advanced Cache': metrics.advancedCache || 'Not available',
+                        'Sample Cache Keys': metrics.cacheDebugging.memoryCacheKeys || []
+                    };
+                    
+                    const message = JSON.stringify(debugInfo, null, 2);
+                    vscode.window.showInformationMessage(
+                        `Cache Debug Info:\n${message}`,
+                        { modal: true }
+                    );
+                    logger.info('Cache debug info displayed', debugInfo);
+                }
+            } catch (error) {
+                logger.error('Failed to show cache debug info', error);
+                vscode.window.showErrorMessage(`Failed to show cache debug info: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(debugCache);
 
         // Register keyboard shortcuts help command
         const showKeyboardShortcuts = vscode.commands.registerCommand('explorerDates.showKeyboardShortcuts', async () => {

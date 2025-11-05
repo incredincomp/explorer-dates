@@ -113,6 +113,11 @@
         "command": "explorerDates.showApiInfo",
         "title": "Show Extension API Information",
         "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.debugCache",
+        "title": "Debug Cache Performance",
+        "category": "Explorer Dates"
       }
     ],
     "keybindings": [
@@ -163,6 +168,12 @@
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
         "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "explorerDates.debugCache",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "explorerViewletVisible"
       }
     ],
     "menus": {
@@ -318,20 +329,7 @@
           "description": "Maximum number of cached file decorations",
           "scope": "window"
         },
-        "explorerDates.timeBadgeFormat": {
-          "type": "string",
-          "enum": [
-            "short",
-            "long"
-          ],
-          "default": "short",
-          "description": "Time badge format style",
-          "enumDescriptions": [
-            "Short format (e.g., '5m', '2h', '3d')",
-            "Long format (e.g., '5 mins', '2 hrs', '3 days')"
-          ],
-          "scope": "window"
-        },
+
         "explorerDates.colorScheme": {
           "type": "string",
           "enum": [
