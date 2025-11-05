@@ -173,11 +173,26 @@ class FileDateDecorationProvider {
 
     /**
      * Simplified exclusion check - bypasses smart exclusion system
+     * Made public for diagnostics
      */
     async _isExcludedSimple(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const filePath = uri.fsPath;
         const fileName = path.basename(filePath);
+        const fileExt = path.extname(filePath).toLowerCase();
+        
+        // Check if this file type should always be shown (helpful for JPGs, PNGs, etc.)
+        const forceShowTypes = config.get('forceShowForFileTypes', []);
+        if (forceShowTypes.length > 0 && forceShowTypes.includes(fileExt)) {
+            this._logger.debug(`File type ${fileExt} is forced to show: ${filePath}`);
+            return false; // Don't exclude
+        }
+        
+        // Enable troubleshooting mode for extra logging
+        const troubleshootingMode = config.get('enableTroubleShootingMode', false);
+        if (troubleshootingMode) {
+            this._logger.info(`🔍 Checking exclusion for: ${fileName} (ext: ${fileExt})`);
+        }
         
         // Basic exclusion patterns only
         const excludedFolders = config.get('excludedFolders', ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test']);
@@ -187,7 +202,11 @@ class FileDateDecorationProvider {
         for (const folder of excludedFolders) {
             if (filePath.includes(`${path.sep}${folder}${path.sep}`) || 
                 filePath.endsWith(`${path.sep}${folder}`)) {
-                this._logger.debug(`File excluded by folder: ${filePath} (${folder})`);
+                if (troubleshootingMode) {
+                    this._logger.info(`❌ File excluded by folder: ${filePath} (${folder})`);
+                } else {
+                    this._logger.debug(`File excluded by folder: ${filePath} (${folder})`);
+                }
                 return true;
             }
         }
@@ -206,6 +225,10 @@ class FileDateDecorationProvider {
             if (pattern.includes('*.log') && fileName.endsWith('.log')) {
                 return true;
             }
+        }
+        
+        if (troubleshootingMode) {
+            this._logger.info(`✅ File NOT excluded: ${fileName} (ext: ${fileExt})`);
         }
         
         return false;

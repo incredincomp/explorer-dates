@@ -118,6 +118,16 @@
         "command": "explorerDates.debugCache",
         "title": "Debug Cache Performance",
         "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.runDiagnostics",
+        "title": "Run Diagnostics (Fix Missing Decorations)",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.quickFix",
+        "title": "Quick Fix Common Issues",
+        "category": "Explorer Dates"
       }
     ],
     "keybindings": [
@@ -173,6 +183,12 @@
         "command": "explorerDates.debugCache",
         "key": "ctrl+shift+b",
         "mac": "cmd+shift+b",
+        "when": "explorerViewletVisible"
+      },
+      {
+        "command": "explorerDates.runDiagnostics",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
         "when": "explorerViewletVisible"
       }
     ],

@@ -232,6 +232,71 @@ function generateWorkspaceActivityHTML(files) {
 }
 
 /**
+ * Generate HTML for diagnostics
+ */
+function generateDiagnosticsHTML(diagnostics) {
+    const sections = Object.entries(diagnostics).map(([title, data]) => {
+        const rows = Object.entries(data).map(([key, value]) => {
+            const displayValue = Array.isArray(value) ? value.join(', ') || 'None' : value?.toString() || 'N/A';
+            return `
+                <tr>
+                    <td><strong>${key}:</strong></td>
+                    <td>${displayValue}</td>
+                </tr>
+            `;
+        }).join('');
+        
+        return `
+            <div class="diagnostic-section">
+                <h3>🔍 ${title}</h3>
+                <table>
+                    ${rows}
+                </table>
+            </div>
+        `;
+    }).join('');
+    
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Explorer Dates Diagnostics</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: var(--vscode-editor-background); color: var(--vscode-foreground); }
+                .diagnostic-section { margin-bottom: 30px; padding: 20px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 8px; }
+                table { width: 100%; border-collapse: collapse; }
+                td { padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border); }
+                h1 { color: var(--vscode-textLink-foreground); }
+                h3 { color: var(--vscode-textPreformat-foreground); margin-top: 0; }
+                .header { margin-bottom: 20px; }
+                .fix-suggestions { background: var(--vscode-inputValidation-warningBackground); padding: 15px; border-radius: 4px; margin-top: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🔧 Explorer Dates Diagnostics</h1>
+                <p>This report helps identify why date decorations might not be appearing in your Explorer.</p>
+            </div>
+            
+            ${sections}
+            
+            <div class="fix-suggestions">
+                <h3>💡 Quick Fixes</h3>
+                <p><strong>If decorations aren't showing:</strong></p>
+                <ol>
+                    <li>Try running <code>Explorer Dates: Quick Fix</code> command</li>
+                    <li>Use <code>Explorer Dates: Refresh Date Decorations</code> to force refresh</li>
+                    <li>Check if your files are excluded by patterns above</li>
+                    <li>Restart VS Code if the provider isn't active</li>
+                </ol>
+            </div>
+        </body>
+        </html>
+    `;
+}
+
+/**
  * Generate HTML for performance analytics
  */
 function generatePerformanceAnalyticsHTML(metrics) {
@@ -770,6 +835,130 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(debugCache);
+
+        // Register diagnostics command for troubleshooting missing decorations
+        const diagnostics = vscode.commands.registerCommand('explorerDates.runDiagnostics', async () => {
+            try {
+                const path = require('path');
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const activeEditor = vscode.window.activeTextEditor;
+                
+                const diagnosticResults = {
+                    'Extension Status': {
+                        'Provider Active': fileDateProvider ? 'Yes' : 'No',
+                        'Decorations Enabled': config.get('showDateDecorations', true) ? 'Yes' : 'No',
+                        'VS Code Version': vscode.version,
+                        'Extension Version': context.extension.packageJSON.version
+                    }
+                };
+                
+                if (activeEditor) {
+                    const uri = activeEditor.document.uri;
+                    if (uri.scheme === 'file') {
+                        diagnosticResults['Current File'] = {
+                            'File Path': uri.fsPath,
+                            'File Extension': path.extname(uri.fsPath) || 'No extension',
+                            'Is Excluded': fileDateProvider ? await fileDateProvider._isExcludedSimple(uri) : 'Unknown'
+                        };
+                    }
+                }
+                
+                diagnosticResults['Configuration'] = {
+                    'Excluded Folders': config.get('excludedFolders', []),
+                    'Excluded Patterns': config.get('excludedPatterns', []),
+                    'Color Scheme': config.get('colorScheme', 'none'),
+                    'Cache Timeout': config.get('cacheTimeout', 30000) + 'ms'
+                };
+                
+                if (fileDateProvider) {
+                    const metrics = fileDateProvider.getMetrics();
+                    diagnosticResults['Performance'] = {
+                        'Total Decorations': metrics.totalDecorations,
+                        'Cache Size': metrics.cacheSize,
+                        'Errors': metrics.errors
+                    };
+                }
+                
+                // Create diagnostic panel
+                const panel = vscode.window.createWebviewPanel(
+                    'explorerDatesDiagnostics',
+                    'Explorer Dates Diagnostics',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+                
+                panel.webview.html = generateDiagnosticsHTML(diagnosticResults);
+                logger.info('Diagnostics panel opened', diagnosticResults);
+                
+            } catch (error) {
+                logger.error('Failed to run diagnostics', error);
+                vscode.window.showErrorMessage(`Failed to run diagnostics: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(diagnostics);
+
+        // Register quick fix command for common issues
+        const quickFix = vscode.commands.registerCommand('explorerDates.quickFix', async () => {
+            try {
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const fixes = [];
+                
+                // Check if decorations are disabled
+                if (!config.get('showDateDecorations', true)) {
+                    fixes.push({
+                        issue: 'Date decorations are disabled',
+                        fix: async () => {
+                            await config.update('showDateDecorations', true, vscode.ConfigurationTarget.Global);
+                        },
+                        description: 'Enable date decorations'
+                    });
+                }
+                
+                // Check for overly restrictive exclusions
+                const excludedPatterns = config.get('excludedPatterns', []);
+                if (excludedPatterns.includes('**/*')) {
+                    fixes.push({
+                        issue: 'All files are excluded by pattern',
+                        fix: async () => {
+                            const newPatterns = excludedPatterns.filter(p => p !== '**/*');
+                            await config.update('excludedPatterns', newPatterns, vscode.ConfigurationTarget.Global);
+                        },
+                        description: 'Remove overly broad exclusion pattern'
+                    });
+                }
+                
+                if (fixes.length === 0) {
+                    vscode.window.showInformationMessage('No common issues detected. Decorations should be working.');
+                    return;
+                }
+                
+                const items = fixes.map(fix => ({
+                    label: fix.description,
+                    description: fix.issue,
+                    fix: fix.fix
+                }));
+                
+                const selected = await vscode.window.showQuickPick(items, {
+                    placeHolder: 'Select an issue to fix automatically'
+                });
+                
+                if (selected) {
+                    await selected.fix();
+                    vscode.window.showInformationMessage('Fixed! Try refreshing decorations now.');
+                    
+                    // Refresh decorations
+                    if (fileDateProvider) {
+                        fileDateProvider.clearAllCaches();
+                        fileDateProvider.refreshAll();
+                    }
+                }
+                
+            } catch (error) {
+                logger.error('Failed to run quick fix', error);
+                vscode.window.showErrorMessage(`Failed to run quick fix: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(quickFix);
 
         // Register keyboard shortcuts help command
         const showKeyboardShortcuts = vscode.commands.registerCommand('explorerDates.showKeyboardShortcuts', async () => {
