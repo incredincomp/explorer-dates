@@ -5,6 +5,11 @@ const { getLogger } = require('./logger');
 const { getLocalization } = require('./localization');
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const { SmartExclusionManager } = require('./smartExclusion');
+const { BatchProcessor } = require('./batchProcessor');
+const { AdvancedCache } = require('./advancedCache');
+const { ThemeIntegrationManager } = require('./themeIntegration');
+const { AccessibilityManager } = require('./accessibility');
 
 const execAsync = promisify(exec);
 
@@ -24,6 +29,15 @@ class FileDateDecorationProvider {
         // Get logger and localization instances
         this._logger = getLogger();
         this._l10n = getLocalization();
+        
+        // Initialize performance systems
+        this._smartExclusion = new SmartExclusionManager();
+        this._batchProcessor = new BatchProcessor();
+        this._advancedCache = null; // Will be initialized with context
+        
+        // Initialize UX enhancement systems
+        this._themeIntegration = new ThemeIntegrationManager();
+        this._accessibility = new AccessibilityManager();
         
         // Performance metrics
         this._metrics = {
@@ -74,7 +88,12 @@ class FileDateDecorationProvider {
                     e.affectsConfiguration('explorerDates.dateDecorationFormat') ||
                     e.affectsConfiguration('explorerDates.excludedFolders') ||
                     e.affectsConfiguration('explorerDates.excludedPatterns') ||
-                    e.affectsConfiguration('explorerDates.highContrastMode')) {
+                    e.affectsConfiguration('explorerDates.highContrastMode') ||
+                    e.affectsConfiguration('explorerDates.fadeOldFiles') ||
+                    e.affectsConfiguration('explorerDates.fadeThreshold') ||
+                    e.affectsConfiguration('explorerDates.colorScheme') ||
+                    e.affectsConfiguration('explorerDates.showGitInfo') ||
+                    e.affectsConfiguration('explorerDates.customColors')) {
                     this.refreshAll();
                 }
             }
@@ -99,47 +118,139 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Clear all caches (memory and advanced cache)
+     */
+    clearAllCaches() {
+        // Clear memory cache
+        const memorySize = this._decorationCache.size;
+        this._decorationCache.clear();
+        this._logger.info(`Cleared memory cache (was ${memorySize} items)`);
+        
+        // Clear advanced cache if available
+        if (this._advancedCache) {
+            this._advancedCache.clear();
+            this._logger.info('Cleared advanced cache');
+        }
+        
+        // Reset metrics
+        this._metrics.cacheHits = 0;
+        this._metrics.cacheMisses = 0;
+        
+        this._logger.info('All caches cleared successfully');
+    }
+
+    /**
      * Refresh all decorations
      */
     refreshAll() {
         this._decorationCache.clear();
+        // Clear advanced cache if available
+        if (this._advancedCache) {
+            this._advancedCache.clear();
+        }
         this._onDidChangeFileDecorations.fire(undefined);
-        this._logger.debug('All decorations refreshed');
+        this._logger.info('All decorations refreshed with cache clear');
     }
 
     /**
-     * Check if a file path should be excluded from decorations
+     * Simplified exclusion check - bypasses smart exclusion system
      */
-    _isExcluded(uri) {
+    async _isExcludedSimple(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const excludedFolders = config.get('excludedFolders', []);
-        const excludedPatterns = config.get('excludedPatterns', []);
-        
         const filePath = uri.fsPath;
         const fileName = path.basename(filePath);
         
-        // Check excluded folders
+        // Basic exclusion patterns only
+        const excludedFolders = config.get('excludedFolders', ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test']);
+        const excludedPatterns = config.get('excludedPatterns', ['**/*.tmp', '**/*.log', '**/.git/**', '**/node_modules/**']);
+        
+        // Check excluded folders (simplified)
         for (const folder of excludedFolders) {
-            if (filePath.includes(path.sep + folder + path.sep) || 
-                filePath.endsWith(path.sep + folder) ||
-                filePath.includes(path.sep + folder)) {
-                this._logger.debug(`File excluded by folder rule: ${filePath}`);
+            if (filePath.includes(`${path.sep}${folder}${path.sep}`) || 
+                filePath.endsWith(`${path.sep}${folder}`)) {
+                this._logger.debug(`File excluded by folder: ${filePath} (${folder})`);
                 return true;
             }
         }
         
-        // Check excluded patterns using minimatch-style matching
+        // Check excluded patterns (simplified)
         for (const pattern of excludedPatterns) {
-            // Simple pattern matching (could be enhanced with minimatch library)
-            const regexPattern = pattern
-                .replace(/\*\*/g, '.*')
-                .replace(/\*/g, '[^/\\\\]*')
-                .replace(/\?/g, '.');
-            const regex = new RegExp(regexPattern);
-            
-            if (regex.test(filePath) || regex.test(fileName)) {
-                this._logger.debug(`File excluded by pattern: ${filePath} (pattern: ${pattern})`);
+            if (pattern.includes('node_modules') && filePath.includes('node_modules')) {
                 return true;
+            }
+            if (pattern.includes('.git/**') && filePath.includes('.git' + path.sep)) {
+                return true;
+            }
+            if (pattern.includes('*.tmp') && fileName.endsWith('.tmp')) {
+                return true;
+            }
+            if (pattern.includes('*.log') && fileName.endsWith('.log')) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if a file path should be excluded from decorations (complex version)
+     */
+    async _isExcluded(uri) {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        const filePath = uri.fsPath;
+        const fileName = path.basename(filePath);
+        
+        // Get combined exclusions (global + workspace + smart)
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+        if (workspaceFolder) {
+            const combined = await this._smartExclusion.getCombinedExclusions(workspaceFolder.uri);
+            
+            // Check excluded folders (must be actual directory paths, not just substrings)
+            for (const folder of combined.folders) {
+                // More precise folder matching - ensure we're matching actual directory boundaries
+                const folderPattern = new RegExp(`(^|${path.sep.replace(/[\\]/g, '\\\\')})${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(${path.sep.replace(/[\\]/g, '\\\\')}|$)`);
+                if (folderPattern.test(filePath)) {
+                    this._logger.debug(`File excluded by folder rule: ${filePath} (folder: ${folder})`);
+                    return true;
+                }
+            }
+            
+            // Check excluded patterns
+            for (const pattern of combined.patterns) {
+                const regexPattern = pattern
+                    .replace(/\*\*/g, '.*')
+                    .replace(/\*/g, '[^/\\\\]*')
+                    .replace(/\?/g, '.');
+                const regex = new RegExp(regexPattern);
+                
+                if (regex.test(filePath) || regex.test(fileName)) {
+                    this._logger.debug(`File excluded by pattern: ${filePath} (pattern: ${pattern})`);
+                    return true;
+                }
+            }
+        } else {
+            // Fallback to basic exclusions if no workspace
+            const excludedFolders = config.get('excludedFolders', []);
+            const excludedPatterns = config.get('excludedPatterns', []);
+            
+            for (const folder of excludedFolders) {
+                // More precise folder matching - ensure we're matching actual directory boundaries
+                const folderPattern = new RegExp(`(^|${path.sep.replace(/[\\]/g, '\\\\')})${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(${path.sep.replace(/[\\]/g, '\\\\')}|$)`);
+                if (folderPattern.test(filePath)) {
+                    return true;
+                }
+            }
+            
+            for (const pattern of excludedPatterns) {
+                const regexPattern = pattern
+                    .replace(/\*\*/g, '.*')
+                    .replace(/\*/g, '[^/\\\\]*')
+                    .replace(/\?/g, '.');
+                const regex = new RegExp(regexPattern);
+                
+                if (regex.test(filePath) || regex.test(fileName)) {
+                    return true;
+                }
             }
         }
         
@@ -170,73 +281,169 @@ class FileDateDecorationProvider {
     }
 
     /**
-     * Format date badge - intuitive time-based indicators
+     * Format date badge - VS Code compliant 2-character indicators
+     * Based on user experience that VS Code supports at least 2 characters
      */
-    _formatDateBadge(date, format = 'short', timestampFormat = 'relative') {
+    _formatDateBadge(date, formatType, precalcDiffMs = null) {
         const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffMs = precalcDiffMs !== null ? precalcDiffMs : (now.getTime() - date.getTime());
+        
+        // Using 2-character indicators for better readability
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         const diffWeeks = Math.floor(diffDays / 7);
         const diffMonths = Math.floor(diffDays / 30);
-
-        // If absolute timestamp format is requested
-        if (timestampFormat === 'absolute') {
-            return date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric', 
-                year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined 
-            });
+        
+        switch (formatType) {
+            case 'relative-short':
+            case 'relative-long':
+                // 2-character time indicators
+                if (diffMinutes < 1) return '●●';                    // Just modified
+                if (diffMinutes < 60) return `${Math.min(diffMinutes, 99)}m`;  // 1m-59m
+                if (diffHours < 24) return `${Math.min(diffHours, 23)}h`;      // 1h-23h
+                if (diffDays < 7) return `${diffDays}d`;             // 1d-6d
+                if (diffWeeks < 4) return `${diffWeeks}w`;           // 1w-3w
+                if (diffMonths < 12) return `${diffMonths}M`;        // 1M-11M
+                return '1y';                                         // 1+ year
+                
+            case 'absolute-short':
+            case 'absolute-long': {
+                // 2-character date indicators (month abbreviations)
+                const monthNames = ['Ja', 'Fe', 'Mr', 'Ap', 'My', 'Jn', 
+                                  'Jl', 'Au', 'Se', 'Oc', 'No', 'De'];
+                const day = date.getDate();
+                return `${monthNames[date.getMonth()]}${day < 10 ? '0' + day : day}`;
+            }
+                
+            case 'technical':
+                // Technical format with more precision
+                if (diffMinutes < 60) return `${diffMinutes}m`;
+                if (diffHours < 24) return `${diffHours}h`;
+                return `${diffDays}d`;
+                
+            case 'minimal': 
+                // Minimal with basic time indicator
+                if (diffHours < 1) return '••';
+                if (diffHours < 24) return '○○';
+                return '──';
+                
+            default:
+                // Default to relative format
+                if (diffMinutes < 60) return `${diffMinutes}m`;
+                if (diffHours < 24) return `${diffHours}h`;
+                return `${diffDays}d`;
         }
-
-        // Relative timestamp format - using localized strings
-        // Very recent files (under 1 hour)
-        if (diffMins < 1) return this._l10n.getString('now');
-        if (diffMins < 60) return `${diffMins}${this._l10n.getString('minutes')}`;
-        
-        // Today and yesterday (under 48 hours)
-        if (diffHours < 24) return `${diffHours}${this._l10n.getString('hours')}`;
-        if (diffHours < 48) return `1${this._l10n.getString('days')}`;
-        
-        // This week (2-6 days)
-        if (diffDays < 7) return `${diffDays}${this._l10n.getString('days')}`;
-        
-        // This month (1-4 weeks)
-        if (diffWeeks < 4) {
-            return diffWeeks === 1 ? `1${this._l10n.getString('weeks')}` : `${diffWeeks}${this._l10n.getString('weeks')}`;
-        }
-        
-        // This year (1-11 months)
-        if (date.getFullYear() === now.getFullYear()) {
-            return diffMonths === 1 ? `1${this._l10n.getString('months')}` : `${diffMonths}${this._l10n.getString('months')}`;
-        }
-        
-        // Previous years
-        const yearDiff = now.getFullYear() - date.getFullYear();
-        return yearDiff === 1 ? `1${this._l10n.getString('years')}` : `${yearDiff}${this._l10n.getString('years')}`;
     }
 
     /**
-     * Get color based on file recency
+     * Format file size for display
      */
-    _getColorByRecency(date) {
+    _formatFileSize(bytes, format = 'auto') {
+        if (format === 'bytes') {
+            return `~${bytes}B`;
+        }
+        
+        const kb = bytes / 1024;
+        if (format === 'kb') {
+            return `~${kb.toFixed(1)}K`;
+        }
+        
+        const mb = kb / 1024;
+        if (format === 'mb') {
+            return `~${mb.toFixed(1)}M`;
+        }
+        
+        // Auto format - keep very compact with size prefix
+        if (bytes < 1024) {
+            return `~${bytes}B`;
+        } else if (kb < 1024) {
+            return `~${Math.round(kb)}K`;
+        } else {
+            return `~${mb.toFixed(1)}M`;
+        }
+    }
+
+    /**
+     * Get color based on color scheme setting
+     */
+    _getColorByScheme(date, colorScheme, filePath = '') {
+        if (colorScheme === 'none') {
+            return undefined;
+        }
+        
         const now = new Date();
         const diffMs = now.getTime() - date.getTime();
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         
-        // Green: Modified within 1 hour
-        if (diffHours < 1) {
-            return new vscode.ThemeColor('charts.green');
+        switch (colorScheme) {
+            case 'recency':
+                // Green: Modified within 1 hour
+                if (diffHours < 1) return new vscode.ThemeColor('charts.green');
+                // Yellow: Modified within 1 day
+                if (diffHours < 24) return new vscode.ThemeColor('charts.yellow');
+                // Red: Modified more than 1 day ago
+                return new vscode.ThemeColor('charts.red');
+            
+            case 'file-type': {
+                // Color by file extension
+                const ext = path.extname(filePath).toLowerCase();
+                if (['.js', '.ts', '.jsx', '.tsx'].includes(ext)) return new vscode.ThemeColor('charts.blue');
+                if (['.css', '.scss', '.less'].includes(ext)) return new vscode.ThemeColor('charts.purple');
+                if (['.html', '.htm', '.xml'].includes(ext)) return new vscode.ThemeColor('charts.orange');
+                if (['.json', '.yaml', '.yml'].includes(ext)) return new vscode.ThemeColor('charts.green');
+                if (['.md', '.txt', '.log'].includes(ext)) return new vscode.ThemeColor('charts.yellow');
+                if (['.py', '.rb', '.php'].includes(ext)) return new vscode.ThemeColor('charts.red');
+                return new vscode.ThemeColor('editorForeground');
+            }
+            
+            case 'subtle':
+                // Subtle variations using text colors
+                if (diffHours < 1) return new vscode.ThemeColor('editorInfo.foreground');
+                if (diffDays < 7) return new vscode.ThemeColor('editorWarning.foreground');
+                return new vscode.ThemeColor('editorError.foreground');
+            
+            case 'vibrant':
+                // More vibrant colors
+                if (diffHours < 1) return new vscode.ThemeColor('terminal.ansiGreen');
+                if (diffHours < 24) return new vscode.ThemeColor('terminal.ansiYellow');
+                if (diffDays < 7) return new vscode.ThemeColor('terminal.ansiMagenta');
+                return new vscode.ThemeColor('terminal.ansiRed');
+            
+            case 'custom': {
+                // Use custom colors from configuration
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const customColors = config.get('customColors', {
+                    veryRecent: '#00ff00',
+                    recent: '#ffff00',
+                    old: '#ff0000'
+                });
+                
+                // Create custom color decorations based on user's hex values
+                // Note: VS Code doesn't directly support hex colors in ThemeColor,
+                // but we can use the closest semantic theme colors that will adapt to themes
+                if (diffHours < 1) {
+                    // For veryRecent files - use success/positive color
+                    return customColors.veryRecent.toLowerCase().includes('green') || customColors.veryRecent === '#00ff00' 
+                        ? new vscode.ThemeColor('terminal.ansiGreen')
+                        : new vscode.ThemeColor('editorInfo.foreground');
+                }
+                if (diffHours < 24) {
+                    // For recent files - use warning/caution color  
+                    return customColors.recent.toLowerCase().includes('yellow') || customColors.recent === '#ffff00'
+                        ? new vscode.ThemeColor('terminal.ansiYellow')
+                        : new vscode.ThemeColor('editorWarning.foreground');
+                }
+                // For old files - use error/danger color
+                return customColors.old.toLowerCase().includes('red') || customColors.old === '#ff0000'
+                    ? new vscode.ThemeColor('terminal.ansiRed') 
+                    : new vscode.ThemeColor('editorError.foreground');
+            }
+            
+            default:
+                return undefined;
         }
-        
-        // Yellow: Modified within 1 day
-        if (diffHours < 24) {
-            return new vscode.ThemeColor('charts.yellow');
-        }
-        
-        // Red: Modified more than 1 day ago
-        return new vscode.ThemeColor('charts.red');
     }
 
     /**
@@ -328,22 +535,27 @@ class FileDateDecorationProvider {
             // Check if decorations are enabled
             const config = vscode.workspace.getConfiguration('explorerDates');
             if (!config.get('showDateDecorations', true)) {
+                this._logger.debug(`Decorations disabled globally`);
                 return undefined;
             }
 
             // Check if it's a file we should decorate
             if (uri.scheme !== 'file') {
+                this._logger.debug(`Non-file URI scheme: ${uri.scheme}`);
                 return undefined;
             }
 
             const filePath = uri.fsPath;
             
-            // Check if file is excluded
-            if (this._isExcluded(uri)) {
+            // Check if file is excluded (simplified logic)
+            if (await this._isExcludedSimple(uri)) {
+                this._logger.info(`❌ File excluded: ${path.basename(filePath)}`);
                 return undefined;
             }
             
-            // Check cache first
+            this._logger.debug(`🔍 Processing file: ${path.basename(filePath)}`);
+            
+            // Use simple memory cache only to avoid advanced cache issues
             const cached = this._decorationCache.get(filePath);
             if (cached && (Date.now() - cached.timestamp) < this._cacheTimeout) {
                 this._metrics.cacheHits++;
@@ -370,65 +582,152 @@ class FileDateDecorationProvider {
             const mtime = stat.mtime;
             const ctime = stat.birthtime; // Creation time
             
-            // Get configuration settings
-            const timeBadgeFormat = config.get('timeBadgeFormat', 'short');
-            const timestampFormat = config.get('timestampFormat', 'relative');
-            const enableColorCoding = config.get('enableColorCoding', false);
-            const highContrastMode = config.get('highContrastMode', false);
+            // Calculate time differences for reuse
+            const now = new Date();
+            const diffMs = now.getTime() - mtime.getTime();
             
-            const badge = this._formatDateBadge(mtime, timeBadgeFormat, timestampFormat);
+            // Get configuration settings
+            const dateFormat = config.get('dateDecorationFormat', 'smart');
+            const colorScheme = config.get('colorScheme', 'none');
+            // const highContrastMode = config.get('highContrastMode', false);
+            const showFileSize = config.get('showFileSize', false);
+            const fileSizeFormat = config.get('fileSizeFormat', 'auto');
+            // Note: showOnHover feature would require hover state tracking
+            // This is a simplified implementation - full hover support would require more work
+            
+            const badge = this._formatDateBadge(mtime, dateFormat, diffMs);
             const readableModified = this._formatDateReadable(mtime);
             const readableCreated = this._formatDateReadable(ctime);
             
-            // Get Git blame information (async, with fallback)
-            const gitBlame = await this._getGitBlameInfo(filePath);
+            // Get Git information if enabled
+            const showGitInfo = config.get('showGitInfo', 'none');
+            const gitBlame = showGitInfo !== 'none' ? await this._getGitBlameInfo(filePath) : null;
             
-            // Build detailed tooltip
-            let tooltip = `📝 Last Modified: ${readableModified}\n`;
-            tooltip += `   ${this._formatFullDate(mtime)}\n\n`;
-            tooltip += `📅 Created: ${readableCreated}\n`;
-            tooltip += `   ${this._formatFullDate(ctime)}`;
+            // Build composite badge with size and git info (keep under ~6 characters)
+            let displayBadge = badge;
             
-            if (gitBlame) {
-                tooltip += `\n\n👤 Last Modified By: ${gitBlame.authorName}`;
-                if (gitBlame.authorEmail) {
-                    tooltip += ` (${gitBlame.authorEmail})`;
+            if (showFileSize && showGitInfo === 'none') {
+                // Just date + size (e.g., "2h|1K")
+                const fileSize = this._formatFileSize(stat.size, fileSizeFormat);
+                displayBadge = `${badge}${fileSize}`;  // Remove separator to save space
+            } else if (showFileSize && showGitInfo !== 'none' && gitBlame && gitBlame.authorName) {
+                // Priority to git info over file size when both enabled
+                const initials = gitBlame.authorName.split(' ').map(n => n[0]).join('').slice(0, 1).toUpperCase();
+                displayBadge = `${badge}${initials}`;  // e.g., "2hJ" (2 hours, author J)
+            } else if (showGitInfo !== 'none' && gitBlame && gitBlame.authorName) {
+                // Just date + git info
+                const initials = gitBlame.authorName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                displayBadge = `${badge}${initials}`;  // e.g., "2hJD" (2 hours, author JD)
+            }
+
+            
+            // Build detailed tooltip with enhanced information and accessibility support
+            const fileName = path.basename(filePath);
+            const fileExt = path.extname(filePath);
+            const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt.toLowerCase());
+            
+            // Check if accessibility mode is enabled for enhanced tooltips
+            const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, mtime, ctime, stat.size, gitBlame);
+            
+            let tooltip;
+            if (accessibleTooltip) {
+                tooltip = accessibleTooltip;
+            } else {
+                // Standard rich tooltip
+                tooltip = `📄 File: ${fileName}\n`;
+                tooltip += `📝 Last Modified: ${readableModified}\n`;
+                tooltip += `   ${this._formatFullDate(mtime)}\n\n`;
+                tooltip += `📅 Created: ${readableCreated}\n`;
+                tooltip += `   ${this._formatFullDate(ctime)}\n\n`;
+                tooltip += `📊 Size: ${this._formatFileSize(stat.size, 'auto')} (${stat.size.toLocaleString()} bytes)\n`;
+                
+                // Add file type information
+                if (fileExt) {
+                    tooltip += `🏷️ Type: ${fileExt.toUpperCase()} file\n`;
                 }
-                if (gitBlame.authorDate) {
-                    tooltip += `\n   ${gitBlame.authorDate}`;
+                
+                // Add line count for code files
+                if (isCodeFile) {
+                    try {
+                        const content = await fs.readFile(filePath, 'utf8');
+                        const lineCount = content.split('\n').length;
+                        tooltip += `📏 Lines: ${lineCount.toLocaleString()}\n`;
+                    } catch (error) {
+                        // Silently skip line count if file can't be read
+                    }
+                }
+                
+                // Add full path
+                tooltip += `📂 Path: ${filePath}`;
+                
+                if (gitBlame) {
+                    tooltip += `\n\n👤 Last Modified By: ${gitBlame.authorName}`;
+                    if (gitBlame.authorEmail) {
+                        tooltip += ` (${gitBlame.authorEmail})`;
+                    }
+                    if (gitBlame.authorDate) {
+                        tooltip += `\n   ${gitBlame.authorDate}`;
+                    }
                 }
             }
             
-            // Determine color if color-coding is enabled
-            const color = enableColorCoding ? this._getColorByRecency(mtime) : undefined;
+            // Try without color first to see if that's causing rejection
+            let color = undefined;
+            this._logger.info(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
             
-            // Create decoration with styling
-            const decoration = new vscode.FileDecoration(
-                badge,
-                tooltip,
-                color
-            );
+            // Apply fade effect for old files if enabled
+            const fadeOldFiles = config.get('fadeOldFiles', false);
+            const fadeThreshold = config.get('fadeThreshold', 30);
             
-            // Apply high contrast styling if enabled
-            if (highContrastMode) {
-                // Use a more visible color for high contrast
-                decoration.color = new vscode.ThemeColor('editorWarning.foreground');
+            if (fadeOldFiles) {
+                const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                if (daysSinceModified > fadeThreshold) {
+                    // Override color with faded version for old files
+                    color = new vscode.ThemeColor('editorGutter.commentRangeForeground');
+                }
             }
             
-            // Explicitly prevent propagation to avoid interfering with Git status
+            // Use badge directly - bypass accessibility processing for now
+            let finalBadge = displayBadge;
+            
+            // Ensure badge meets VS Code length requirements (max 2 characters typically)
+            if (finalBadge && finalBadge.length > 8) {
+                finalBadge = finalBadge.substring(0, 8);
+            }
+            
+            // Debug log the final badge value
+            this._logger.info(`🏷️ Final badge for ${path.basename(filePath)}: "${finalBadge}" (type: ${typeof finalBadge})`);
+            
+            // Create decoration with constructor pattern - VS Code might prefer this
+            this._logger.info(`🎨 Creating decoration: badge="${finalBadge}", tooltip length=${tooltip ? tooltip.length : 0}, color=${color ? color.id : 'undefined'}`);
+            
+            // Working decoration with badge and tooltip, no color to avoid git conflicts
+            const decoration = new vscode.FileDecoration(finalBadge, tooltip);
             decoration.propagate = false;
+            
+            this._logger.info(`📝 Decoration object created:`, {
+                badge: decoration.badge,
+                tooltip: decoration.tooltip ? 'has tooltip' : 'no tooltip',
+                color: decoration.color ? 'has color' : 'no color',
+                propagate: decoration.propagate
+            });
+            
+            // Disable high contrast for debugging - might be causing rejection
+            // if (highContrastMode) {
+            //     decoration.color = new vscode.ThemeColor('editorWarning.foreground');
+            //     this._logger.info(`🔆 Applied high contrast color`);
+            // }
+            this._logger.info(`🚫 High contrast disabled for debugging`);
 
-            // Manage cache size before adding new entry
+            // Use simple memory cache only
             this._manageCacheSize();
-
-            // Cache the result
             this._decorationCache.set(filePath, {
                 decoration,
                 timestamp: Date.now()
             });
 
             this._metrics.totalDecorations++;
-            this._logger.debug(`Decoration created for: ${filePath} (badge: ${badge})`);
+            this._logger.info(`✅ Decoration created for: ${path.basename(filePath)} (badge: ${finalBadge || 'undefined'})`);
 
             return decoration;
 
@@ -444,20 +743,76 @@ class FileDateDecorationProvider {
      * Get performance metrics
      */
     getMetrics() {
-        return {
+        const baseMetrics = {
             ...this._metrics,
             cacheSize: this._decorationCache.size,
             cacheHitRate: this._metrics.cacheHits + this._metrics.cacheMisses > 0
                 ? (this._metrics.cacheHits / (this._metrics.cacheHits + this._metrics.cacheMisses) * 100).toFixed(2) + '%'
                 : '0%'
         };
+        
+        // Include advanced system metrics if available
+        if (this._advancedCache) {
+            baseMetrics.advancedCache = this._advancedCache.getStats();
+        }
+        if (this._batchProcessor) {
+            baseMetrics.batchProcessor = this._batchProcessor.getMetrics();
+        }
+        
+        return baseMetrics;
+    }
+
+    /**
+     * Initialize context-dependent systems
+     */
+    async initializeAdvancedSystems(context) {
+        try {
+            // Initialize advanced cache
+            this._advancedCache = new AdvancedCache(context);
+            await this._advancedCache.initialize();
+            
+            // Initialize batch processor
+            this._batchProcessor.initialize();
+            
+            // Setup theme integration
+            const config = vscode.workspace.getConfiguration('explorerDates');
+            if (config.get('autoThemeAdaptation', true)) {
+                await this._themeIntegration.autoConfigureForTheme();
+            }
+            
+            // Apply accessibility recommendations if needed
+            if (this._accessibility.shouldEnhanceAccessibility()) {
+                await this._accessibility.applyAccessibilityRecommendations();
+            }
+            
+            // Suggest smart exclusions for workspace
+            if (vscode.workspace.workspaceFolders) {
+                for (const folder of vscode.workspace.workspaceFolders) {
+                    await this._smartExclusion.suggestExclusions(folder.uri);
+                }
+            }
+            
+            this._logger.info('Advanced systems initialized successfully');
+        } catch (error) {
+            this._logger.error('Failed to initialize advanced systems', error);
+        }
     }
 
     /**
      * Dispose of resources
      */
-    dispose() {
+    async dispose() {
         this._logger.info('Disposing FileDateDecorationProvider', this.getMetrics());
+        
+        // Dispose advanced systems
+        if (this._advancedCache) {
+            await this._advancedCache.dispose();
+        }
+        if (this._batchProcessor) {
+            this._batchProcessor.dispose();
+        }
+        
+        // Dispose basic systems
         this._decorationCache.clear();
         this._onDidChangeFileDecorations.dispose();
         if (this._fileWatcher) {
