@@ -297,6 +297,187 @@ function generateDiagnosticsHTML(diagnostics) {
 }
 
 /**
+ * Generate comprehensive diagnostics webview HTML
+ */
+function generateDiagnosticsWebview(results) {
+    return `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Comprehensive Decoration Diagnostics</title>
+        <style>
+            body { 
+                font-family: var(--vscode-font-family); 
+                color: var(--vscode-foreground);
+                background-color: var(--vscode-editor-background);
+                padding: 20px;
+                line-height: 1.6;
+            }
+            .header {
+                margin-bottom: 30px;
+                padding-bottom: 15px;
+                border-bottom: 2px solid var(--vscode-panel-border);
+            }
+            .test-section {
+                margin-bottom: 25px;
+                padding: 20px;
+                border: 1px solid var(--vscode-panel-border);
+                border-radius: 8px;
+            }
+            .test-ok { 
+                background-color: rgba(0, 255, 0, 0.1);
+                border-left: 4px solid var(--vscode-terminal-ansiGreen);
+            }
+            .test-warning { 
+                background-color: rgba(255, 255, 0, 0.1);
+                border-left: 4px solid var(--vscode-terminal-ansiYellow);
+            }
+            .test-error { 
+                background-color: rgba(255, 0, 0, 0.1);
+                border-left: 4px solid var(--vscode-terminal-ansiRed);
+            }
+            .status-ok { color: var(--vscode-terminal-ansiGreen); font-weight: bold; }
+            .status-warning { color: var(--vscode-terminal-ansiYellow); font-weight: bold; }
+            .status-error { color: var(--vscode-terminal-ansiRed); font-weight: bold; }
+            .issue-critical { 
+                color: var(--vscode-terminal-ansiRed); 
+                font-weight: bold;
+                background-color: rgba(255, 0, 0, 0.2);
+                padding: 5px;
+                border-radius: 3px;
+                margin: 5px 0;
+            }
+            .issue-warning { 
+                color: var(--vscode-terminal-ansiYellow); 
+                background-color: rgba(255, 255, 0, 0.2);
+                padding: 5px;
+                border-radius: 3px;
+                margin: 5px 0;
+            }
+            pre { 
+                background-color: var(--vscode-textCodeBlock-background);
+                padding: 15px;
+                border-radius: 4px;
+                overflow-x: auto;
+                font-size: 0.9em;
+            }
+            .summary {
+                background-color: var(--vscode-textBlockQuote-background);
+                border-left: 4px solid var(--vscode-textBlockQuote-border);
+                padding: 15px;
+                margin: 20px 0;
+            }
+            .file-test {
+                display: inline-block;
+                margin: 5px;
+                padding: 8px 12px;
+                background-color: var(--vscode-badge-background);
+                color: var(--vscode-badge-foreground);
+                border-radius: 4px;
+                font-family: monospace;
+                font-size: 0.9em;
+            }
+            .badge-test {
+                display: inline-block;
+                margin: 3px;
+                padding: 4px 8px;
+                background-color: var(--vscode-button-background);
+                color: var(--vscode-button-foreground);
+                border-radius: 3px;
+                font-family: monospace;
+                font-size: 0.8em;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🔍 Comprehensive Decoration Diagnostics</h1>
+            <p><strong>VS Code:</strong> ${results.vscodeVersion} | <strong>Extension:</strong> ${results.extensionVersion}</p>
+            <p><strong>Generated:</strong> ${new Date(results.timestamp).toLocaleString()}</p>
+        </div>
+
+        ${Object.entries(results.tests).map(([testName, testResult]) => {
+            const statusClass = testResult.status === 'OK' ? 'test-ok' : 
+                               testResult.status === 'ISSUES_FOUND' ? 'test-warning' : 'test-error';
+            const statusColor = testResult.status === 'OK' ? 'status-ok' : 
+                               testResult.status === 'ISSUES_FOUND' ? 'status-warning' : 'status-error';
+            
+            return `
+            <div class="test-section ${statusClass}">
+                <h2>🧪 ${testName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</h2>
+                <p class="${statusColor}">Status: ${testResult.status}</p>
+                
+                ${testResult.issues && testResult.issues.length > 0 ? `
+                    <h3>Issues Found:</h3>
+                    ${testResult.issues.map(issue => {
+                        const issueClass = issue.startsWith('CRITICAL:') ? 'issue-critical' : 'issue-warning';
+                        return `<div class="${issueClass}">⚠️ ${issue}</div>`;
+                    }).join('')}
+                ` : ''}
+                
+                ${testResult.settings ? `
+                    <h3>Settings:</h3>
+                    <pre>${JSON.stringify(testResult.settings, null, 2)}</pre>
+                ` : ''}
+                
+                ${testResult.testFiles ? `
+                    <h3>File Tests:</h3>
+                    ${testResult.testFiles.map(file => `
+                        <div class="file-test">
+                            📄 ${file.file}: 
+                            ${file.exists ? '✅' : '❌'} exists | 
+                            ${file.excluded ? '🚫' : '✅'} ${file.excluded ? 'excluded' : 'included'} | 
+                            ${file.hasDecoration ? '🏷️' : '❌'} ${file.hasDecoration ? `badge: ${file.badge}` : 'no decoration'}
+                        </div>
+                    `).join('')}
+                ` : ''}
+                
+                ${testResult.tests ? `
+                    <h3>Test Results:</h3>
+                    ${testResult.tests.map(test => `
+                        <div class="badge-test">
+                            ${test.success ? '✅' : '❌'} ${test.name}
+                            ${test.badge ? ` → "${test.badge}"` : ''}
+                            ${test.error ? ` (${test.error})` : ''}
+                        </div>
+                    `).join('')}
+                ` : ''}
+                
+                ${testResult.cacheInfo ? `
+                    <h3>Cache Information:</h3>
+                    <pre>${JSON.stringify(testResult.cacheInfo, null, 2)}</pre>
+                ` : ''}
+                
+                ${testResult.decorationExtensions && testResult.decorationExtensions.length > 0 ? `
+                    <h3>Other Decoration Extensions:</h3>
+                    ${testResult.decorationExtensions.map(ext => `
+                        <div class="file-test">🔌 ${ext.name} (${ext.id})</div>
+                    `).join('')}
+                ` : ''}
+            </div>`;
+        }).join('')}
+        
+        <div class="summary">
+            <h2>🎯 Summary & Next Steps</h2>
+            <p>Review the test results above to identify the root cause of missing decorations.</p>
+            <p><strong>Most common causes:</strong></p>
+            <ul>
+                <li>VS Code decoration settings disabled (explorer.decorations.badges/colors)</li>
+                <li>Extension conflicts with icon themes or other decoration providers</li>
+                <li>File exclusion patterns being too aggressive</li>
+                <li>Badge format issues (length, characters, encoding)</li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h2>🔧 Raw Results</h2>
+            <pre>${JSON.stringify(results, null, 2)}</pre>
+        </div>
+    </body>
+    </html>`;
+}
+
+/**
  * Generate HTML for performance analytics
  */
 function generatePerformanceAnalyticsHTML(metrics) {
@@ -896,6 +1077,106 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(diagnostics);
+
+        // Comprehensive decoration diagnostics command
+        const testDecorations = vscode.commands.registerCommand('explorerDates.testDecorations', async () => {
+            try {
+                logger.info('🔍 Starting comprehensive decoration diagnostics...');
+                
+                const { DecorationDiagnostics } = require('./src/decorationDiagnostics');
+                const diagnostics = new DecorationDiagnostics(fileDateProvider);
+                
+                const results = await diagnostics.runComprehensiveDiagnostics();
+                
+                // Create detailed diagnostics panel
+                const panel = vscode.window.createWebviewPanel(
+                    'decorationDiagnostics',
+                    'Decoration Diagnostics - Root Cause Analysis',
+                    vscode.ViewColumn.One,
+                    { enableScripts: true }
+                );
+                
+                panel.webview.html = generateDiagnosticsWebview(results);
+                
+                // Show critical issues immediately
+                const criticalIssues = [];
+                const warnings = [];
+                
+                Object.values(results.tests).forEach(test => {
+                    if (test.issues) {
+                        test.issues.forEach(issue => {
+                            if (issue.startsWith('CRITICAL:')) {
+                                criticalIssues.push(issue);
+                            } else if (issue.startsWith('WARNING:')) {
+                                warnings.push(issue);
+                            }
+                        });
+                    }
+                });
+                
+                if (criticalIssues.length > 0) {
+                    vscode.window.showErrorMessage(`CRITICAL ISSUES FOUND: ${criticalIssues.join(', ')}`);
+                } else if (warnings.length > 0) {
+                    vscode.window.showWarningMessage(`Warnings found: ${warnings.length} potential issues detected. Check diagnostics panel.`);
+                } else {
+                    vscode.window.showInformationMessage('No critical issues found. Decorations should be working properly.');
+                }
+                
+                logger.info('🔍 Comprehensive diagnostics completed', results);
+                
+            } catch (error) {
+                logger.error('Failed to run comprehensive diagnostics', error);
+                vscode.window.showErrorMessage(`Diagnostics failed: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(testDecorations);
+
+        // Debug command to monitor VS Code decoration requests
+        const monitorDecorations = vscode.commands.registerCommand('explorerDates.monitorDecorations', async () => {
+            if (fileDateProvider) {
+                fileDateProvider.startProviderCallMonitoring();
+                
+                // Force refresh to trigger new requests
+                fileDateProvider.forceRefreshAllDecorations();
+                
+                // Show monitoring info after 5 seconds
+                setTimeout(() => {
+                    const stats = fileDateProvider.getProviderCallStats();
+                    const message = `VS Code Decoration Requests: ${stats.totalCalls} calls for ${stats.uniqueFiles} files`;
+                    vscode.window.showInformationMessage(message);
+                    logger.info('🔍 Decoration monitoring results:', stats);
+                }, 5000);
+                
+                vscode.window.showInformationMessage('Started monitoring VS Code decoration requests. Results in 5 seconds...');
+            } else {
+                vscode.window.showErrorMessage('Decoration provider not available');
+            }
+        });
+        context.subscriptions.push(monitorDecorations);
+
+        // Test VS Code decoration rendering system
+        const testVSCodeRendering = vscode.commands.registerCommand('explorerDates.testVSCodeRendering', async () => {
+            try {
+                const { testVSCodeDecorationRendering, testFileDecorationAPI } = require('./src/decorationTester');
+                
+                logger.info('🎨 Testing VS Code decoration rendering system...');
+                
+                // Test direct API
+                const apiTests = await testFileDecorationAPI();
+                logger.info('🔧 FileDecoration API tests:', apiTests);
+                
+                // Test actual rendering
+                const renderResult = await testVSCodeDecorationRendering();
+                logger.info('🎨 Decoration rendering test:', renderResult);
+                
+                vscode.window.showInformationMessage('VS Code decoration rendering test started. Check Output panel and Explorer for "TEST" badges on files.');
+                
+            } catch (error) {
+                logger.error('Failed to test VS Code rendering:', error);
+                vscode.window.showErrorMessage(`VS Code rendering test failed: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(testVSCodeRendering);
 
         // Register quick fix command for common issues
         const quickFix = vscode.commands.registerCommand('explorerDates.quickFix', async () => {

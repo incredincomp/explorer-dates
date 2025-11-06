@@ -77,7 +77,6 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 |---------|---------|---------|-------------|
 | `showFileSize` | `true`/`false` | `false` | Show file size with dates (e.g., "5m|~1K") |
 | `fileSizeFormat` | `auto`, `bytes`, `kb`, `mb` | `auto` | File size display format |
-| `showOnHover` | `true`/`false` | `false` | Only show decorations on file hover |
 | `fadeOldFiles` | `true`/`false` | `false` | Fade decorations for files older than threshold |
 | `fadeThreshold` | Number | `30` | Days after which to fade decorations (1-365) |
 | `showGitInfo` | `none`, `author`, `both` | `none` | Show Git commit author info with dates |

@@ -6,7 +6,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "version": "1.2.0",
   "engines": {
-    "vscode": "^1.102.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Other"
@@ -51,7 +51,7 @@
       },
       {
         "command": "explorerDates.showFileDetails",
-        "title": "Show File Details", 
+        "title": "Show File Details",
         "category": "Explorer Dates"
       },
       {
@@ -127,6 +127,21 @@
       {
         "command": "explorerDates.quickFix",
         "title": "Quick Fix Common Issues",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.testDecorations",
+        "title": "Test Decoration Provider",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.monitorDecorations",
+        "title": "Monitor VS Code Decoration Requests",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.testVSCodeRendering",
+        "title": "Test VS Code Decoration Rendering",
         "category": "Explorer Dates"
       }
     ],
@@ -248,7 +263,7 @@
           "enum": [
             "smart",
             "relative-short",
-            "relative-long", 
+            "relative-long",
             "absolute-short",
             "absolute-long"
           ],
@@ -345,7 +360,6 @@
           "description": "Maximum number of cached file decorations",
           "scope": "window"
         },
-
         "explorerDates.colorScheme": {
           "type": "string",
           "enum": [
@@ -393,12 +407,6 @@
               "description": "Color for files modified more than 1 day ago"
             }
           },
-          "scope": "window"
-        },
-        "explorerDates.showOnHover": {
-          "type": "boolean",
-          "default": false,
-          "description": "Only show decorations on file hover to reduce visual clutter",
           "scope": "window"
         },
         "explorerDates.fadeOldFiles": {
@@ -565,9 +573,17 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["json", "csv", "html", "markdown"]
+            "enum": [
+              "json",
+              "csv",
+              "html",
+              "markdown"
+            ]
           },
-          "default": ["json", "html"],
+          "default": [
+            "json",
+            "html"
+          ],
           "description": "Available export formats for file modification reports",
           "scope": "window"
         },
@@ -581,7 +597,12 @@
         },
         "explorerDates.timeTrackingIntegration": {
           "type": "string",
-          "enum": ["none", "generic", "toggl", "clockify"],
+          "enum": [
+            "none",
+            "generic",
+            "toggl",
+            "clockify"
+          ],
           "default": "none",
           "description": "Time tracking tool integration for exporting file activity data",
           "enumDescriptions": [
@@ -613,11 +634,11 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/vscode": "^1.102.0",
-    "@vscode/test-cli": "^0.0.11",
+    "@types/node": "^24.10.0",
+    "@types/vscode": "^1.105.0",
+    "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.37.0",
-    "globals": "^16.4.0"
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
   }
 }

@@ -88,7 +88,6 @@ class WorkspaceTemplatesManager {
                     'explorerDates.displayFormat': 'smart',
                     'explorerDates.colorCoding': false,
                     'explorerDates.showFileSize': false,
-                    'explorerDates.showOnHover': true,
                     'explorerDates.minimalistMode': true,
                     'explorerDates.excludePatterns': [
                         '**/node_modules/**',
@@ -120,7 +119,6 @@ class WorkspaceTemplatesManager {
                     'explorerDates.displayFormat': 'relative-short',
                     'explorerDates.colorCoding': false,
                     'explorerDates.showFileSize': false,
-                    'explorerDates.showOnHover': true,
                     'explorerDates.minimalistMode': true,
                     'explorerDates.enableTooltips': false
                 }

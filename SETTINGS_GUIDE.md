@@ -52,12 +52,7 @@
    - Default: `false`
    - Use: Better visibility for accessibility needs
 
-6. **Hover Mode**
-   - Setting: `explorerDates.showOnHover`
-   - Default: `false`
-   - Use: Only show decorations when hovering over files (reduces clutter)
-
-7. **Fade Old Files**
+6. **Fade Old Files**
    - Setting: `explorerDates.fadeOldFiles`
    - Default: `false`
    - Use: Fade decorations for files older than specified threshold
@@ -168,7 +163,6 @@
   "explorerDates.dateDecorationFormat": "relative-short",
   "explorerDates.showFileSize": false,
   "explorerDates.colorScheme": "none",
-  "explorerDates.showOnHover": true,
   "explorerDates.fadeOldFiles": true,
   "explorerDates.fadeThreshold": 14
 }
@@ -193,8 +187,7 @@
   "explorerDates.showFileSize": false,
   "explorerDates.colorScheme": "none",
   "explorerDates.fadeOldFiles": true,
-  "explorerDates.fadeThreshold": 7,
-  "explorerDates.showOnHover": false
+  "explorerDates.fadeThreshold": 7
 }
 ```
 
