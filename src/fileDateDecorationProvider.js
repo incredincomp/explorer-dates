@@ -1024,10 +1024,12 @@ class FileDateDecorationProvider {
                     this._logger.debug(`📝 Added tooltip (${tooltip.length} chars)`);
                 }
                 
-                // If tooltip works, add color
+                // If tooltip works, add color with selection-aware adjustment
                 if (color) {
-                    decoration.color = color;
-                    this._logger.debug(`🎨 Added color: ${color.id || color}`);
+                    // Apply selection-aware color enhancement
+                    const enhancedColor = this._enhanceColorForSelection(color, colorScheme);
+                    decoration.color = enhancedColor;
+                    this._logger.debug(`🎨 Added enhanced color: ${enhancedColor.id || enhancedColor} (original: ${color.id || color})`);
                 }
                 
                 // Set propagate to false (don't propagate to parent folders)
@@ -1223,6 +1225,48 @@ class FileDateDecorationProvider {
             this._logger.error('Failed to initialize advanced systems', error);
             // Don't throw - let extension continue with basic functionality
         }
+    }
+
+    /**
+     * Enhance color for better visibility against selection backgrounds
+     */
+    _enhanceColorForSelection(color, colorScheme) {
+        // Map problematic colors to selection-safe alternatives
+        const colorEnhancementMap = {
+            // Chart colors that may not work well with selections
+            'charts.yellow': 'list.warningForeground',
+            'charts.red': 'list.errorForeground', 
+            'charts.green': 'list.highlightForeground',
+            'charts.blue': 'symbolIcon.functionForeground',
+            'charts.purple': 'symbolIcon.classForeground',
+            'charts.orange': 'list.warningForeground',
+            
+            // Terminal colors that may have poor selection contrast
+            'terminal.ansiYellow': 'list.warningForeground',
+            'terminal.ansiGreen': 'list.highlightForeground',
+            'terminal.ansiRed': 'list.errorForeground',
+            'terminal.ansiBlue': 'symbolIcon.functionForeground',
+            'terminal.ansiMagenta': 'symbolIcon.classForeground',
+            'terminal.ansiCyan': 'symbolIcon.stringForeground',
+            
+            // Editor colors that may not work in lists
+            'editorGutter.commentRangeForeground': 'list.deemphasizedForeground',
+            'editorWarning.foreground': 'list.warningForeground',
+            'editorError.foreground': 'list.errorForeground',
+            'editorInfo.foreground': 'list.highlightForeground'
+        };
+        
+        // Check if this color needs enhancement
+        const colorId = color.id || color;
+        const enhancedColorId = colorEnhancementMap[colorId];
+        
+        if (enhancedColorId) {
+            this._logger.debug(`🔧 Enhanced color ${colorId} → ${enhancedColorId} for better selection visibility`);
+            return new vscode.ThemeColor(enhancedColorId);
+        }
+        
+        // If no enhancement needed, return original color
+        return color;
     }
 
     /**

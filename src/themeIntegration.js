@@ -90,23 +90,23 @@ class ThemeIntegrationManager {
      */
     _getLightThemeColors() {
         return {
-            // Recency colors - more vibrant for light backgrounds
-            veryRecent: new vscode.ThemeColor('terminal.ansiGreen'),
-            recent: new vscode.ThemeColor('terminal.ansiYellow'),
-            old: new vscode.ThemeColor('terminal.ansiRed'),
+            // Recency colors - optimized for light backgrounds and selection states
+            veryRecent: new vscode.ThemeColor('list.highlightForeground'),
+            recent: new vscode.ThemeColor('list.warningForeground'),
+            old: new vscode.ThemeColor('list.errorForeground'),
             
-            // File type colors - adapted for light theme
-            javascript: new vscode.ThemeColor('terminal.ansiBlue'),
-            css: new vscode.ThemeColor('terminal.ansiMagenta'),
-            html: new vscode.ThemeColor('terminal.ansiYellow'),
-            json: new vscode.ThemeColor('terminal.ansiGreen'),
-            markdown: new vscode.ThemeColor('terminal.ansiCyan'),
-            python: new vscode.ThemeColor('terminal.ansiRed'),
+            // File type colors - adapted for light theme with better selection visibility
+            javascript: new vscode.ThemeColor('symbolIcon.functionForeground'),
+            css: new vscode.ThemeColor('symbolIcon.colorForeground'),
+            html: new vscode.ThemeColor('symbolIcon.snippetForeground'),
+            json: new vscode.ThemeColor('symbolIcon.stringForeground'),
+            markdown: new vscode.ThemeColor('symbolIcon.textForeground'),
+            python: new vscode.ThemeColor('symbolIcon.classForeground'),
             
-            // Subtle colors
-            subtle: new vscode.ThemeColor('editorInfo.foreground'),
-            muted: new vscode.ThemeColor('editorHint.foreground'),
-            emphasis: new vscode.ThemeColor('editorError.foreground')
+            // Subtle colors with selection contrast
+            subtle: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+            muted: new vscode.ThemeColor('list.deemphasizedForeground'),
+            emphasis: new vscode.ThemeColor('list.highlightForeground')
         };
     }
 
@@ -115,23 +115,23 @@ class ThemeIntegrationManager {
      */
     _getDarkThemeColors() {
         return {
-            // Recency colors - softer for dark backgrounds
-            veryRecent: new vscode.ThemeColor('charts.green'),
+            // Recency colors - softer for dark backgrounds, optimized for selection contrast
+            veryRecent: new vscode.ThemeColor('list.highlightForeground'),
             recent: new vscode.ThemeColor('charts.yellow'),
             old: new vscode.ThemeColor('charts.red'),
             
-            // File type colors - optimized for dark theme
-            javascript: new vscode.ThemeColor('charts.blue'),
+            // File type colors - optimized for dark theme with better selection contrast
+            javascript: new vscode.ThemeColor('symbolIcon.functionForeground'),
             css: new vscode.ThemeColor('charts.purple'),
             html: new vscode.ThemeColor('charts.orange'),
-            json: new vscode.ThemeColor('charts.green'),
+            json: new vscode.ThemeColor('symbolIcon.stringForeground'),
             markdown: new vscode.ThemeColor('charts.yellow'),
-            python: new vscode.ThemeColor('charts.red'),
+            python: new vscode.ThemeColor('symbolIcon.classForeground'),
             
-            // Subtle colors
-            subtle: new vscode.ThemeColor('editorWarning.foreground'),
-            muted: new vscode.ThemeColor('editorGutter.commentRangeForeground'),
-            emphasis: new vscode.ThemeColor('editorInfo.foreground')
+            // Subtle colors with selection awareness
+            subtle: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+            muted: new vscode.ThemeColor('list.deemphasizedForeground'),
+            emphasis: new vscode.ThemeColor('list.highlightForeground')
         };
     }
 
@@ -140,23 +140,23 @@ class ThemeIntegrationManager {
      */
     _getHighContrastColors() {
         return {
-            // High contrast - use only high contrast theme colors
-            veryRecent: new vscode.ThemeColor('editorInfo.foreground'),
-            recent: new vscode.ThemeColor('editorWarning.foreground'),
-            old: new vscode.ThemeColor('editorError.foreground'),
+            // High contrast - use selection-aware theme colors for maximum visibility
+            veryRecent: new vscode.ThemeColor('list.highlightForeground'),
+            recent: new vscode.ThemeColor('list.warningForeground'),
+            old: new vscode.ThemeColor('list.errorForeground'),
             
-            // File type colors - limited palette for accessibility
-            javascript: new vscode.ThemeColor('editorInfo.foreground'),
-            css: new vscode.ThemeColor('editorWarning.foreground'),
-            html: new vscode.ThemeColor('editorError.foreground'),
-            json: new vscode.ThemeColor('editorInfo.foreground'),
-            markdown: new vscode.ThemeColor('editorWarning.foreground'),
-            python: new vscode.ThemeColor('editorError.foreground'),
+            // File type colors - simplified palette with excellent selection contrast
+            javascript: new vscode.ThemeColor('list.highlightForeground'),
+            css: new vscode.ThemeColor('list.warningForeground'),
+            html: new vscode.ThemeColor('list.errorForeground'),
+            json: new vscode.ThemeColor('list.highlightForeground'),
+            markdown: new vscode.ThemeColor('list.warningForeground'),
+            python: new vscode.ThemeColor('list.errorForeground'),
             
-            // All subtle colors use same high contrast color
-            subtle: new vscode.ThemeColor('editorForeground'),
-            muted: new vscode.ThemeColor('editorForeground'),
-            emphasis: new vscode.ThemeColor('editorForeground')
+            // Subtle colors - all highly visible in high contrast with selection awareness
+            subtle: new vscode.ThemeColor('list.highlightForeground'),
+            muted: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+            emphasis: new vscode.ThemeColor('list.focusHighlightForeground')
         };
     }
 
@@ -221,7 +221,7 @@ class ThemeIntegrationManager {
             return this._getAdaptiveColorForFile(filePath, fileAge);
         }
         
-        // Standard color schemes with theme-aware colors
+        // Standard color schemes with theme-aware colors optimized for Explorer selection states
         const colors = this.getAdaptiveColors();
         
         switch (colorScheme) {
@@ -239,14 +239,25 @@ class ThemeIntegrationManager {
                 return colors.emphasis;
                 
             case 'vibrant':
-                // Use terminal colors for more vibrant display
-                if (fileAge < 3600000) return new vscode.ThemeColor('terminal.ansiGreen');
-                if (fileAge < 86400000) return new vscode.ThemeColor('terminal.ansiYellow');
-                return new vscode.ThemeColor('terminal.ansiRed');
+                // Use selection-aware colors for vibrant display
+                return this._getVibrantSelectionAwareColor(fileAge);
                 
             default:
                 return undefined;
         }
+    }
+
+    /**
+     * Get vibrant colors that work well in selection states
+     */
+    _getVibrantSelectionAwareColor(fileAge) {
+        if (fileAge < 3600000) {
+            return new vscode.ThemeColor('list.highlightForeground'); // Always visible against selection
+        }
+        if (fileAge < 86400000) {
+            return new vscode.ThemeColor('list.warningForeground');   // Warning-style yellow/orange
+        }
+        return new vscode.ThemeColor('list.errorForeground');        // Error-style red
     }
 
     /**
