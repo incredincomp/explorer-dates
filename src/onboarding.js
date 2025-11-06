@@ -44,9 +44,21 @@ class OnboardingManager {
         const [currentMajor, currentMinor] = currentVersion.split('.').map(Number);
         const [savedMajor, savedMinor] = this._onboardingVersion.split('.').map(Number);
         
-        // Show for major version updates or significant minor updates
-        return currentMajor > savedMajor || 
-               (currentMajor === savedMajor && currentMinor > savedMinor);
+        // Only show for major version updates to reduce notification fatigue
+        // Minor updates get gentler notifications
+        return currentMajor > savedMajor;
+    }
+
+    /**
+     * Check if this is a minor update that deserves a gentle notification
+     */
+    _isMinorUpdate(currentVersion) {
+        if (this._onboardingVersion === '0.0.0') return false;
+        
+        const [currentMajor, currentMinor] = currentVersion.split('.').map(Number);
+        const [savedMajor, savedMinor] = this._onboardingVersion.split('.').map(Number);
+        
+        return currentMajor === savedMajor && currentMinor > savedMinor;
     }
 
     /**
@@ -56,18 +68,26 @@ class OnboardingManager {
         try {
             const extensionVersion = this._context.extension.packageJSON.version;
             const isUpdate = this._hasShownWelcome;
+            const isMinorUpdate = this._isMinorUpdate(extensionVersion);
+            
+            // For minor updates, show a gentle status bar notification instead
+            if (isMinorUpdate) {
+                return this._showGentleUpdateNotification(extensionVersion);
+            }
             
             const message = isUpdate ?
                 `Explorer Dates has been updated to v${extensionVersion} with new features and improvements!` :
                 'See file modification dates right in VS Code Explorer with intuitive time badges, file sizes, Git info, and much more!';
             
+            // Reduce options for existing users to prevent overwhelm
+            const actions = isUpdate ? 
+                ['📖 What\'s New', '⚙️ Settings', 'Dismiss'] :
+                ['🚀 Quick Setup', '📖 Feature Tour', '⚙️ Settings', 'Maybe Later'];
+            
             const action = await vscode.window.showInformationMessage(
                 message,
                 { modal: false },
-                '🚀 Quick Setup',
-                '📖 Feature Tour',
-                '⚙️ Settings',
-                'Maybe Later'
+                ...actions
             );
 
             // Track that we've shown the welcome
@@ -81,7 +101,10 @@ class OnboardingManager {
                 case '📖 Feature Tour':
                     await this.showFeatureTour();
                     break;
-                case 'openSettings':
+                case '📖 What\'s New':
+                    await this.showWhatsNew(extensionVersion);
+                    break;
+                case '⚙️ Settings':
                     await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
                     break;
                     
@@ -94,11 +117,33 @@ class OnboardingManager {
                     break;
             }
 
-            this._logger.info('Welcome message shown', { action, isUpdate });
+            this._logger.info('Welcome message shown', { action, isUpdate, isMinorUpdate });
             
         } catch (error) {
             this._logger.error('Failed to show welcome message', error);
         }
+    }
+
+    /**
+     * Show gentle update notification in status bar for minor updates
+     */
+    async _showGentleUpdateNotification(version) {
+        // Show a brief status bar message instead of intrusive popup
+        const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        statusBarItem.text = `$(check) Explorer Dates updated to v${version}`;
+        statusBarItem.tooltip = 'Click to see what\'s new in Explorer Dates';
+        statusBarItem.command = 'explorerDates.showWhatsNew';
+        statusBarItem.show();
+        
+        // Auto-hide after 10 seconds
+        setTimeout(() => {
+            statusBarItem.dispose();
+        }, 10000);
+        
+        // Update version tracking
+        await this._context.globalState.update('explorerDates.onboardingVersion', version);
+        
+        this._logger.info('Showed gentle update notification', { version });
     }
 
     /**
@@ -344,24 +389,34 @@ class OnboardingManager {
      * Generate HTML for setup wizard
      */
     _generateSetupWizardHTML() {
-        const presets = this._getConfigurationPresets();
-        const presetOptions = Object.entries(presets).map(([key, preset]) => `
+        const allPresets = this._getConfigurationPresets();
+        
+        // Simplified preset selection - only show 3 core options to reduce overwhelm
+        const simplifiedPresets = {
+            minimal: allPresets.minimal,
+            developer: allPresets.developer,
+            accessible: allPresets.accessible
+        };
+        
+        const presetOptions = Object.entries(simplifiedPresets).map(([key, preset]) => `
             <div class="preset-option" data-preset="${key}" 
                  onmouseenter="previewConfiguration({preset: '${key}'})" 
                  onmouseleave="clearPreview()">
                 <h3>${preset.name}</h3>
                 <p>${preset.description}</p>
-                <div class="preset-settings">
-                    ${Object.entries(preset.settings).map(([setting, value]) => 
-                        `<span class="setting-tag">${setting}: ${value}</span>`
-                    ).join('')}
-                </div>
                 <div class="preset-actions">
-                    <button onclick="previewConfiguration({preset: '${key}'})">Preview</button>
-                    <button onclick="applyConfiguration({preset: '${key}'})">Select ${preset.name}</button>
+                    <button onclick="previewConfiguration({preset: '${key}'})">👁️ Preview</button>
+                    <button onclick="applyConfiguration({preset: '${key}'})">✅ Select ${preset.name}</button>
                 </div>
             </div>
         `).join('');
+
+        // Add a link to see more options for power users
+        const moreOptionsLink = `
+            <div class="more-options">
+                <p><strong>Need more options?</strong> Try the <a href="#" onclick="showAllPresets()">Power User</a> or <a href="#" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
+            </div>
+        `;
 
         return `
             <!DOCTYPE html>
@@ -458,6 +513,22 @@ class OnboardingManager {
                     .btn.secondary:hover {
                         background: var(--vscode-button-secondaryHoverBackground);
                     }
+                    .more-options {
+                        margin-top: 20px;
+                        padding: 15px;
+                        background: var(--vscode-textBlockQuote-background);
+                        border-left: 4px solid var(--vscode-textLink-foreground);
+                        border-radius: 4px;
+                        font-size: 14px;
+                    }
+                    .more-options a {
+                        color: var(--vscode-textLink-foreground);
+                        text-decoration: none;
+                        font-weight: bold;
+                    }
+                    .more-options a:hover {
+                        text-decoration: underline;
+                    }
                 </style>
             </head>
             <body>
@@ -471,6 +542,8 @@ class OnboardingManager {
                     <p>Select a preset that matches your needs, or skip to configure manually:</p>
                     
                     ${presetOptions}
+                    
+                    ${moreOptionsLink}
                 </div>
 
                 <div class="buttons">
@@ -509,7 +582,7 @@ class OnboardingManager {
                     }
 
                     function previewConfiguration(config) {
-                        const presets = ${JSON.stringify(presets)};
+                        const presets = ${JSON.stringify(simplifiedPresets)};
                         if (config.preset && presets[config.preset]) {
                             vscode.postMessage({
                                 command: 'previewConfiguration',
@@ -530,6 +603,14 @@ class OnboardingManager {
 
                     function skipSetup() {
                         vscode.postMessage({ command: 'skipSetup' });
+                    }
+                    
+                    function showAllPresets() {
+                        applyConfiguration({preset: 'powerUser'});
+                    }
+                    
+                    function showGitFocused() {
+                        applyConfiguration({preset: 'gitFocused'});
                     }
                 </script>
             </body>
@@ -774,6 +855,227 @@ class OnboardingManager {
         if (action === 'Show More Tips') {
             await this.showFeatureTour();
         }
+    }
+
+    /**
+     * Show focused "What's New" for existing users
+     */
+    async showWhatsNew(version) {
+        try {
+            const panel = vscode.window.createWebviewPanel(
+                'explorerDatesWhatsNew',
+                `Explorer Dates v${version} - What's New`,
+                vscode.ViewColumn.One,
+                {
+                    enableScripts: true,
+                    retainContextWhenHidden: false
+                }
+            );
+
+            panel.webview.html = this._generateWhatsNewHTML(version);
+            
+            // Handle interactions
+            panel.webview.onDidReceiveMessage(async (message) => {
+                switch (message.command) {
+                    case 'openSettings':
+                        await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+                        panel.dispose();
+                        break;
+                    case 'tryFeature':
+                        // Demo a specific new feature
+                        if (message.feature === 'badgePriority') {
+                            const config = vscode.workspace.getConfiguration('explorerDates');
+                            await config.update('badgePriority', 'author', vscode.ConfigurationTarget.Global);
+                            vscode.window.showInformationMessage('Badge priority set to author! You should see author initials on files now.');
+                        }
+                        break;
+                    case 'dismiss':
+                        panel.dispose();
+                        break;
+                }
+            });
+
+        } catch (error) {
+            this._logger.error('Failed to show what\'s new', error);
+        }
+    }
+
+    /**
+     * Generate HTML for What's New panel
+     */
+    _generateWhatsNewHTML(version) {
+        return `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Explorer Dates - What's New</title>
+                <style>
+                    body {
+                        font-family: var(--vscode-font-family);
+                        font-size: var(--vscode-font-size);
+                        color: var(--vscode-foreground);
+                        background: var(--vscode-editor-background);
+                        line-height: 1.6;
+                        padding: 20px;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }
+                    
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        padding-bottom: 20px;
+                        border-bottom: 1px solid var(--vscode-textSeparator-foreground);
+                    }
+                    
+                    .version {
+                        font-size: 24px;
+                        font-weight: bold;
+                        color: var(--vscode-textLink-foreground);
+                        margin-bottom: 10px;
+                    }
+                    
+                    .subtitle {
+                        color: var(--vscode-descriptionForeground);
+                        font-size: 16px;
+                    }
+                    
+                    .feature {
+                        margin-bottom: 25px;
+                        padding: 15px;
+                        background: var(--vscode-editor-inactiveSelectionBackground);
+                        border-radius: 8px;
+                        border-left: 4px solid var(--vscode-textLink-foreground);
+                    }
+                    
+                    .feature-icon {
+                        font-size: 20px;
+                        margin-right: 10px;
+                    }
+                    
+                    .feature-title {
+                        font-weight: bold;
+                        font-size: 18px;
+                        margin-bottom: 8px;
+                    }
+                    
+                    .feature-description {
+                        color: var(--vscode-descriptionForeground);
+                        margin-bottom: 10px;
+                    }
+                    
+                    .try-button {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    }
+                    
+                    .try-button:hover {
+                        background: var(--vscode-button-hoverBackground);
+                    }
+                    
+                    .actions {
+                        text-align: center;
+                        margin-top: 30px;
+                        padding-top: 20px;
+                        border-top: 1px solid var(--vscode-textSeparator-foreground);
+                    }
+                    
+                    .action-button {
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border: none;
+                        padding: 12px 24px;
+                        margin: 0 10px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 14px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="version">Explorer Dates v${version}</div>
+                    <div class="subtitle">New features and improvements</div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-title">
+                        <span class="feature-icon">🏷️</span>
+                        Badge Priority Settings
+                    </div>
+                    <div class="feature-description">
+                        Choose what appears in your file badges: modification time, author initials, or file size. Perfect for teams who want to see who last worked on files at a glance.
+                    </div>
+                    <button class="try-button" onclick="tryFeature('badgePriority')">Try Author Badges</button>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-title">
+                        <span class="feature-icon">🎭</span>
+                        Live Preview in Setup
+                    </div>
+                    <div class="feature-description">
+                        The Quick Setup wizard now shows live previews of your configuration choices, so you can see exactly how your files will look before applying settings.
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-title">
+                        <span class="feature-icon">♿</span>
+                        Enhanced Accessibility
+                    </div>
+                    <div class="feature-description">
+                        Improved screen reader support, high contrast mode, and detailed tooltips make the extension more accessible to all users.
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-title">
+                        <span class="feature-icon">📝</span>
+                        Rich Tooltips
+                    </div>
+                    <div class="feature-description">
+                        File tooltips now include comprehensive information with emojis: file details, Git history, line counts for code files, and more.
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button class="action-button" onclick="openSettings()">⚙️ Open Settings</button>
+                    <button class="action-button" onclick="dismiss()">✅ Got it!</button>
+                </div>
+
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function tryFeature(feature) {
+                        vscode.postMessage({
+                            command: 'tryFeature',
+                            feature: feature
+                        });
+                    }
+
+                    function openSettings() {
+                        vscode.postMessage({
+                            command: 'openSettings'
+                        });
+                    }
+
+                    function dismiss() {
+                        vscode.postMessage({
+                            command: 'dismiss'
+                        });
+                    }
+                </script>
+            </body>
+            </html>
+        `;
     }
 }
 

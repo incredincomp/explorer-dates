@@ -659,10 +659,11 @@ async function activate(context) {
         // Show onboarding if needed
         const onboardingConfig = vscode.workspace.getConfiguration('explorerDates');
         if (onboardingConfig.get('showWelcomeOnStartup', true) && await onboardingManager.shouldShowOnboarding()) {
-            // Delay to let extension fully activate
+            // Delay to let extension fully activate and avoid interrupting user workflow
+            // Longer delay for more graceful experience
             setTimeout(() => {
                 onboardingManager.showWelcomeMessage();
-            }, 2000);
+            }, 5000);
         }
 
         // Register refresh command for decorations
@@ -1357,6 +1358,19 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(showQuickSetup);
+
+        // Register "What's New" command for existing users
+        const showWhatsNew = vscode.commands.registerCommand('explorerDates.showWhatsNew', async () => {
+            try {
+                const extensionVersion = context.extension.packageJSON.version;
+                await onboardingManager.showWhatsNew(extensionVersion);
+                logger.info('What\'s new panel opened');
+            } catch (error) {
+                logger.error('Failed to show what\'s new', error);
+                vscode.window.showErrorMessage(`Failed to show what's new: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(showWhatsNew);
 
         // Register workspace templates commands
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {

@@ -105,6 +105,11 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.showWhatsNew",
+        "title": "What's New in Explorer Dates",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.openTemplateManager",
         "title": "Open Template Manager",
         "category": "Explorer Dates"

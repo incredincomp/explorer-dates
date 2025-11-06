@@ -914,13 +914,15 @@ class FileDateDecorationProvider {
             const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt.toLowerCase());
             
             // Check if accessibility mode is enabled for enhanced tooltips
+            // Default to rich tooltips unless explicitly set to accessible mode
             const accessibilityMode = _get('accessibilityMode', false);
-            this._logger.debug(`🔍 Tooltip generation for ${path.basename(filePath)}: accessibilityMode=${accessibilityMode}, previewMode=${!!this._previewSettings}`);
+            const shouldUseAccessibleTooltips = accessibilityMode && this._accessibility?.shouldEnhanceAccessibility();
+            this._logger.debug(`🔍 Tooltip generation for ${path.basename(filePath)}: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, previewMode=${!!this._previewSettings}`);
             
             let tooltip;
-            this._logger.info(`🔍 TOOLTIP GENERATION START: accessibilityMode=${accessibilityMode}, file=${path.basename(filePath)}`);
+            this._logger.info(`🔍 TOOLTIP GENERATION START: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, file=${path.basename(filePath)}`);
             
-            if (accessibilityMode) {
+            if (shouldUseAccessibleTooltips) {
                 const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, mtime, ctime, stat.size, gitBlame);
                 if (accessibleTooltip) {
                     tooltip = accessibleTooltip;
