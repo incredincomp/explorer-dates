@@ -81,8 +81,16 @@ class OnboardingManager {
                 case '📖 Feature Tour':
                     await this.showFeatureTour();
                     break;
-                case '⚙️ Settings':
+                case 'openSettings':
                     await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+                    break;
+                    
+                case 'previewConfiguration':
+                    await vscode.commands.executeCommand('explorerDates.previewConfiguration', message.settings);
+                    break;
+                    
+                case 'clearPreview':
+                    await vscode.commands.executeCommand('explorerDates.clearPreview');
                     break;
             }
 
@@ -135,6 +143,20 @@ class OnboardingManager {
                     panel.dispose();
                     break;
                     
+                case 'previewConfiguration':
+                    // Handle preview by calling the preview command
+                    if (message.settings) {
+                        await vscode.commands.executeCommand('explorerDates.previewConfiguration', message.settings);
+                        this._logger.info('Configuration preview applied via webview', message.settings);
+                    }
+                    break;
+                    
+                case 'clearPreview':
+                    // Handle clear preview by calling the clear preview command
+                    await vscode.commands.executeCommand('explorerDates.clearPreview');
+                    this._logger.info('Configuration preview cleared via webview');
+                    break;
+                    
                 case 'skipSetup':
                     await this._context.globalState.update('explorerDates.hasCompletedSetup', true);
                     panel.dispose();
@@ -163,10 +185,17 @@ class OnboardingManager {
             const preset = presets[configuration.preset];
             
             if (preset) {
+                this._logger.info(`Applying preset: ${configuration.preset}`, preset.settings);
+                
                 for (const [key, value] of Object.entries(preset.settings)) {
                     await config.update(key, value, vscode.ConfigurationTarget.Global);
+                    this._logger.debug(`Updated setting: explorerDates.${key} = ${value}`);
                 }
+                
                 this._logger.info(`Applied preset: ${configuration.preset}`, preset.settings);
+                
+                // Show confirmation to user
+                vscode.window.showInformationMessage(`Applied "${preset.name}" configuration. Changes should be visible immediately!`);
             }
         }
         
@@ -177,6 +206,14 @@ class OnboardingManager {
             }
             this._logger.info('Applied individual settings', configuration.individual);
         }
+
+        // Force refresh of decorations to show changes immediately
+        try {
+            await vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
+            this._logger.info('Decorations refreshed after configuration change');
+        } catch (error) {
+            this._logger.warn('Failed to refresh decorations after configuration change', error);
+        }
     }
 
     /**
@@ -186,23 +223,30 @@ class OnboardingManager {
         return {
             minimal: {
                 name: 'Minimal',
-                description: 'Clean and simple - just show modification times',
+                description: 'Clean and simple - just show modification times in short format',
                 settings: {
-                    dateDecorationFormat: 'smart',
+                    dateDecorationFormat: 'relative-short',
                     colorScheme: 'none',
+                    highContrastMode: false,
                     showFileSize: false,
                     showGitInfo: 'none',
-                    fadeOldFiles: false
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: false,
+                    showStatusBar: false
                 }
             },
             developer: {
                 name: 'Developer',
-                description: 'Perfect for development - includes Git info and file sizes',
+                description: 'Perfect for development - includes Git info, file sizes, and color coding',
                 settings: {
                     dateDecorationFormat: 'smart',
                     colorScheme: 'recency',
+                    highContrastMode: false,
                     showFileSize: true,
+                    fileSizeFormat: 'auto',
                     showGitInfo: 'author',
+                    badgePriority: 'time',
                     fadeOldFiles: true,
                     fadeThreshold: 30,
                     enableContextMenu: true,
@@ -211,13 +255,15 @@ class OnboardingManager {
             },
             powerUser: {
                 name: 'Power User',
-                description: 'All features enabled - maximum information',
+                description: 'Maximum information - all features enabled with vibrant colors',
                 settings: {
                     dateDecorationFormat: 'smart',
-                    colorScheme: 'file-type',
+                    colorScheme: 'vibrant',
+                    highContrastMode: false,
                     showFileSize: true,
                     fileSizeFormat: 'auto',
                     showGitInfo: 'both',
+                    badgePriority: 'time',
                     fadeOldFiles: true,
                     fadeThreshold: 14,
                     enableContextMenu: true,
@@ -227,16 +273,35 @@ class OnboardingManager {
                     persistentCache: true
                 }
             },
+            gitFocused: {
+                name: 'Git-Focused',
+                description: 'Show author initials as badges with full Git information in tooltips',
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'file-type',
+                    highContrastMode: false,
+                    showFileSize: false,
+                    showGitInfo: 'both',
+                    badgePriority: 'author',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    showStatusBar: true
+                }
+            },
             accessible: {
                 name: 'Accessible',
-                description: 'High contrast and screen reader friendly',
+                description: 'High contrast and screen reader friendly with detailed tooltips',
                 settings: {
-                    dateDecorationFormat: 'relative-long',
+                    dateDecorationFormat: 'relative-short',
                     colorScheme: 'none',
                     highContrastMode: true,
+                    accessibilityMode: true,
                     showFileSize: false,
                     showGitInfo: 'none',
-                    fadeOldFiles: false
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    keyboardNavigation: true
                 }
             }
         };
@@ -281,13 +346,19 @@ class OnboardingManager {
     _generateSetupWizardHTML() {
         const presets = this._getConfigurationPresets();
         const presetOptions = Object.entries(presets).map(([key, preset]) => `
-            <div class="preset-option" data-preset="${key}">
+            <div class="preset-option" data-preset="${key}" 
+                 onmouseenter="previewConfiguration({preset: '${key}'})" 
+                 onmouseleave="clearPreview()">
                 <h3>${preset.name}</h3>
                 <p>${preset.description}</p>
                 <div class="preset-settings">
                     ${Object.entries(preset.settings).map(([setting, value]) => 
                         `<span class="setting-tag">${setting}: ${value}</span>`
                     ).join('')}
+                </div>
+                <div class="preset-actions">
+                    <button onclick="previewConfiguration({preset: '${key}'})">Preview</button>
+                    <button onclick="applyConfiguration({preset: '${key}'})">Select ${preset.name}</button>
                 </div>
             </div>
         `).join('');
@@ -333,6 +404,23 @@ class OnboardingManager {
                     .preset-option.selected {
                         border-color: var(--vscode-focusBorder);
                         background: var(--vscode-list-activeSelectionBackground);
+                    }
+                    .preset-actions {
+                        margin-top: 10px;
+                        display: flex;
+                        gap: 8px;
+                    }
+                    .preset-actions button {
+                        padding: 6px 12px;
+                        border: 1px solid var(--vscode-button-border);
+                        background: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    }
+                    .preset-actions button:hover {
+                        background: var(--vscode-button-hoverBackground);
                     }
                     .preset-settings {
                         margin-top: 10px;
@@ -404,8 +492,13 @@ class OnboardingManager {
                         });
                     });
 
-                    function applyConfiguration() {
-                        if (selectedPreset) {
+                    function applyConfiguration(config) {
+                        if (config) {
+                            vscode.postMessage({
+                                command: 'applyConfiguration',
+                                configuration: config
+                            });
+                        } else if (selectedPreset) {
                             vscode.postMessage({
                                 command: 'applyConfiguration',
                                 configuration: { preset: selectedPreset }
@@ -413,6 +506,22 @@ class OnboardingManager {
                         } else {
                             alert('Please select a configuration preset first.');
                         }
+                    }
+
+                    function previewConfiguration(config) {
+                        const presets = ${JSON.stringify(presets)};
+                        if (config.preset && presets[config.preset]) {
+                            vscode.postMessage({
+                                command: 'previewConfiguration',
+                                settings: presets[config.preset].settings
+                            });
+                        }
+                    }
+
+                    function clearPreview() {
+                        vscode.postMessage({
+                            command: 'clearPreview'
+                        });
                     }
 
                     function openSettings() {

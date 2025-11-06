@@ -30,7 +30,16 @@ class AccessibilityManager {
      */
     _loadConfiguration() {
         const config = vscode.workspace.getConfiguration('explorerDates');
+        // Don't auto-detect accessibility mode unless explicitly enabled
         this._isAccessibilityMode = config.get('accessibilityMode', false);
+        
+        // Only auto-enable accessibility if user explicitly has screen reader support on
+        // AND the accessibility mode isn't explicitly set to false
+        if (!config.has('accessibilityMode') && this._detectScreenReader()) {
+            // Only suggest, don't force
+            this._logger.info('Screen reader detected - consider enabling accessibility mode in settings');
+        }
+        
         this._keyboardNavigationEnabled = config.get('keyboardNavigation', true);
     }
 

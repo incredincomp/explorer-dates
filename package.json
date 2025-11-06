@@ -40,6 +40,16 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.showCurrentConfig",
+        "title": "Show Current Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.resetToDefaults",
+        "title": "Reset to Default Settings",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.toggleDecorations",
         "title": "Toggle Date Decorations",
         "category": "Explorer Dates"
@@ -142,6 +152,16 @@
       {
         "command": "explorerDates.testVSCodeRendering",
         "title": "Test VS Code Decoration Rendering",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.previewConfiguration",
+        "title": "Preview Configuration (Internal)",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.clearPreview",
+        "title": "Clear Configuration Preview (Internal)",
         "category": "Explorer Dates"
       }
     ],
@@ -246,6 +266,14 @@
         {
           "command": "explorerDates.compareWithPrevious",
           "when": "false"
+        },
+        {
+          "command": "explorerDates.previewConfiguration",
+          "when": "false"
+        },
+        {
+          "command": "explorerDates.clearPreview",
+          "when": "false"
         }
       ]
     },
@@ -270,11 +298,11 @@
           "default": "smart",
           "description": "Format for date decorations in Explorer",
           "enumDescriptions": [
-            "Smart format: relative for recent, absolute for older (e.g., '5m' → 'Oct 12')",
-            "Always relative with short format (e.g., '5m', '2h', '3d')",
-            "Always relative with fuller abbreviations (e.g., '5min', '2hrs', '3day')",
-            "Always absolute with short format (e.g., 'Oct 12', 'Mar 23')",
-            "Always absolute with year when needed (e.g., 'Oct 12', 'Mar 23')"
+            "Smart format: relative for recent (5m, 2h), absolute for older (truncated to 2 chars)",
+            "Always relative with 2-char format (5m, 2h, 3d, 1w)",
+            "Always relative - Note: truncated to 2 chars due to VS Code limits",
+            "Always absolute - Note: truncated to 2 chars (Oc, Se, etc.)",
+            "Always absolute with year - Note: truncated to 2 chars due to VS Code limits"
           ],
           "scope": "window"
         },
@@ -466,6 +494,22 @@
             "No Git information",
             "Show last commit author initials (e.g., '5m•JD')",
             "Show both modification time and commit info"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.badgePriority": {
+          "type": "string",
+          "enum": [
+            "time",
+            "author",
+            "size"
+          ],
+          "default": "time",
+          "description": "Which information should occupy the short (2-char) badge: time, author initials, or size",
+          "enumDescriptions": [
+            "Show time-based badge (default)",
+            "Show author initials when available",
+            "Show a compact size indicator when file size display is enabled"
           ],
           "scope": "window"
         },

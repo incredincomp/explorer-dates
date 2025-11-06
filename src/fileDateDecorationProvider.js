@@ -49,6 +49,9 @@ class FileDateDecorationProvider {
             cacheMisses: 0,
             errors: 0
         };
+
+        // Preview settings for onboarding
+        this._previewSettings = null;
         
         // Watch for file changes to update decorations
         this._setupFileWatcher();
@@ -57,6 +60,53 @@ class FileDateDecorationProvider {
         this._setupConfigurationWatcher();
         
         this._logger.info('FileDateDecorationProvider initialized');
+        // Preview settings (transient overrides used by onboarding quick-setup)
+        this._previewSettings = null;
+    }
+
+    /**
+     * Apply transient preview settings (do not persist to user settings)
+     * @param {Object|null} settings
+     */
+    applyPreviewSettings(settings) {
+        const wasInPreviewMode = !!this._previewSettings;
+        
+        if (settings && typeof settings === 'object') {
+            this._previewSettings = Object.assign({}, settings);
+            this._logger.info('🔄 Applied preview settings', this._previewSettings);
+        } else {
+            this._previewSettings = null;
+            this._logger.info('🔄 Cleared preview settings');
+        }
+
+        // Always clear caches when entering or exiting preview mode
+        const memorySize = this._decorationCache.size;
+        this._decorationCache.clear();
+        this._logger.info(`🗑️ Cleared memory cache (${memorySize} items) for preview mode change`);
+        
+        if (this._advancedCache) {
+            try {
+                if (typeof this._advancedCache.clear === 'function') {
+                    this._advancedCache.clear();
+                    this._logger.info('🗑️ Cleared advanced cache for preview mode change');
+                } else {
+                    this._logger.warn('⚠️ Advanced cache does not support clear operation');
+                }
+            } catch (error) {
+                this._logger.warn('⚠️ Failed to clear advanced cache:', error.message);
+            }
+        }
+
+        // Log the mode transition
+        if (this._previewSettings && !wasInPreviewMode) {
+            this._logger.info('🎭 Entered preview mode - caching disabled');
+        } else if (!this._previewSettings && wasInPreviewMode) {
+            this._logger.info('🎭 Exited preview mode - caching re-enabled');
+        }
+
+        // Trigger an immediate refresh so the changes are visible
+        this._onDidChangeFileDecorations.fire(undefined);
+        this._logger.info('🔄 Fired decoration refresh event for preview change');
     }
 
     /**
@@ -177,7 +227,9 @@ class FileDateDecorationProvider {
                     e.affectsConfiguration('explorerDates.fadeThreshold') ||
                     e.affectsConfiguration('explorerDates.colorScheme') ||
                     e.affectsConfiguration('explorerDates.showGitInfo') ||
-                    e.affectsConfiguration('explorerDates.customColors')) {
+                    e.affectsConfiguration('explorerDates.customColors') ||
+                    e.affectsConfiguration('explorerDates.showFileSize') ||
+                    e.affectsConfiguration('explorerDates.fileSizeFormat')) {
                     this.refreshAll();
                 }
             }
@@ -635,6 +687,47 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Get initials (up to 2 characters) from a full name
+     */
+    _getInitials(fullName) {
+        if (!fullName || typeof fullName !== 'string') return null;
+        const parts = fullName.trim().split(/\s+/).filter(Boolean);
+        if (parts.length === 0) return null;
+        if (parts.length === 1) {
+            return parts[0].substring(0, 2).toUpperCase();
+        }
+        return (parts[0][0] + (parts[1][0] || '')).substring(0, 2).toUpperCase();
+    }
+
+    /**
+     * Format a very compact size string (max 2 characters) for badges.
+     * Strategy: prefer `<digit><unit>` where possible (e.g. '5K', '2M'),
+     * fall back to two-digit number when needed (e.g. '12').
+     */
+    _formatCompactSize(bytes) {
+        if (typeof bytes !== 'number' || isNaN(bytes)) return null;
+        const units = ['B', 'K', 'M', 'G', 'T'];
+        let i = 0;
+        let val = bytes;
+        while (val >= 1024 && i < units.length - 1) {
+            val = val / 1024;
+            i++;
+        }
+        const rounded = Math.round(val);
+        const unit = units[i];
+
+        if (rounded <= 9) {
+            return `${rounded}${unit}`; // fits 2 chars
+        }
+
+        // If rounded is two digits, prefer showing digits (lose unit)
+        const s = String(rounded);
+        if (s.length >= 2) return s.slice(0, 2);
+
+        return s;
+    }
+
+    /**
      * Format full date with timezone
      */
     _formatFullDate(date) {
@@ -683,7 +776,22 @@ class FileDateDecorationProvider {
             
             // Check if decorations are enabled
             const config = vscode.workspace.getConfiguration('explorerDates');
-            if (!config.get('showDateDecorations', true)) {
+            // Helper to allow transient preview overrides
+            const _get = (key, def) => {
+                if (this._previewSettings && Object.prototype.hasOwnProperty.call(this._previewSettings, key)) {
+                    const previewValue = this._previewSettings[key];
+                    this._logger.debug(`🎭 Using preview value for ${key}: ${previewValue} (config has: ${config.get(key, def)})`);
+                    return previewValue;
+                }
+                return config.get(key, def);
+            };
+            
+            // Log preview mode status
+            if (this._previewSettings) {
+                this._logger.info(`🎭 Processing ${fileName} in PREVIEW MODE with settings:`, this._previewSettings);
+            }
+            
+            if (!_get('showDateDecorations', true)) {
                 this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileName}`);
                 return undefined;
             }
@@ -705,29 +813,32 @@ class FileDateDecorationProvider {
             
             this._logger.debug(`🔍 Processing file: ${path.basename(filePath)}`);
             
-            // Enhanced cache lookup - try advanced cache first, then memory cache
+            // Skip caching entirely when preview settings are active to ensure immediate updates
             let cached = null;
-            
-            // Try advanced cache if available
-            if (this._advancedCache) {
-                try {
-                    cached = await this._advancedCache.get(cacheKey);
-                    if (cached) {
-                        this._metrics.cacheHits++;
-                        this._logger.debug(`🧠 Advanced cache hit for: ${path.basename(filePath)}`);
-                        return cached;
+            if (!this._previewSettings) {
+                // Try advanced cache if available
+                if (this._advancedCache) {
+                    try {
+                        cached = await this._advancedCache.get(cacheKey);
+                        if (cached) {
+                            this._metrics.cacheHits++;
+                            this._logger.debug(`🧠 Advanced cache hit for: ${path.basename(filePath)}`);
+                            return cached;
+                        }
+                    } catch (error) {
+                        this._logger.debug(`Advanced cache error: ${error.message}`);
                     }
-                } catch (error) {
-                    this._logger.debug(`Advanced cache error: ${error.message}`);
                 }
-            }
-            
-            // Try memory cache with normalized key
-            cached = this._decorationCache.get(cacheKey);
-            if (cached && (Date.now() - cached.timestamp) < this._cacheTimeout) {
-                this._metrics.cacheHits++;
-                this._logger.debug(`💾 Memory cache hit for: ${path.basename(filePath)}`);
-                return cached.decoration;
+                
+                // Try memory cache with normalized key
+                cached = this._decorationCache.get(cacheKey);
+                if (cached && (Date.now() - cached.timestamp) < this._cacheTimeout) {
+                    this._metrics.cacheHits++;
+                    this._logger.debug(`💾 Memory cache hit for: ${path.basename(filePath)}`);
+                    return cached.decoration;
+                }
+            } else {
+                this._logger.debug(`🔄 Skipping cache due to active preview settings for: ${path.basename(filePath)}`);
             }
 
             this._metrics.cacheMisses++;
@@ -754,12 +865,12 @@ class FileDateDecorationProvider {
             const now = new Date();
             const diffMs = now.getTime() - mtime.getTime();
             
-            // Get configuration settings
-            const dateFormat = config.get('dateDecorationFormat', 'smart');
-            const colorScheme = config.get('colorScheme', 'none');
-            const highContrastMode = config.get('highContrastMode', false);
-            const showFileSize = config.get('showFileSize', false);
-            const fileSizeFormat = config.get('fileSizeFormat', 'auto');
+            // Get configuration settings (allow preview overrides)
+            const dateFormat = _get('dateDecorationFormat', 'smart');
+            const colorScheme = _get('colorScheme', 'none');
+            const highContrastMode = _get('highContrastMode', false);
+            const showFileSize = _get('showFileSize', false);
+            const fileSizeFormat = _get('fileSizeFormat', 'auto');
             // Note: VS Code's FileDecorationProvider doesn't support hover events
             // Decorations are always visible when the provider returns them
             
@@ -767,22 +878,33 @@ class FileDateDecorationProvider {
             const readableModified = this._formatDateReadable(mtime);
             const readableCreated = this._formatDateReadable(ctime);
             
-            // Get Git information if enabled
-            const showGitInfo = config.get('showGitInfo', 'none');
-            const gitBlame = showGitInfo !== 'none' ? await this._getGitBlameInfo(filePath) : null;
+            // Get Git information and badge preference
+            const showGitInfo = _get('showGitInfo', 'none');
+            const badgePriority = _get('badgePriority', 'time');
+            const needGitBlame = (showGitInfo !== 'none') || (badgePriority === 'author');
+            const gitBlame = needGitBlame ? await this._getGitBlameInfo(filePath) : null;
             
-            // Build composite badge with size and git info (keep under 2 characters for VS Code compatibility)
+            // Build composite badge: allow `badgePriority` to optionally replace the time badge
             let displayBadge = badge;
             
-            if (showFileSize && showGitInfo === 'none') {
-                // Just use the basic badge - don't add file size as it makes badges too long
+            this._logger.debug(`🏷️ Badge generation for ${path.basename(filePath)}: badgePriority=${badgePriority}, showGitInfo=${showGitInfo}, hasGitBlame=${!!gitBlame}, authorName=${gitBlame?.authorName}, previewMode=${!!this._previewSettings}`);
+
+            if (badgePriority === 'author' && gitBlame && gitBlame.authorName) {
+                const initials = this._getInitials(gitBlame.authorName);
+                if (initials) {
+                    displayBadge = initials;
+                    this._logger.debug(`🏷️ Using author initials badge: "${initials}" (from ${gitBlame.authorName})`);
+                }
+            } else if (badgePriority === 'size' && showFileSize) {
+                const compact = this._formatCompactSize(stat.size);
+                if (compact) {
+                    displayBadge = compact;
+                    this._logger.debug(`🏷️ Using size badge: "${compact}"`);
+                }
+            } else {
+                // Default behavior: keep time badge; don't jam git/size into visual badge
                 displayBadge = badge;
-            } else if (showFileSize && showGitInfo !== 'none' && gitBlame && gitBlame.authorName) {
-                // Priority to basic badge only - git info will be in tooltip
-                displayBadge = badge;
-            } else if (showGitInfo !== 'none' && gitBlame && gitBlame.authorName) {
-                // Just use basic badge - git info will be in tooltip
-                displayBadge = badge;
+                this._logger.debug(`🏷️ Using time badge: "${badge}" (badgePriority=${badgePriority})`);
             }
 
             
@@ -792,12 +914,25 @@ class FileDateDecorationProvider {
             const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt.toLowerCase());
             
             // Check if accessibility mode is enabled for enhanced tooltips
-            const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, mtime, ctime, stat.size, gitBlame);
-
+            const accessibilityMode = _get('accessibilityMode', false);
+            this._logger.debug(`🔍 Tooltip generation for ${path.basename(filePath)}: accessibilityMode=${accessibilityMode}, previewMode=${!!this._previewSettings}`);
+            
             let tooltip;
-            if (accessibleTooltip) {
-                tooltip = accessibleTooltip;
-            } else {
+            this._logger.info(`🔍 TOOLTIP GENERATION START: accessibilityMode=${accessibilityMode}, file=${path.basename(filePath)}`);
+            
+            if (accessibilityMode) {
+                const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, mtime, ctime, stat.size, gitBlame);
+                if (accessibleTooltip) {
+                    tooltip = accessibleTooltip;
+                    this._logger.info(`🔍 Using accessible tooltip (${accessibleTooltip.length} chars): "${accessibleTooltip.substring(0, 50)}..."`);
+                } else {
+                    // Fall back to rich tooltip even if accessibility mode is on
+                    this._logger.info(`🔍 Accessible tooltip generation failed, using rich tooltip`);
+                }
+            }
+            
+            if (!tooltip) {
+                this._logger.info(`🔍 Creating RICH tooltip for ${path.basename(filePath)}`);
                 // Standard rich tooltip
                 tooltip = `📄 File: ${fileDisplayName}\n`;
                 tooltip += `📝 Last Modified: ${readableModified}\n`;
@@ -849,8 +984,8 @@ class FileDateDecorationProvider {
             this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
             
             // Apply fade effect for old files if enabled
-            const fadeOldFiles = config.get('fadeOldFiles', false);
-            const fadeThreshold = config.get('fadeThreshold', 30);
+            const fadeOldFiles = _get('fadeOldFiles', false);
+            const fadeThreshold = _get('fadeThreshold', 30);
             
             if (fadeOldFiles) {
                 const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -903,6 +1038,11 @@ class FileDateDecorationProvider {
                     propagate: decoration.propagate
                 });
                 
+                // Debug: Show actual tooltip content (first 100 chars)
+                if (decoration.tooltip) {
+                    this._logger.info(`📝 Tooltip content preview: "${decoration.tooltip.substring(0, 100)}..."`);
+                }
+                
             } catch (decorationError) {
                 this._logger.error(`❌ Failed to create decoration:`, decorationError);
                 // Fallback to absolute minimal decoration
@@ -911,29 +1051,34 @@ class FileDateDecorationProvider {
             }
             
             // Apply high contrast styling if enabled
+            this._logger.debug(`🎨 Color/contrast check for ${path.basename(filePath)}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!color}, previewMode=${!!this._previewSettings}`);
             if (highContrastMode) {
                 decoration.color = new vscode.ThemeColor('editorWarning.foreground');
-                this._logger.info(`🔆 Applied high contrast color`);
+                this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
             }
 
-            // Store in both memory and advanced cache with normalized key
-            this._manageCacheSize();
-            const cacheEntry = {
-                decoration,
-                timestamp: Date.now()
-            };
-            
-            // Store in memory cache
-            this._decorationCache.set(cacheKey, cacheEntry);
-            
-            // Store in advanced cache if available
-            if (this._advancedCache) {
-                try {
-                    await this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
-                    this._logger.debug(`🧠 Stored in advanced cache: ${path.basename(filePath)}`);
-                } catch (error) {
-                    this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
+            // Only store in cache when not in preview mode
+            if (!this._previewSettings) {
+                this._manageCacheSize();
+                const cacheEntry = {
+                    decoration,
+                    timestamp: Date.now()
+                };
+                
+                // Store in memory cache
+                this._decorationCache.set(cacheKey, cacheEntry);
+                
+                // Store in advanced cache if available
+                if (this._advancedCache) {
+                    try {
+                        await this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
+                        this._logger.debug(`🧠 Stored in advanced cache: ${path.basename(filePath)}`);
+                    } catch (error) {
+                        this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
+                    }
                 }
+            } else {
+                this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${path.basename(filePath)}`);
             }
 
             this._metrics.totalDecorations++;

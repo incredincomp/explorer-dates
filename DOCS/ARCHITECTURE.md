@@ -15,6 +15,7 @@ The main provider class that implements VS Code's `FileDecorationProvider` API.
 - Manages caching to optimize performance
 - Handles file system watching for automatic updates
 - Applies exclusion rules to avoid decorating unwanted files
+- Enforces VS Code's 2-character badge limit with automatic truncation
 
 **Performance Features:**
 - Intelligent cache with configurable timeout and size limits
@@ -131,6 +132,11 @@ Two-level exclusion system:
 ### High-Contrast Mode
 - Optional color highlighting for better visibility
 - Uses theme-aware colors (`editorWarning.foreground`)
+
+### Badge Limitations
+- VS Code enforces a 2-character maximum for file decoration badges
+- Longer formats are automatically truncated (e.g., "Oct 12" becomes "Oc")
+- Full date information is preserved in tooltips and accessible via hover
 
 ### Screen Reader Support
 - Descriptive tooltip text with full timestamp

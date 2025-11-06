@@ -683,6 +683,33 @@ async function activate(context) {
         });
         context.subscriptions.push(refreshDecorations);
 
+        // Note: preview/clear preview commands for onboarding are registered later
+
+        // Register preview commands for onboarding
+        const previewConfiguration = vscode.commands.registerCommand('explorerDates.previewConfiguration', (settings) => {
+            try {
+                if (fileDateProvider) {
+                    fileDateProvider.applyPreviewSettings(settings);
+                    logger.info('Configuration preview applied', settings);
+                }
+            } catch (error) {
+                logger.error('Failed to apply configuration preview', error);
+            }
+        });
+        context.subscriptions.push(previewConfiguration);
+
+        const clearPreview = vscode.commands.registerCommand('explorerDates.clearPreview', () => {
+            try {
+                if (fileDateProvider) {
+                    fileDateProvider.applyPreviewSettings(null);
+                    logger.info('Configuration preview cleared');
+                }
+            } catch (error) {
+                logger.error('Failed to clear configuration preview', error);
+            }
+        });
+        context.subscriptions.push(clearPreview);
+
         // Register command to show metrics
         const showMetrics = vscode.commands.registerCommand('explorerDates.showMetrics', () => {
             try {
@@ -734,6 +761,54 @@ async function activate(context) {
             }
         });
         context.subscriptions.push(openLogs);
+
+        // Register debug command to show current configuration
+        const showConfig = vscode.commands.registerCommand('explorerDates.showCurrentConfig', () => {
+            try {
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const settings = {
+                    highContrastMode: config.get('highContrastMode'),
+                    badgePriority: config.get('badgePriority'), 
+                    colorScheme: config.get('colorScheme'),
+                    accessibilityMode: config.get('accessibilityMode'),
+                    dateDecorationFormat: config.get('dateDecorationFormat'),
+                    showGitInfo: config.get('showGitInfo'),
+                    showFileSize: config.get('showFileSize')
+                };
+                
+                const message = `Current Explorer Dates Configuration:\n\n${Object.entries(settings).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}`;
+                
+                vscode.window.showInformationMessage(message, { modal: true });
+                logger.info('Current configuration displayed', settings);
+            } catch (error) {
+                logger.error('Failed to show configuration', error);
+            }
+        });
+        context.subscriptions.push(showConfig);
+
+        // Register command to reset problematic settings
+        const resetSettings = vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
+            try {
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                
+                await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
+                await config.update('badgePriority', 'time', vscode.ConfigurationTarget.Global);
+                await config.update('accessibilityMode', false, vscode.ConfigurationTarget.Global);
+                
+                vscode.window.showInformationMessage('Reset high contrast, badge priority, and accessibility mode to defaults. Changes should take effect immediately.');
+                logger.info('Reset problematic settings to defaults');
+                
+                // Force refresh
+                if (fileDateProvider) {
+                    fileDateProvider.clearAllCaches();
+                    fileDateProvider.refreshAll();
+                }
+            } catch (error) {
+                logger.error('Failed to reset settings', error);
+                vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
+            }
+        });
+        context.subscriptions.push(resetSettings);
 
         // Register toggle decorations command
         const toggleDecorations = vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {

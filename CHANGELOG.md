@@ -27,7 +27,9 @@
 - **Improved Context Menu**: Seamlessly integrated with VS Code's native Explorer context menu
 
 ### Bug Fixes
-- **Fixed Badge Length Issue**: Resolved VS Code badge validation errors by making all badges compact and concise
+- **Fixed Badge Length Issue**: Resolved VS Code badge validation errors by enforcing 2-character limit on all badges
+- **Updated Documentation**: Corrected format examples to reflect VS Code's 2-character badge limitation
+- **Fixed Quick Setup Presets**: Corrected configuration presets to use formats that work within badge limits
 - Fixed conflicting configuration options that could cause inconsistent behavior
 - Improved error handling for file access issues
 - Better memory management for large workspaces
