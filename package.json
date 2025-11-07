@@ -6,7 +6,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "version": "1.1.0",
   "engines": {
-    "vscode": "^1.102.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Other"
@@ -21,7 +21,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -38,8 +38,250 @@
         "command": "explorerDates.openLogs",
         "title": "Open Logs",
         "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showCurrentConfig",
+        "title": "Show Current Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.resetToDefaults",
+        "title": "Reset to Default Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.toggleDecorations",
+        "title": "Toggle Date Decorations",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.copyFileDate",
+        "title": "Copy File Date",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showFileDetails",
+        "title": "Show File Details",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.toggleFadeOldFiles",
+        "title": "Toggle Fade Old Files",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showFileHistory",
+        "title": "Show File History",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.compareWithPrevious",
+        "title": "Compare with Previous Version",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showWorkspaceActivity",
+        "title": "Show Workspace File Activity",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showPerformanceAnalytics",
+        "title": "Show Performance Analytics",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showKeyboardShortcuts",
+        "title": "Show Keyboard Shortcuts",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showFeatureTour",
+        "title": "Show Feature Tour",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showQuickSetup",
+        "title": "Show Quick Setup Wizard",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showWhatsNew",
+        "title": "What's New in Explorer Dates",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.openTemplateManager",
+        "title": "Open Template Manager",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.saveTemplate",
+        "title": "Save Current Configuration as Template",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.generateReport",
+        "title": "Generate File Modification Report",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showApiInfo",
+        "title": "Show Extension API Information",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.debugCache",
+        "title": "Debug Cache Performance",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.runDiagnostics",
+        "title": "Run Diagnostics (Fix Missing Decorations)",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.quickFix",
+        "title": "Quick Fix Common Issues",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.testDecorations",
+        "title": "Test Decoration Provider",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.monitorDecorations",
+        "title": "Monitor VS Code Decoration Requests",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.testVSCodeRendering",
+        "title": "Test VS Code Decoration Rendering",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.previewConfiguration",
+        "title": "Preview Configuration (Internal)",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.clearPreview",
+        "title": "Clear Configuration Preview (Internal)",
+        "category": "Explorer Dates"
       }
     ],
+    "keybindings": [
+      {
+        "command": "explorerDates.toggleDecorations",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
+        "when": "explorerViewletVisible"
+      },
+      {
+        "command": "explorerDates.copyFileDate",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "explorerViewletFocus && !explorerResourceIsFolder"
+      },
+      {
+        "command": "explorerDates.showFileDetails",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i",
+        "when": "explorerViewletFocus && !explorerResourceIsFolder"
+      },
+      {
+        "command": "explorerDates.refreshDateDecorations",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "explorerViewletVisible"
+      },
+      {
+        "command": "explorerDates.showWorkspaceActivity",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "explorerDates.toggleFadeOldFiles",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "explorerViewletVisible"
+      },
+      {
+        "command": "explorerDates.openTemplateManager",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "explorerDates.generateReport",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "explorerDates.debugCache",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "explorerViewletVisible"
+      },
+      {
+        "command": "explorerDates.runDiagnostics",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "explorerViewletVisible"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "explorerDates.copyFileDate",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "group": "7_modification@1"
+        },
+        {
+          "command": "explorerDates.showFileDetails",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "group": "7_modification@2"
+        },
+        {
+          "command": "explorerDates.showFileHistory",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "group": "7_modification@3"
+        },
+        {
+          "command": "explorerDates.compareWithPrevious",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "group": "7_modification@4"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "explorerDates.showWorkspaceActivity",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "explorerDates.copyFileDate",
+          "when": "false"
+        },
+        {
+          "command": "explorerDates.showFileHistory",
+          "when": "false"
+        },
+        {
+          "command": "explorerDates.compareWithPrevious",
+          "when": "false"
+        },
+        {
+          "command": "explorerDates.previewConfiguration",
+          "when": "false"
+        },
+        {
+          "command": "explorerDates.clearPreview",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Explorer Dates",
       "properties": {
@@ -52,16 +294,20 @@
         "explorerDates.dateDecorationFormat": {
           "type": "string",
           "enum": [
-            "relative",
-            "absolute",
-            "smart"
+            "smart",
+            "relative-short",
+            "relative-long",
+            "absolute-short",
+            "absolute-long"
           ],
           "default": "smart",
           "description": "Format for date decorations in Explorer",
           "enumDescriptions": [
-            "Show relative dates (e.g., '2hr', '3d ago')",
-            "Show absolute dates (e.g., 'Oct 3', 'Mar 23')",
-            "Smart format: relative for recent, absolute for older"
+            "Smart format: relative for recent (5m, 2h), absolute for older (truncated to 2 chars)",
+            "Always relative with 2-char format (5m, 2h, 3d, 1w)",
+            "Always relative - Note: truncated to 2 chars due to VS Code limits",
+            "Always absolute - Note: truncated to 2 chars (Oc, Se, etc.)",
+            "Always absolute with year - Note: truncated to 2 chars due to VS Code limits"
           ],
           "scope": "window"
         },
@@ -147,37 +393,272 @@
           "description": "Maximum number of cached file decorations",
           "scope": "window"
         },
-        "explorerDates.timeBadgeFormat": {
+        "explorerDates.colorScheme": {
           "type": "string",
           "enum": [
-            "short",
-            "long"
+            "none",
+            "recency",
+            "file-type",
+            "subtle",
+            "vibrant",
+            "custom"
           ],
-          "default": "short",
-          "description": "Time badge format style",
+          "default": "none",
+          "description": "Color scheme for date decorations",
           "enumDescriptions": [
-            "Short format (e.g., '5m', '2h', '3d')",
-            "Long format (e.g., '5 mins', '2 hrs', '3 days')"
+            "No color coding",
+            "Color by file age (green: recent, yellow: medium, red: old)",
+            "Color by file type (different colors for different extensions)",
+            "Subtle color variations",
+            "Vibrant colors for better visibility",
+            "Use custom color configuration"
           ],
           "scope": "window"
         },
-        "explorerDates.enableColorCoding": {
+        "explorerDates.customColors": {
+          "type": "object",
+          "default": {
+            "veryRecent": "#00ff00",
+            "recent": "#ffff00",
+            "old": "#ff0000"
+          },
+          "description": "Custom color configuration when colorScheme is 'custom'",
+          "properties": {
+            "veryRecent": {
+              "type": "string",
+              "default": "#00ff00",
+              "description": "Color for files modified within 1 hour"
+            },
+            "recent": {
+              "type": "string",
+              "default": "#ffff00",
+              "description": "Color for files modified within 1 day"
+            },
+            "old": {
+              "type": "string",
+              "default": "#ff0000",
+              "description": "Color for files modified more than 1 day ago"
+            }
+          },
+          "scope": "window"
+        },
+        "explorerDates.fadeOldFiles": {
           "type": "boolean",
           "default": false,
-          "description": "Enable color-coding based on file recency (green: <1 hour, yellow: <1 day, red: >1 day)",
+          "description": "Fade decorations for files older than specified threshold",
           "scope": "window"
         },
-        "explorerDates.timestampFormat": {
+        "explorerDates.fadeThreshold": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Days after which to fade file decorations (when fadeOldFiles is enabled)",
+          "scope": "window"
+        },
+        "explorerDates.showFileSize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show file size alongside modification date (e.g., '5m|~1K')",
+          "scope": "window"
+        },
+        "explorerDates.fileSizeFormat": {
           "type": "string",
           "enum": [
-            "relative",
-            "absolute"
+            "auto",
+            "bytes",
+            "kb",
+            "mb"
           ],
-          "default": "relative",
-          "description": "Timestamp format for badges",
+          "default": "auto",
+          "description": "Format for file size display (auto = smart formatting)",
           "enumDescriptions": [
-            "Relative timestamps (e.g., '5m ago', '2h ago')",
-            "Absolute timestamps (e.g., 'October 12, 2025')"
+            "Automatically choose best format (~1K, ~3M)",
+            "Always show in bytes (~1234B)",
+            "Always show in kilobytes (~1.2K)",
+            "Always show in megabytes (~1.2M)"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.enableContextMenu": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add Explorer Dates options to file context menu",
+          "scope": "window"
+        },
+        "explorerDates.showGitInfo": {
+          "type": "string",
+          "enum": [
+            "none",
+            "author",
+            "both"
+          ],
+          "default": "none",
+          "description": "Show Git information alongside dates",
+          "enumDescriptions": [
+            "No Git information",
+            "Show last commit author initials (e.g., '5m•JD')",
+            "Show both modification time and commit info"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.badgePriority": {
+          "type": "string",
+          "enum": [
+            "time",
+            "author",
+            "size"
+          ],
+          "default": "time",
+          "description": "Which information should occupy the short (2-char) badge: time, author initials, or size",
+          "enumDescriptions": [
+            "Show time-based badge (default)",
+            "Show author initials when available",
+            "Show a compact size indicator when file size display is enabled"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.showStatusBar": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show file modification info in status bar for selected files",
+          "scope": "window"
+        },
+        "explorerDates.smartExclusions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-detect and exclude common build/cache folders for better performance",
+          "scope": "window"
+        },
+        "explorerDates.workspaceExclusionProfiles": {
+          "type": "object",
+          "default": {},
+          "description": "Per-workspace exclusion patterns (automatically managed)",
+          "scope": "application"
+        },
+        "explorerDates.batchSize": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 200,
+          "description": "Number of files to process in each batch for better performance",
+          "scope": "window"
+        },
+        "explorerDates.progressiveLoading": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable progressive loading for large directories",
+          "scope": "window"
+        },
+        "explorerDates.persistentCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable persistent cache across VS Code sessions",
+          "scope": "window"
+        },
+        "explorerDates.maxMemoryUsage": {
+          "type": "number",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 500,
+          "description": "Maximum memory usage in MB for caching",
+          "scope": "window"
+        },
+        "explorerDates.accessibilityMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable enhanced accessibility features including screen reader support",
+          "scope": "window"
+        },
+        "explorerDates.keyboardNavigation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable keyboard navigation shortcuts for Explorer Dates features",
+          "scope": "window"
+        },
+        "explorerDates.showWelcomeOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show welcome message and feature discovery on first startup",
+          "scope": "application"
+        },
+        "explorerDates.autoThemeAdaptation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically adapt colors when VS Code theme changes",
+          "scope": "window"
+        },
+        "explorerDates.enableWorkspaceTemplates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace template management for saving and sharing configurations",
+          "scope": "window"
+        },
+        "explorerDates.templateSyncPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to sync templates across team (leave empty for local-only templates)",
+          "scope": "application"
+        },
+        "explorerDates.enableExtensionApi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable public API for other extensions to integrate with Explorer Dates",
+          "scope": "window"
+        },
+        "explorerDates.allowExternalPlugins": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow external plugins to register custom decoration providers",
+          "scope": "window"
+        },
+        "explorerDates.enableReporting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable file modification reporting and analytics features",
+          "scope": "window"
+        },
+        "explorerDates.reportFormats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "json",
+              "csv",
+              "html",
+              "markdown"
+            ]
+          },
+          "default": [
+            "json",
+            "html"
+          ],
+          "description": "Available export formats for file modification reports",
+          "scope": "window"
+        },
+        "explorerDates.activityTrackingDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "maximum": 365,
+          "description": "Number of days to track file activity for reporting (1-365)",
+          "scope": "window"
+        },
+        "explorerDates.timeTrackingIntegration": {
+          "type": "string",
+          "enum": [
+            "none",
+            "generic",
+            "toggl",
+            "clockify"
+          ],
+          "default": "none",
+          "description": "Time tracking tool integration for exporting file activity data",
+          "enumDescriptions": [
+            "No time tracking integration",
+            "Generic format suitable for most tools",
+            "Toggl Track specific format",
+            "Clockify specific format"
           ],
           "scope": "window"
         }
@@ -197,16 +678,23 @@
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
+    "compile": "node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "vscode:prepublish": "npm run package-bundle",
     "package": "vsce package",
+    "package-bundle": "node esbuild.js --production",
     "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/vscode": "^1.102.0",
-    "@vscode/test-cli": "^0.0.11",
+    "@types/node": "^24.10.0",
+    "@types/vscode": "^1.105.0",
+    "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "eslint": "^9.37.0",
-    "globals": "^16.4.0"
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "npm-run-all": "^4.1.5"
   }
 }
