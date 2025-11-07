@@ -3,10 +3,11 @@ const vscode = require('vscode');
 const { FileDateDecorationProvider } = require('./src/fileDateDecorationProvider');
 const { getLogger } = require('./src/logger');
 const { getLocalization } = require('./src/localization');
-const { OnboardingManager } = require('./src/onboarding');
-const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
-const { ExtensionApiManager } = require('./src/extensionApi');
-const { ExportReportingManager } = require('./src/exportReporting');
+// Lazy load large modules to reduce initial bundle size
+// const { OnboardingManager } = require('./src/onboarding');
+// const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
+// const { ExtensionApiManager } = require('./src/extensionApi');
+// const { ExportReportingManager } = require('./src/exportReporting');
 
 let fileDateProvider;
 let logger;
@@ -642,27 +643,58 @@ async function activate(context) {
         // Initialize advanced performance systems
         await fileDateProvider.initializeAdvancedSystems(context);
         
-        // Initialize UX enhancement systems
-        const onboardingManager = new OnboardingManager(context);
+        // Initialize managers lazily to reduce startup time and bundle size
+        let onboardingManager = null;
+        let workspaceTemplatesManager = null;
+        let extensionApiManager = null;
+        let exportReportingManager = null;
         
-        // Initialize Integration & Ecosystem systems
-        const workspaceTemplatesManager = new WorkspaceTemplatesManager();
-        const extensionApiManager = new ExtensionApiManager();
-        const exportReportingManager = new ExportReportingManager();
+        // Helper functions for lazy loading
+        const getOnboardingManager = () => {
+            if (!onboardingManager) {
+                const { OnboardingManager } = require('./src/onboarding');
+                onboardingManager = new OnboardingManager(context);
+            }
+            return onboardingManager;
+        };
         
-        // Expose public API for other extensions
-        const api = extensionApiManager.getApi();
+        const getWorkspaceTemplatesManager = () => {
+            if (!workspaceTemplatesManager) {
+                const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
+                workspaceTemplatesManager = new WorkspaceTemplatesManager();
+            }
+            return workspaceTemplatesManager;
+        };
+        
+        const getExtensionApiManager = () => {
+            if (!extensionApiManager) {
+                const { ExtensionApiManager } = require('./src/extensionApi');
+                extensionApiManager = new ExtensionApiManager();
+            }
+            return extensionApiManager;
+        };
+        
+        const getExportReportingManager = () => {
+            if (!exportReportingManager) {
+                const { ExportReportingManager } = require('./src/exportReporting');
+                exportReportingManager = new ExportReportingManager();
+            }
+            return exportReportingManager;
+        };
+        
+        // Expose public API for other extensions (lazy)
+        const api = () => getExtensionApiManager().getApi();
         context.exports = api;
         
 
         
         // Show onboarding if needed
         const onboardingConfig = vscode.workspace.getConfiguration('explorerDates');
-        if (onboardingConfig.get('showWelcomeOnStartup', true) && await onboardingManager.shouldShowOnboarding()) {
+        if (onboardingConfig.get('showWelcomeOnStartup', true) && await getOnboardingManager().shouldShowOnboarding()) {
             // Delay to let extension fully activate and avoid interrupting user workflow
             // Longer delay for more graceful experience
             setTimeout(() => {
-                onboardingManager.showWelcomeMessage();
+                getOnboardingManager().showWelcomeMessage();
             }, 5000);
         }
 
@@ -1338,7 +1370,7 @@ async function activate(context) {
         // Register feature tour command
         const showFeatureTour = vscode.commands.registerCommand('explorerDates.showFeatureTour', async () => {
             try {
-                await onboardingManager.showFeatureTour();
+                await getOnboardingManager().showFeatureTour();
                 logger.info('Feature tour opened');
             } catch (error) {
                 logger.error('Failed to show feature tour', error);
@@ -1350,7 +1382,7 @@ async function activate(context) {
         // Register quick setup command
         const showQuickSetup = vscode.commands.registerCommand('explorerDates.showQuickSetup', async () => {
             try {
-                await onboardingManager.showQuickSetupWizard();
+                await getOnboardingManager().showQuickSetupWizard();
                 logger.info('Quick setup wizard opened');
             } catch (error) {
                 logger.error('Failed to show quick setup wizard', error);
@@ -1363,7 +1395,7 @@ async function activate(context) {
         const showWhatsNew = vscode.commands.registerCommand('explorerDates.showWhatsNew', async () => {
             try {
                 const extensionVersion = context.extension.packageJSON.version;
-                await onboardingManager.showWhatsNew(extensionVersion);
+                await getOnboardingManager().showWhatsNew(extensionVersion);
                 logger.info('What\'s new panel opened');
             } catch (error) {
                 logger.error('Failed to show what\'s new', error);
@@ -1375,7 +1407,7 @@ async function activate(context) {
         // Register workspace templates commands
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
-                await workspaceTemplatesManager.showTemplateManager();
+                await getWorkspaceTemplatesManager().showTemplateManager();
                 logger.info('Template manager opened');
             } catch (error) {
                 logger.error('Failed to open template manager', error);
@@ -1395,7 +1427,7 @@ async function activate(context) {
                         prompt: 'Enter description (optional)',
                         placeHolder: 'Brief description of this template'
                     }) || '';
-                    await workspaceTemplatesManager.saveCurrentConfiguration(name, description);
+                    await getWorkspaceTemplatesManager().saveCurrentConfiguration(name, description);
                 }
                 logger.info('Template saved');
             } catch (error) {
@@ -1408,7 +1440,7 @@ async function activate(context) {
         // Register export/reporting commands
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
             try {
-                await exportReportingManager.showReportDialog();
+                await getExportReportingManager().showReportDialog();
                 logger.info('Report generation started');
             } catch (error) {
                 logger.error('Failed to generate report', error);

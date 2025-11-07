@@ -109,7 +109,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.2.0 (Latest)
+### Version 1.1.0 (Latest)
 
 **Major Configuration & Feature Update**
 
@@ -120,7 +120,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 - **Keyboard Shortcuts**
 - **Improved Settings**
 
-### Version 1.1.0
+### Version 1.0.1
 
 **Performance & Localization Update**
 

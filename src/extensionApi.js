@@ -48,7 +48,7 @@ class ExtensionApiManager extends EventEmitter {
             getFileStats: this.getFileStats.bind(this),
             
             // Version info
-            version: '1.2.0',
+            version: '1.1.0',
             apiVersion: '1.0.0'
         };
     }
