@@ -8,6 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
 
 const repoRoot = path.resolve(__dirname, '..');
 const pkg = require('../package.json');
@@ -48,6 +49,43 @@ function fileReferencesKey(filePath, longKey, shortKeyRegex) {
     return content.includes(longKey) || shortKeyRegex.test(content);
 }
 
+function verifyTemplateKeys() {
+    let mockInstall;
+    try {
+        mockInstall = createMockVscode();
+        const { WorkspaceTemplatesManager } = require('../src/workspaceTemplates');
+        const manager = new WorkspaceTemplatesManager(createExtensionContext());
+        const templates = manager.getBuiltInTemplates();
+        const validKeys = new Set(CONFIG_KEYS);
+        const invalidEntries = [];
+
+        for (const [templateId, template] of Object.entries(templates)) {
+            for (const key of Object.keys(template.settings || {})) {
+                if (!validKeys.has(key)) {
+                    invalidEntries.push({ templateId, key });
+                }
+            }
+        }
+
+        if (invalidEntries.length > 0) {
+            console.error('❌ Built-in templates reference unknown configuration keys:');
+            invalidEntries.forEach(({ templateId, key }) => {
+                console.error(`   - ${templateId}: ${key}`);
+            });
+            process.exitCode = 1;
+        } else {
+            console.log('✅ Built-in templates reference only registered configuration keys.');
+        }
+    } catch (error) {
+        console.error('❌ Failed to verify built-in template configuration keys:', error);
+        process.exitCode = 1;
+    } finally {
+        if (mockInstall) {
+            mockInstall.dispose();
+        }
+    }
+}
+
 function main() {
     if (CONFIG_KEYS.length === 0) {
         console.log('⚠️  No configuration keys were found in package.json.');
@@ -85,6 +123,8 @@ function main() {
     } else {
         console.log(`✅ Verified ${results.length} Explorer Dates configuration keys are referenced in code or docs.`);
     }
+
+    verifyTemplateKeys();
 }
 
 main();

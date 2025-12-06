@@ -34,7 +34,7 @@ const TEST_SPECIFIC_DEFAULTS = {
     // Avoid asynchronous onboarding popups slowing tests down
     'explorerDates.showWelcomeOnStartup': false,
     // Provide backwards-compatible default for legacy key used in several modules
-    'explorerDates.excludePatterns': []
+    'explorerDates.excludedPatterns': []
 };
 
 class VSCodeUri {

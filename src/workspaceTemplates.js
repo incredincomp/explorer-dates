@@ -55,7 +55,7 @@ class WorkspaceTemplatesManager {
                     'explorerDates.showFileSize': true,
                     'explorerDates.fadeOldFiles': true,
                     'explorerDates.fadeThreshold': 14,
-                    'explorerDates.excludePatterns': [
+                    'explorerDates.excludedPatterns': [
                         '**/node_modules/**',
                         '**/dist/**',
                         '**/build/**',
@@ -76,7 +76,7 @@ class WorkspaceTemplatesManager {
                     'explorerDates.showFileSize': true,
                     'explorerDates.showGitInfo': 'none',
                     'explorerDates.highContrastMode': false,
-                    'explorerDates.excludePatterns': [
+                    'explorerDates.excludedPatterns': [
                         '**/__pycache__/**',
                         '**/.ipynb_checkpoints/**',
                         '**/data/raw/**'
@@ -92,7 +92,7 @@ class WorkspaceTemplatesManager {
                     'explorerDates.dateDecorationFormat': 'smart',
                     'explorerDates.colorScheme': 'subtle',
                     'explorerDates.showFileSize': false,
-                    'explorerDates.excludePatterns': [
+                    'explorerDates.excludedPatterns': [
                         '**/node_modules/**',
                         '**/.git/**'
                     ],

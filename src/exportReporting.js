@@ -179,7 +179,7 @@ class ExportReportingManager {
     async scanWorkspaceFolder(folderUri, timeRange, includeDeleted) {
         const files = [];
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const excludePatterns = config.get('excludePatterns', []);
+        const excludePatterns = config.get('excludedPatterns', []);
         
         try {
             const entries = await vscode.workspace.fs.readDirectory(folderUri);
