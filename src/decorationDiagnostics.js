@@ -1,6 +1,4 @@
 const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs').promises;
 const { getLogger } = require('./logger');
 
 /**
@@ -143,7 +141,7 @@ class DecorationDiagnostics {
                 const fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, fileName);
                 
                 try {
-                    await fs.access(fileUri.fsPath);
+                    await vscode.workspace.fs.stat(fileUri);
                     
                     // Test if file would be excluded
                     const isExcluded = this._provider._isExcludedSimple ? 

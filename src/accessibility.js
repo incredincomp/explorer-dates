@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { getLogger } = require('./logger');
 const { getLocalization } = require('./localization');
+const { getFileName } = require('./utils/pathUtils');
 
 /**
  * Accessibility Manager for enhanced keyboard navigation and screen reader support
@@ -67,8 +68,7 @@ class AccessibilityManager {
             return null; // Use default tooltip
         }
 
-        const path = require('path');
-        const fileName = path.basename(filePath);
+        const fileName = getFileName(filePath);
         const readableModified = this._formatAccessibleDate(mtime);
         const readableCreated = this._formatAccessibleDate(ctime);
         

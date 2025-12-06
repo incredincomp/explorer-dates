@@ -10,7 +10,8 @@ const path = require('path');
 console.log('🧪 Testing Explorer Dates Bundle...\n');
 
 // Test 1: Check if bundle exists and has reasonable size
-const bundlePath = path.join(__dirname, 'dist', 'extension.js');
+const repoRoot = path.join(__dirname, '..');
+const bundlePath = path.join(repoRoot, 'dist', 'extension.js');
 if (!fs.existsSync(bundlePath)) {
     console.error('❌ Bundle not found at:', bundlePath);
     process.exit(1);
@@ -71,7 +72,8 @@ try {
 }
 
 // Test 4: Check VSIX package
-const vsixPath = path.join(__dirname, `explorer-dates-1.1.0.vsix`);
+const pkg = require('../package.json');
+const vsixPath = path.join(repoRoot, `explorer-dates-${pkg.version}.vsix`);
 if (fs.existsSync(vsixPath)) {
     const vsixStats = fs.statSync(vsixPath);
     const vsixSizeKB = Math.round(vsixStats.size / 1024);

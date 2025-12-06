@@ -1,7 +1,7 @@
 const vscode = require('vscode');
-const fs = require('fs').promises;
-const path = require('path');
 const { getLogger } = require('./logger');
+const { fileSystem } = require('./filesystem/FileSystemAdapter');
+const { GLOBAL_STATE_KEYS, DEFAULT_PERSISTENT_CACHE_TTL } = require('./constants');
 
 /**
  * Advanced Caching System with persistent storage and intelligent invalidation
@@ -19,11 +19,12 @@ class AdvancedCache {
         this._maxMemoryUsage = 50 * 1024 * 1024; // 50MB default
         this._currentMemoryUsage = 0;
         this._persistentCacheEnabled = true;
-        
-        // Persistent cache file paths
-        this._cacheDir = path.join((context.globalStorageUri && context.globalStorageUri.fsPath) || context.globalStoragePath || '', 'cache');
-        this._persistentCacheFile = path.join(this._cacheDir, 'file-decorations.json');
-        this._metadataFile = path.join(this._cacheDir, 'cache-metadata.json');
+
+        // Persistent storage via VS Code memento for web compatibility
+        this._storage = context?.globalState || null;
+        this._storageKey = GLOBAL_STATE_KEYS.ADVANCED_CACHE;
+        this._metadataKey = GLOBAL_STATE_KEYS.ADVANCED_CACHE_METADATA;
+        this._fs = fileSystem;
         
         // Performance metrics
         this._metrics = {
@@ -51,9 +52,6 @@ class AdvancedCache {
             // Load configuration
             await this._loadConfiguration();
             
-            // Ensure cache directory exists
-            await this._ensureCacheDirectory();
-            
             // Load persistent cache if enabled
             if (this._persistentCacheEnabled) {
                 await this._loadPersistentCache();
@@ -63,9 +61,9 @@ class AdvancedCache {
             this._startIntervals();
             
             this._logger.info('Advanced cache system initialized', {
-                persistentEnabled: this._persistentCacheEnabled,
+                persistentEnabled: this._persistentCacheEnabled && !!this._storage,
                 maxMemoryUsage: this._maxMemoryUsage,
-                cacheDir: this._cacheDir
+                storage: this._storage ? 'globalState' : 'memory-only'
             });
             
         } catch (error) {
@@ -88,17 +86,6 @@ class AdvancedCache {
                 this._loadConfiguration();
             }
         });
-    }
-
-    /**
-     * Ensure cache directory exists
-     */
-    async _ensureCacheDirectory() {
-        try {
-            await fs.mkdir(this._cacheDir, { recursive: true });
-        } catch (error) {
-            this._logger.error('Failed to create cache directory', error);
-        }
     }
 
     /**
@@ -146,7 +133,7 @@ class AdvancedCache {
             timestamp: Date.now(),
             lastAccess: Date.now(),
             size: this._estimateSize(value),
-            ttl: options.ttl || (24 * 60 * 60 * 1000), // 24 hours default
+            ttl: options.ttl || DEFAULT_PERSISTENT_CACHE_TTL,
             tags: options.tags || [],
             version: options.version || 1
         };
@@ -267,30 +254,30 @@ class AdvancedCache {
      * Load persistent cache from disk
      */
     async _loadPersistentCache() {
+        if (!this._storage) {
+            const env = this._fs.isWeb ? 'web' : 'desktop';
+            this._logger.debug(`Persistent storage unavailable in ${env} environment - running in memory-only mode`);
+            return;
+        }
+
         try {
-            const cacheData = await fs.readFile(this._persistentCacheFile, 'utf8');
-            const cache = JSON.parse(cacheData);
-            
+            const cache = this._storage.get(this._storageKey, {});
             let loadedCount = 0;
             let skippedCount = 0;
-            
+
             for (const [key, item] of Object.entries(cache)) {
-                // Check if item is still valid
-                if (this._isValid(item.metadata)) {
+                if (item && this._isValid(item.metadata)) {
                     this._addToMemory(key, item.data, item.metadata);
                     loadedCount++;
                 } else {
                     skippedCount++;
                 }
             }
-            
+
             this._metrics.persistentLoads++;
             this._logger.info(`Loaded persistent cache: ${loadedCount} items (${skippedCount} expired)`);
-            
         } catch (error) {
-            if (error.code !== 'ENOENT') {
-                this._logger.error('Failed to load persistent cache', error);
-            }
+            this._logger.error('Failed to load persistent cache from globalState', error);
         }
     }
 
@@ -298,26 +285,25 @@ class AdvancedCache {
      * Save persistent cache to disk
      */
     async _savePersistentCache() {
-        if (!this._persistentCacheEnabled) return;
-        
+        if (!this._persistentCacheEnabled || !this._storage) {
+            return;
+        }
+
         try {
             const cache = {};
-            
-            // Convert memory cache to serializable format
+
             for (const [key, value] of this._memoryCache.entries()) {
                 const metadata = this._cacheMetadata.get(key);
                 if (metadata && this._isValid(metadata)) {
                     cache[key] = { data: value, metadata };
                 }
             }
-            
-            await fs.writeFile(this._persistentCacheFile, JSON.stringify(cache, null, 2));
+
+            await this._storage.update(this._storageKey, cache);
             this._metrics.persistentSaves++;
-            
             this._logger.debug(`Saved persistent cache: ${Object.keys(cache).length} items`);
-            
         } catch (error) {
-            this._logger.error('Failed to save persistent cache', error);
+            this._logger.error('Failed to save persistent cache to globalState', error);
         }
     }
 
@@ -325,18 +311,17 @@ class AdvancedCache {
      * Get item from persistent cache
      */
     async _getFromPersistentCache(key) {
-        try {
-            const cacheData = await fs.readFile(this._persistentCacheFile, 'utf8');
-            const cache = JSON.parse(cacheData);
-            const item = cache[key];
-            
-            if (item && this._isValid(item.metadata)) {
-                return item;
-            }
-        } catch (error) {
-            // Silently fail for missing files
+        if (!this._storage) {
+            return null;
         }
-        
+
+        const cache = this._storage.get(this._storageKey, {});
+        const item = cache[key];
+
+        if (item && this._isValid(item.metadata)) {
+            return item;
+        }
+
         return null;
     }
 
@@ -344,6 +329,10 @@ class AdvancedCache {
      * Schedule persistent cache save
      */
     _schedulePersistentSave() {
+        if (!this._storage) {
+            return;
+        }
+
         if (this._saveTimeout) {
             clearTimeout(this._saveTimeout);
         }
@@ -363,9 +352,11 @@ class AdvancedCache {
         }, 5 * 60 * 1000);
         
         // Save to disk every 10 minutes
-        this._saveInterval = setInterval(() => {
-            this._savePersistentCache();
-        }, 10 * 60 * 1000);
+        if (this._storage && this._persistentCacheEnabled) {
+            this._saveInterval = setInterval(() => {
+                this._savePersistentCache();
+            }, 10 * 60 * 1000);
+        }
     }
 
     /**
@@ -478,7 +469,7 @@ class AdvancedCache {
         }
         
         // Save cache to disk
-        if (this._persistentCacheEnabled) {
+        if (this._persistentCacheEnabled && this._storage) {
             await this._savePersistentCache();
         }
         

@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const { getLogger } = require('./logger');
+const { getExtension } = require('./utils/pathUtils');
 
 /**
  * Theme Integration Manager for automatic color adaptation and custom theme support
@@ -279,7 +280,7 @@ class ThemeIntegrationManager {
      * Get theme-appropriate color for file type
      */
     _getFileTypeColor(filePath) {
-        const ext = require('path').extname(filePath).toLowerCase();
+                const ext = getExtension(filePath);
         const colors = this.getAdaptiveColors();
         
         // Group similar file types

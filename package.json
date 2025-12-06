@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -22,6 +22,7 @@
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
+  "browser": "./dist/extension.web.js",
   "contributes": {
     "commands": [
       {
@@ -246,12 +247,12 @@
         },
         {
           "command": "explorerDates.showFileHistory",
-          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitFeaturesAvailable",
           "group": "7_modification@3"
         },
         {
           "command": "explorerDates.compareWithPrevious",
-          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitFeaturesAvailable",
           "group": "7_modification@4"
         }
       ],
@@ -495,6 +496,7 @@
           ],
           "default": "none",
           "description": "Show Git information alongside dates",
+          "markdownDescription": "Show Git information alongside dates. *(Disabled automatically on VS Code for Web)*",
           "enumDescriptions": [
             "No Git information",
             "Show last commit author initials (e.g., '5m•JD')",
@@ -665,6 +667,11 @@
       }
     }
   },
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": true
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/incredincomp/explorer-dates.git"
@@ -676,8 +683,14 @@
   "icon": "icons/explorer-dates.png",
   "scripts": {
     "lint": "eslint .",
-    "pretest": "npm run lint",
-    "test": "vscode-test",
+    "test": "npm run test:suite",
+    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
+    "test:config": "node tests/verify-config.js",
+    "test:config-scenarios": "node tests/test-configuration-scenarios.js",
+    "test:feature-gates": "node tests/test-feature-gates.js",
+    "test:flows": "node tests/exercise-flows.js",
+    "test:bundle": "node tests/test-bundle.js",
+    "test:verify-bundle": "node tests/verify-bundle.js",
     "compile": "node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

@@ -24,41 +24,60 @@ const esbuildProblemMatcherPlugin = {
   }
 };
 
-async function main() {
-  const ctx = await esbuild.context({
-    entryPoints: ['extension.js'], // Main entry point (JavaScript, not TypeScript)
-    bundle: true,
-    format: 'cjs',
-    minify: production, // Re-enable minification with careful settings
-    minifyWhitespace: true,
-    minifyIdentifiers: false, // Keep identifiers readable for VS Code
-    minifySyntax: true,
-    sourcemap: !production,
-    sourcesContent: false,
+const sharedOptions = {
+  bundle: true,
+  format: 'cjs',
+  minify: production,
+  minifyWhitespace: true,
+  minifyIdentifiers: false,
+  minifySyntax: true,
+  sourcemap: !production,
+  sourcesContent: false,
+  logLevel: 'warning',
+  keepNames: true,
+  treeShaking: true,
+  legalComments: 'none',
+  drop: production ? ['console', 'debugger'] : [],
+  plugins: [esbuildProblemMatcherPlugin],
+  external: ['vscode']
+};
+
+const builds = [
+  {
+    ...sharedOptions,
+    entryPoints: ['extension.js'],
     platform: 'node',
-    target: 'node16', // Target Node 16 for better optimization
+    target: 'node16',
     outfile: 'dist/extension.js',
-    external: ['vscode'], // Exclude vscode module
-    logLevel: 'warning',
-    keepNames: true, // Preserve function and class names
-    treeShaking: true, // Enable tree shaking for size optimization
-    legalComments: 'none', // Remove license comments
-    drop: production ? ['console', 'debugger'] : [], // Remove console.* in production
-    plugins: [
-      esbuildProblemMatcherPlugin
-    ]
-  });
-  
+    define: {
+      'process.env.VSCODE_WEB': '"false"'
+    }
+  },
+  {
+    ...sharedOptions,
+    entryPoints: ['src/extension.web.js'],
+    platform: 'browser',
+    target: ['es2020'],
+    outfile: 'dist/extension.web.js',
+    define: {
+      'process.env.VSCODE_WEB': '"true"'
+    }
+  }
+];
+
+async function buildAll() {
   if (watch) {
-    await ctx.watch();
+    const contexts = await Promise.all(builds.map(config => esbuild.context(config)));
+    await Promise.all(contexts.map(ctx => ctx.watch()));
   } else {
-    await ctx.rebuild();
-    await ctx.dispose();
+    for (const config of builds) {
+      await esbuild.build(config);
+    }
   }
 }
 
-main().catch(e => {
-  console.error(e);
+buildAll().catch((error) => {
+  console.error(error);
   process.exit(1);
 });
 
@@ -69,7 +88,7 @@ process.on('exit', () => {
     if (fs.existsSync('temp-analysis.js')) {
       fs.unlinkSync('temp-analysis.js');
     }
-  } catch (e) {
+  } catch {
     // Ignore cleanup errors
   }
 });

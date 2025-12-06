@@ -4,6 +4,7 @@
  */
 
 const vscode = require('vscode');
+const { getFileName } = require('./utils/pathUtils');
 
 /**
  * Test VS Code's decoration rendering system
@@ -21,7 +22,7 @@ async function testVSCodeDecorationRendering() {
         }
 
         provideFileDecoration(uri) {
-            const fileName = require('path').basename(uri.fsPath);
+            const fileName = getFileName(uri.fsPath || uri.path);
             
             // Return a very simple, guaranteed-to-work decoration
             const decoration = new vscode.FileDecoration('TEST');

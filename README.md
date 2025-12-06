@@ -1,6 +1,11 @@
 # Explorer Dates
 
-**Explorer Dates** brings file modification timestamps directly into VS Code's Explorer sidebar. See when files were last modified with intuitive time badges like `5m`, `2h`, `3d` - no more cryptic single characters!
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/incredincomp.explorer-dates.svg?label=Marketplace)](https://marketplace.visualstudio.com/items?itemName=incredincomp.explorer-dates)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/incredincomp.explorer-dates.svg?color=brightgreen)](https://marketplace.visualstudio.com/items?itemName=incredincomp.explorer-dates)
+[![Rating](https://img.shields.io/visual-studio-marketplace/stars/incredincomp.explorer-dates?cacheSeconds=3600)](https://marketplace.visualstudio.com/items?itemName=incredincomp.explorer-dates&ssr=false#review-details)
+[![VS Code for Web](https://img.shields.io/badge/vscode.dev-supported-0078d4)](https://vscode.dev)
+
+**Explorer Dates** brings file modification timestamps directly into VS Code's Explorer sidebar. See when files were last modified with intuitive time badges like `5m`, `2h`, `3d`.
 
 ## Features
 
@@ -21,6 +26,12 @@
 - **Intelligent Performance**: Smart caching, configurable exclusions, and file watching
 - **Flexible Configuration**: 15+ settings to customize display, performance, and behavior
 - **Debugging Tools**: Built-in logging, performance metrics, and troubleshooting commands
+
+### Productivity & Collaboration
+- **Workspace Templates**: Save and reapply full Explorer Dates configurations, or export/share JSON templates for your team.
+- **Reporting & Analytics**: Generate modification reports (JSON/CSV/HTML/Markdown) with activity retention controls and optional time-tracking integrations.
+- **Extensibility**: Opt-in public API plus decoration provider plugin hooks for other extensions. Toggle `enableExtensionApi`/`allowExternalPlugins` if you need a locked-down environment.
+- **VS Code for Web Ready**: Dedicated browser bundle keeps badges, templates, and reporting working inside `vscode.dev`, `github.dev`, and other remote/browser IDEs.
 
 ## How It Works
 
@@ -60,6 +71,16 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
    - **Show Performance Metrics**
    - **Open Logs**
    - **Refresh Date Decorations**
+
+## VS Code for Web Support
+
+- Launch [vscode.dev](https://vscode.dev) or [github.dev](https://github.dev) and open your repo (File → Open Remote Repository, or press `.` in GitHub).
+- Install Explorer Dates from the Extensions sidebar—no desktop dependencies required.
+- Browser-specific behaviors:
+  - Templates export/import via download dialogs because the sandbox cannot write to disk.
+  - Persistent cache and onboarding data use VS Code’s synced `globalState`, so settings roam with your Microsoft/GitHub account.
+  - Git-only commands automatically hide when the web host cannot expose repository metadata.
+- Remote environments (Codespaces, Dev Containers, Remote Tunnels) leverage the same web bundle, so Explorer Dates stays lightweight even when running over the network.
 
 ## Configuration
 
@@ -101,6 +122,15 @@ Notes:
 - **Developer Tools**: If you need to verify badge acceptance, open `Help → Toggle Developer Tools` (Extension Host console) while running the extension to view any rejection messages.
 - **Built-in diagnostic command (optional)**: Add the diagnostic snippet from `DOCS/SETTINGS_GUIDE.md` to register a temporary command that emits test badges for several lengths. Run it and capture Extension Host console output if you see rejection warnings.
 
+## Testing & Verification
+
+- Run `npm test` for the full suite (lint, configuration wiring, feature-gate scenarios, workspace/reporting flows, and both bundle verifiers).
+- `npm run test:config` ensures every contributed setting is referenced in code/docs before publishing.
+- `npm run test:config-scenarios` activates the extension across 90+ mocked configuration permutations to flush out settings regressions.
+- `npm run test:feature-gates` activates the extension in a mocked host and verifies the workspace templates, reporting, and API/plug-in toggles behave as expected.
+- `npm run test:flows` exercises workspace templates, reporting, and the web bundle using lightweight VS Code shims.
+- `npm run test:bundle` and `npm run test:verify-bundle` provide quick sanity checks for the packaged bundle/VSIX before submitting to the Marketplace.
+
 ## Inspiration & Motivation
 
 *Inspired by the original explorer-plus concept, but completely reimplemented using VS Code's native FileDecorationProvider API for better performance and integration.*
@@ -109,7 +139,18 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.1.0 (Latest)
+### Version 1.2.0 (Latest)
+
+**Configuration Validation & Progressive Loading**
+
+- **VS Code for Web Compatibility**: Added a dedicated browser bundle, filesystem adapter, and download-based exports so Explorer Dates runs seamlessly on `vscode.dev`, `github.dev`, and other web-hosted IDEs.
+- **Feature Gating**: `enableWorkspaceTemplates`, `enableReporting`, `enableExtensionApi`, and `allowExternalPlugins` now actively control their respective managers and commands.
+- **Reporting Enhancements**: Respect custom report formats, activity retention windows, and time-tracking integration metadata while keeping historical data trimmed.
+- **Progressive Loading Warm-up**: When enabled, the batch processor now pre-warms Explorer decorations in the background for large workspaces.
+- **Template Accuracy**: Built-in workspace templates reference real Explorer Dates settings so exports/imports remain reliable.
+- **Config Verification**: Added `npm run test:config` to ensure every contributed setting is referenced before publishing.
+
+### Version 1.1.0
 
 **Major Configuration & Feature Update**
 

@@ -3,6 +3,10 @@ const vscode = require('vscode');
 const { FileDateDecorationProvider } = require('./src/fileDateDecorationProvider');
 const { getLogger } = require('./src/logger');
 const { getLocalization } = require('./src/localization');
+const { fileSystem } = require('./src/filesystem/FileSystemAdapter');
+const { registerCoreCommands } = require('./src/commands/coreCommands');
+const { registerAnalysisCommands } = require('./src/commands/analysisCommands');
+const { registerOnboardingCommands } = require('./src/commands/onboardingCommands');
 // Lazy load large modules to reduce initial bundle size
 // const { OnboardingManager } = require('./src/onboarding');
 // const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
@@ -596,10 +600,10 @@ function initializeStatusBar(context) {
                 return;
             }
             
-            const fs = require('fs').promises;
-            const stat = await fs.stat(uri.fsPath);
+            const stat = await fileSystem.stat(uri);
             
-            const timeAgo = fileDateProvider._formatDateBadge(stat.mtime, 'smart');
+            const modified = stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime);
+            const timeAgo = fileDateProvider._formatDateBadge(modified, 'smart');
             const fileSize = fileDateProvider._formatFileSize(stat.size, 'auto');
             
             statusBarItem.text = `$(clock) ${timeAgo} $(file) ${fileSize}`;
@@ -633,6 +637,14 @@ async function activate(context) {
         
         logger.info('Explorer Dates: Extension activated');
 
+        const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+        await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', !isWeb);
+
+        const featureConfig = vscode.workspace.getConfiguration('explorerDates');
+        const workspaceTemplatesEnabled = featureConfig.get('enableWorkspaceTemplates', true);
+        const reportingEnabled = featureConfig.get('enableReporting', true);
+        const apiEnabled = featureConfig.get('enableExtensionApi', true);
+
         // Register file date decoration provider for overlay dates in Explorer
         fileDateProvider = new FileDateDecorationProvider();
         const decorationDisposable = vscode.window.registerFileDecorationProvider(fileDateProvider);
@@ -659,9 +671,12 @@ async function activate(context) {
         };
         
         const getWorkspaceTemplatesManager = () => {
+            if (!workspaceTemplatesEnabled) {
+                throw new Error('Workspace templates are disabled via explorerDates.enableWorkspaceTemplates');
+            }
             if (!workspaceTemplatesManager) {
                 const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
-                workspaceTemplatesManager = new WorkspaceTemplatesManager();
+                workspaceTemplatesManager = new WorkspaceTemplatesManager(context);
             }
             return workspaceTemplatesManager;
         };
@@ -675,6 +690,9 @@ async function activate(context) {
         };
         
         const getExportReportingManager = () => {
+            if (!reportingEnabled) {
+                throw new Error('Reporting is disabled via explorerDates.enableReporting');
+            }
             if (!exportReportingManager) {
                 const { ExportReportingManager } = require('./src/exportReporting');
                 exportReportingManager = new ExportReportingManager();
@@ -683,11 +701,14 @@ async function activate(context) {
         };
         
         // Expose public API for other extensions (lazy)
-        const api = () => getExtensionApiManager().getApi();
-        context.exports = api;
-        
+        const apiFactory = () => getExtensionApiManager().getApi();
+        if (apiEnabled) {
+            context.exports = apiFactory;
+        } else {
+            context.exports = undefined;
+            logger.info('Explorer Dates API exports disabled via explorerDates.enableExtensionApi');
+        }
 
-        
         // Show onboarding if needed
         const onboardingConfig = vscode.workspace.getConfiguration('explorerDates');
         if (onboardingConfig.get('showWelcomeOnStartup', true) && await getOnboardingManager().shouldShowOnboarding()) {
@@ -698,715 +719,29 @@ async function activate(context) {
             }, 5000);
         }
 
-        // Register refresh command for decorations
-        const refreshDecorations = vscode.commands.registerCommand('explorerDates.refreshDateDecorations', () => {
-            try {
-                if (fileDateProvider) {
-                    // Clear all caches to force fresh decorations
-                    fileDateProvider.clearAllCaches();
-                    fileDateProvider.refreshAll();
-                    const message = l10n.getString('refreshSuccess') || 'Date decorations refreshed - all caches cleared';
-                    vscode.window.showInformationMessage(message);
-                    logger.info('Date decorations refreshed manually with cache clear');
-                }
-            } catch (error) {
-                logger.error('Failed to refresh decorations', error);
-                vscode.window.showErrorMessage(`Failed to refresh decorations: ${error.message}`);
+        registerCoreCommands({ context, fileDateProvider, logger, l10n });
+
+        registerAnalysisCommands({
+            context,
+            fileDateProvider,
+            logger,
+            generators: {
+                generateWorkspaceActivityHTML,
+                generatePerformanceAnalyticsHTML,
+                generateDiagnosticsHTML,
+                generateDiagnosticsWebview
             }
         });
-        context.subscriptions.push(refreshDecorations);
 
-        // Note: preview/clear preview commands for onboarding are registered later
-
-        // Register preview commands for onboarding
-        const previewConfiguration = vscode.commands.registerCommand('explorerDates.previewConfiguration', (settings) => {
-            try {
-                if (fileDateProvider) {
-                    fileDateProvider.applyPreviewSettings(settings);
-                    logger.info('Configuration preview applied', settings);
-                }
-            } catch (error) {
-                logger.error('Failed to apply configuration preview', error);
-            }
-        });
-        context.subscriptions.push(previewConfiguration);
-
-        const clearPreview = vscode.commands.registerCommand('explorerDates.clearPreview', () => {
-            try {
-                if (fileDateProvider) {
-                    fileDateProvider.applyPreviewSettings(null);
-                    logger.info('Configuration preview cleared');
-                }
-            } catch (error) {
-                logger.error('Failed to clear configuration preview', error);
-            }
-        });
-        context.subscriptions.push(clearPreview);
-
-        // Register command to show metrics
-        const showMetrics = vscode.commands.registerCommand('explorerDates.showMetrics', () => {
-            try {
-                if (fileDateProvider) {
-                    const metrics = fileDateProvider.getMetrics();
-                    let message = `Explorer Dates Metrics:\n` +
-                        `Total Decorations: ${metrics.totalDecorations}\n` +
-                        `Cache Size: ${metrics.cacheSize}\n` +
-                        `Cache Hits: ${metrics.cacheHits}\n` +
-                        `Cache Misses: ${metrics.cacheMisses}\n` +
-                        `Cache Hit Rate: ${metrics.cacheHitRate}\n` +
-                        `Errors: ${metrics.errors}`;
-                    
-                    // Add advanced cache metrics if available
-                    if (metrics.advancedCache) {
-                        message += `\n\nAdvanced Cache:\n` +
-                            `Memory Items: ${metrics.advancedCache.memoryItems}\n` +
-                            `Memory Usage: ${(metrics.advancedCache.memoryUsage / 1024 / 1024).toFixed(2)} MB\n` +
-                            `Memory Hit Rate: ${metrics.advancedCache.memoryHitRate}\n` +
-                            `Disk Hit Rate: ${metrics.advancedCache.diskHitRate}\n` +
-                            `Evictions: ${metrics.advancedCache.evictions}`;
-                    }
-                    
-                    // Add batch processor metrics if available
-                    if (metrics.batchProcessor) {
-                        message += `\n\nBatch Processor:\n` +
-                            `Queue Length: ${metrics.batchProcessor.queueLength}\n` +
-                            `Is Processing: ${metrics.batchProcessor.isProcessing}\n` +
-                            `Average Batch Time: ${metrics.batchProcessor.averageBatchTime.toFixed(2)}ms`;
-                    }
-                    
-                    vscode.window.showInformationMessage(message, { modal: true });
-                    logger.info('Metrics displayed', metrics);
-                }
-            } catch (error) {
-                logger.error('Failed to show metrics', error);
-                vscode.window.showErrorMessage(`Failed to show metrics: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showMetrics);
-
-        // Register command to open logs
-        const openLogs = vscode.commands.registerCommand('explorerDates.openLogs', () => {
-            try {
-                logger.show();
-            } catch (error) {
-                logger.error('Failed to open logs', error);
-                vscode.window.showErrorMessage(`Failed to open logs: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(openLogs);
-
-        // Register debug command to show current configuration
-        const showConfig = vscode.commands.registerCommand('explorerDates.showCurrentConfig', () => {
-            try {
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const settings = {
-                    highContrastMode: config.get('highContrastMode'),
-                    badgePriority: config.get('badgePriority'), 
-                    colorScheme: config.get('colorScheme'),
-                    accessibilityMode: config.get('accessibilityMode'),
-                    dateDecorationFormat: config.get('dateDecorationFormat'),
-                    showGitInfo: config.get('showGitInfo'),
-                    showFileSize: config.get('showFileSize')
-                };
-                
-                const message = `Current Explorer Dates Configuration:\n\n${Object.entries(settings).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join('\n')}`;
-                
-                vscode.window.showInformationMessage(message, { modal: true });
-                logger.info('Current configuration displayed', settings);
-            } catch (error) {
-                logger.error('Failed to show configuration', error);
-            }
-        });
-        context.subscriptions.push(showConfig);
-
-        // Register command to reset problematic settings
-        const resetSettings = vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
-            try {
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                
-                await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
-                await config.update('badgePriority', 'time', vscode.ConfigurationTarget.Global);
-                await config.update('accessibilityMode', false, vscode.ConfigurationTarget.Global);
-                
-                vscode.window.showInformationMessage('Reset high contrast, badge priority, and accessibility mode to defaults. Changes should take effect immediately.');
-                logger.info('Reset problematic settings to defaults');
-                
-                // Force refresh
-                if (fileDateProvider) {
-                    fileDateProvider.clearAllCaches();
-                    fileDateProvider.refreshAll();
-                }
-            } catch (error) {
-                logger.error('Failed to reset settings', error);
-                vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(resetSettings);
-
-        // Register toggle decorations command
-        const toggleDecorations = vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {
-            try {
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const currentValue = config.get('showDateDecorations', true);
-                config.update('showDateDecorations', !currentValue, vscode.ConfigurationTarget.Global);
-                const message = !currentValue ? 
-                    l10n.getString('decorationsEnabled') || 'Date decorations enabled' :
-                    l10n.getString('decorationsDisabled') || 'Date decorations disabled';
-                vscode.window.showInformationMessage(message);
-                logger.info(`Date decorations toggled to: ${!currentValue}`);
-            } catch (error) {
-                logger.error('Failed to toggle decorations', error);
-                vscode.window.showErrorMessage(`Failed to toggle decorations: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(toggleDecorations);
-
-        // Register copy file date command
-        const copyFileDate = vscode.commands.registerCommand('explorerDates.copyFileDate', async (uri) => {
-            try {
-                if (!uri && vscode.window.activeTextEditor) {
-                    uri = vscode.window.activeTextEditor.document.uri;
-                }
-                if (!uri) {
-                    vscode.window.showWarningMessage('No file selected');
-                    return;
-                }
-                
-                const fs = require('fs').promises;
-                const stat = await fs.stat(uri.fsPath);
-                const dateString = stat.mtime.toLocaleString();
-                
-                await vscode.env.clipboard.writeText(dateString);
-                vscode.window.showInformationMessage(`Copied to clipboard: ${dateString}`);
-                logger.info(`File date copied for: ${uri.fsPath}`);
-            } catch (error) {
-                logger.error('Failed to copy file date', error);
-                vscode.window.showErrorMessage(`Failed to copy file date: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(copyFileDate);
-
-        // Register show file details command
-        const showFileDetails = vscode.commands.registerCommand('explorerDates.showFileDetails', async (uri) => {
-            try {
-                if (!uri && vscode.window.activeTextEditor) {
-                    uri = vscode.window.activeTextEditor.document.uri;
-                }
-                if (!uri) {
-                    vscode.window.showWarningMessage('No file selected');
-                    return;
-                }
-                
-                const fs = require('fs').promises;
-                const path = require('path');
-                const stat = await fs.stat(uri.fsPath);
-                
-                const fileName = path.basename(uri.fsPath);
-                const fileSize = fileDateProvider._formatFileSize(stat.size, 'auto');
-                const modified = stat.mtime.toLocaleString();
-                const created = stat.birthtime.toLocaleString();
-                
-                const details = `File: ${fileName}\n` +
-                    `Size: ${fileSize}\n` +
-                    `Modified: ${modified}\n` +
-                    `Created: ${created}\n` +
-                    `Path: ${uri.fsPath}`;
-                
-                vscode.window.showInformationMessage(details, { modal: true });
-                logger.info(`File details shown for: ${uri.fsPath}`);
-            } catch (error) {
-                logger.error('Failed to show file details', error);
-                vscode.window.showErrorMessage(`Failed to show file details: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showFileDetails);
-
-        // Register toggle fade old files command
-        const toggleFadeOldFiles = vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', () => {
-            try {
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const currentValue = config.get('fadeOldFiles', false);
-                config.update('fadeOldFiles', !currentValue, vscode.ConfigurationTarget.Global);
-                const message = !currentValue ? 
-                    'Fade old files enabled' :
-                    'Fade old files disabled';
-                vscode.window.showInformationMessage(message);
-                logger.info(`Fade old files toggled to: ${!currentValue}`);
-            } catch (error) {
-                logger.error('Failed to toggle fade old files', error);
-                vscode.window.showErrorMessage(`Failed to toggle fade old files: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(toggleFadeOldFiles);
-
-        // Register show file history command
-        const showFileHistory = vscode.commands.registerCommand('explorerDates.showFileHistory', async (uri) => {
-            try {
-                if (!uri && vscode.window.activeTextEditor) {
-                    uri = vscode.window.activeTextEditor.document.uri;
-                }
-                if (!uri) {
-                    vscode.window.showWarningMessage('No file selected');
-                    return;
-                }
-                
-                const { exec } = require('child_process');
-                const path = require('path');
-                const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-                if (!workspaceFolder) {
-                    vscode.window.showWarningMessage('File is not in a workspace');
-                    return;
-                }
-                
-                const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
-                const command = `git log --oneline -10 -- "${relativePath}"`;
-                
-                exec(command, { cwd: workspaceFolder.uri.fsPath }, (error, stdout) => {
-                    if (error) {
-                        if (error.message.includes('not a git repository')) {
-                            vscode.window.showWarningMessage('This file is not in a Git repository');
-                        } else {
-                            vscode.window.showErrorMessage(`Git error: ${error.message}`);
-                        }
-                        return;
-                    }
-                    
-                    if (!stdout.trim()) {
-                        vscode.window.showInformationMessage('No Git history found for this file');
-                        return;
-                    }
-                    
-                    const history = stdout.trim();
-                    const fileName = path.basename(uri.fsPath);
-                    vscode.window.showInformationMessage(
-                        `Recent commits for ${fileName}:\n\n${history}`,
-                        { modal: true }
-                    );
-                });
-                
-                logger.info(`File history requested for: ${uri.fsPath}`);
-            } catch (error) {
-                logger.error('Failed to show file history', error);
-                vscode.window.showErrorMessage(`Failed to show file history: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showFileHistory);
-
-        // Register compare with previous version command
-        const compareWithPrevious = vscode.commands.registerCommand('explorerDates.compareWithPrevious', async (uri) => {
-            try {
-                if (!uri && vscode.window.activeTextEditor) {
-                    uri = vscode.window.activeTextEditor.document.uri;
-                }
-                if (!uri) {
-                    vscode.window.showWarningMessage('No file selected');
-                    return;
-                }
-                
-                const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-                if (!workspaceFolder) {
-                    vscode.window.showWarningMessage('File is not in a workspace');
-                    return;
-                }
-                
-                // Use VS Code's built-in Git diff command
-                await vscode.commands.executeCommand('git.openChange', uri);
-                logger.info(`Git diff opened for: ${uri.fsPath}`);
-            } catch (error) {
-                logger.error('Failed to compare with previous version', error);
-                vscode.window.showErrorMessage(`Failed to compare with previous version: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(compareWithPrevious);
-
-        // Register workspace activity command
-        const showWorkspaceActivity = vscode.commands.registerCommand('explorerDates.showWorkspaceActivity', async () => {
-            try {
-                const panel = vscode.window.createWebviewPanel(
-                    'workspaceActivity',
-                    'Workspace File Activity',
-                    vscode.ViewColumn.One,
-                    { enableScripts: true }
-                );
-                
-                // Generate workspace activity report
-                const fs = require('fs').promises;
-                const path = require('path');
-                const files = [];
-                
-                if (!vscode.workspace.workspaceFolders) {
-                    vscode.window.showWarningMessage('No workspace folder open');
-                    return;
-                }
-                
-                // Get all files in workspace (simplified - in practice you'd want to use workspace.findFiles)
-                const workspaceFolder = vscode.workspace.workspaceFolders[0];
-                const allFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 100);
-                
-                for (const fileUri of allFiles) {
-                    try {
-                        const stat = await fs.stat(fileUri.fsPath);
-                        if (stat.isFile()) {
-                            files.push({
-                                path: path.relative(workspaceFolder.uri.fsPath, fileUri.fsPath),
-                                modified: stat.mtime,
-                                size: stat.size
-                            });
-                        }
-                    } catch (err) {
-                        // Skip files we can't access
-                    }
-                }
-                
-                // Sort by modification time (most recent first)
-                files.sort((a, b) => b.modified.getTime() - a.modified.getTime());
-                
-                // Generate HTML report
-                const html = generateWorkspaceActivityHTML(files.slice(0, 50)); // Top 50 files
-                panel.webview.html = html;
-                
-                logger.info('Workspace activity panel opened');
-            } catch (error) {
-                logger.error('Failed to show workspace activity', error);
-                vscode.window.showErrorMessage(`Failed to show workspace activity: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showWorkspaceActivity);
-
-        // Register performance analytics command
-        const showPerformanceAnalytics = vscode.commands.registerCommand('explorerDates.showPerformanceAnalytics', async () => {
-            try {
-                const panel = vscode.window.createWebviewPanel(
-                    'performanceAnalytics',
-                    'Explorer Dates Performance Analytics',
-                    vscode.ViewColumn.One,
-                    { enableScripts: true }
-                );
-                
-                const metrics = fileDateProvider ? fileDateProvider.getMetrics() : {};
-                panel.webview.html = generatePerformanceAnalyticsHTML(metrics);
-                
-                logger.info('Performance analytics panel opened');
-            } catch (error) {
-                logger.error('Failed to show performance analytics', error);
-                vscode.window.showErrorMessage(`Failed to show performance analytics: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showPerformanceAnalytics);
-
-        // Register cache debugging command
-        const debugCache = vscode.commands.registerCommand('explorerDates.debugCache', async () => {
-            try {
-                if (fileDateProvider) {
-                    const metrics = fileDateProvider.getMetrics();
-                    const debugInfo = {
-                        'Cache Summary': {
-                            'Memory Cache Size': metrics.cacheSize,
-                            'Cache Hit Rate': metrics.cacheHitRate,
-                            'Total Hits': metrics.cacheHits,
-                            'Total Misses': metrics.cacheMisses,
-                            'Cache Timeout': `${metrics.cacheDebugging.cacheTimeout}ms`
-                        },
-                        'Advanced Cache': metrics.advancedCache || 'Not available',
-                        'Sample Cache Keys': metrics.cacheDebugging.memoryCacheKeys || []
-                    };
-                    
-                    const message = JSON.stringify(debugInfo, null, 2);
-                    vscode.window.showInformationMessage(
-                        `Cache Debug Info:\n${message}`,
-                        { modal: true }
-                    );
-                    logger.info('Cache debug info displayed', debugInfo);
-                }
-            } catch (error) {
-                logger.error('Failed to show cache debug info', error);
-                vscode.window.showErrorMessage(`Failed to show cache debug info: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(debugCache);
-
-        // Register diagnostics command for troubleshooting missing decorations
-        const diagnostics = vscode.commands.registerCommand('explorerDates.runDiagnostics', async () => {
-            try {
-                const path = require('path');
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const activeEditor = vscode.window.activeTextEditor;
-                
-                const diagnosticResults = {
-                    'Extension Status': {
-                        'Provider Active': fileDateProvider ? 'Yes' : 'No',
-                        'Decorations Enabled': config.get('showDateDecorations', true) ? 'Yes' : 'No',
-                        'VS Code Version': vscode.version,
-                        'Extension Version': context.extension.packageJSON.version
-                    }
-                };
-                
-                if (activeEditor) {
-                    const uri = activeEditor.document.uri;
-                    if (uri.scheme === 'file') {
-                        diagnosticResults['Current File'] = {
-                            'File Path': uri.fsPath,
-                            'File Extension': path.extname(uri.fsPath) || 'No extension',
-                            'Is Excluded': fileDateProvider ? await fileDateProvider._isExcludedSimple(uri) : 'Unknown'
-                        };
-                    }
-                }
-                
-                diagnosticResults['Configuration'] = {
-                    'Excluded Folders': config.get('excludedFolders', []),
-                    'Excluded Patterns': config.get('excludedPatterns', []),
-                    'Color Scheme': config.get('colorScheme', 'none'),
-                    'Cache Timeout': config.get('cacheTimeout', 30000) + 'ms'
-                };
-                
-                if (fileDateProvider) {
-                    const metrics = fileDateProvider.getMetrics();
-                    diagnosticResults['Performance'] = {
-                        'Total Decorations': metrics.totalDecorations,
-                        'Cache Size': metrics.cacheSize,
-                        'Errors': metrics.errors
-                    };
-                }
-                
-                // Create diagnostic panel
-                const panel = vscode.window.createWebviewPanel(
-                    'explorerDatesDiagnostics',
-                    'Explorer Dates Diagnostics',
-                    vscode.ViewColumn.One,
-                    { enableScripts: true }
-                );
-                
-                panel.webview.html = generateDiagnosticsHTML(diagnosticResults);
-                logger.info('Diagnostics panel opened', diagnosticResults);
-                
-            } catch (error) {
-                logger.error('Failed to run diagnostics', error);
-                vscode.window.showErrorMessage(`Failed to run diagnostics: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(diagnostics);
-
-        // Comprehensive decoration diagnostics command
-        const testDecorations = vscode.commands.registerCommand('explorerDates.testDecorations', async () => {
-            try {
-                logger.info('🔍 Starting comprehensive decoration diagnostics...');
-                
-                const { DecorationDiagnostics } = require('./src/decorationDiagnostics');
-                const diagnostics = new DecorationDiagnostics(fileDateProvider);
-                
-                const results = await diagnostics.runComprehensiveDiagnostics();
-                
-                // Create detailed diagnostics panel
-                const panel = vscode.window.createWebviewPanel(
-                    'decorationDiagnostics',
-                    'Decoration Diagnostics - Root Cause Analysis',
-                    vscode.ViewColumn.One,
-                    { enableScripts: true }
-                );
-                
-                panel.webview.html = generateDiagnosticsWebview(results);
-                
-                // Show critical issues immediately
-                const criticalIssues = [];
-                const warnings = [];
-                
-                Object.values(results.tests).forEach(test => {
-                    if (test.issues) {
-                        test.issues.forEach(issue => {
-                            if (issue.startsWith('CRITICAL:')) {
-                                criticalIssues.push(issue);
-                            } else if (issue.startsWith('WARNING:')) {
-                                warnings.push(issue);
-                            }
-                        });
-                    }
-                });
-                
-                if (criticalIssues.length > 0) {
-                    vscode.window.showErrorMessage(`CRITICAL ISSUES FOUND: ${criticalIssues.join(', ')}`);
-                } else if (warnings.length > 0) {
-                    vscode.window.showWarningMessage(`Warnings found: ${warnings.length} potential issues detected. Check diagnostics panel.`);
-                } else {
-                    vscode.window.showInformationMessage('No critical issues found. Decorations should be working properly.');
-                }
-                
-                logger.info('🔍 Comprehensive diagnostics completed', results);
-                
-            } catch (error) {
-                logger.error('Failed to run comprehensive diagnostics', error);
-                vscode.window.showErrorMessage(`Diagnostics failed: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(testDecorations);
-
-        // Debug command to monitor VS Code decoration requests
-        const monitorDecorations = vscode.commands.registerCommand('explorerDates.monitorDecorations', async () => {
-            if (fileDateProvider) {
-                fileDateProvider.startProviderCallMonitoring();
-                
-                // Force refresh to trigger new requests
-                fileDateProvider.forceRefreshAllDecorations();
-                
-                // Show monitoring info after 5 seconds
-                setTimeout(() => {
-                    const stats = fileDateProvider.getProviderCallStats();
-                    const message = `VS Code Decoration Requests: ${stats.totalCalls} calls for ${stats.uniqueFiles} files`;
-                    vscode.window.showInformationMessage(message);
-                    logger.info('🔍 Decoration monitoring results:', stats);
-                }, 5000);
-                
-                vscode.window.showInformationMessage('Started monitoring VS Code decoration requests. Results in 5 seconds...');
-            } else {
-                vscode.window.showErrorMessage('Decoration provider not available');
-            }
-        });
-        context.subscriptions.push(monitorDecorations);
-
-        // Test VS Code decoration rendering system
-        const testVSCodeRendering = vscode.commands.registerCommand('explorerDates.testVSCodeRendering', async () => {
-            try {
-                const { testVSCodeDecorationRendering, testFileDecorationAPI } = require('./src/decorationTester');
-                
-                logger.info('🎨 Testing VS Code decoration rendering system...');
-                
-                // Test direct API
-                const apiTests = await testFileDecorationAPI();
-                logger.info('🔧 FileDecoration API tests:', apiTests);
-                
-                // Test actual rendering
-                const renderResult = await testVSCodeDecorationRendering();
-                logger.info('🎨 Decoration rendering test:', renderResult);
-                
-                vscode.window.showInformationMessage('VS Code decoration rendering test started. Check Output panel and Explorer for "TEST" badges on files.');
-                
-            } catch (error) {
-                logger.error('Failed to test VS Code rendering:', error);
-                vscode.window.showErrorMessage(`VS Code rendering test failed: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(testVSCodeRendering);
-
-        // Register quick fix command for common issues
-        const quickFix = vscode.commands.registerCommand('explorerDates.quickFix', async () => {
-            try {
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const fixes = [];
-                
-                // Check if decorations are disabled
-                if (!config.get('showDateDecorations', true)) {
-                    fixes.push({
-                        issue: 'Date decorations are disabled',
-                        fix: async () => {
-                            await config.update('showDateDecorations', true, vscode.ConfigurationTarget.Global);
-                        },
-                        description: 'Enable date decorations'
-                    });
-                }
-                
-                // Check for overly restrictive exclusions
-                const excludedPatterns = config.get('excludedPatterns', []);
-                if (excludedPatterns.includes('**/*')) {
-                    fixes.push({
-                        issue: 'All files are excluded by pattern',
-                        fix: async () => {
-                            const newPatterns = excludedPatterns.filter(p => p !== '**/*');
-                            await config.update('excludedPatterns', newPatterns, vscode.ConfigurationTarget.Global);
-                        },
-                        description: 'Remove overly broad exclusion pattern'
-                    });
-                }
-                
-                if (fixes.length === 0) {
-                    vscode.window.showInformationMessage('No common issues detected. Decorations should be working.');
-                    return;
-                }
-                
-                const items = fixes.map(fix => ({
-                    label: fix.description,
-                    description: fix.issue,
-                    fix: fix.fix
-                }));
-                
-                const selected = await vscode.window.showQuickPick(items, {
-                    placeHolder: 'Select an issue to fix automatically'
-                });
-                
-                if (selected) {
-                    await selected.fix();
-                    vscode.window.showInformationMessage('Fixed! Try refreshing decorations now.');
-                    
-                    // Refresh decorations
-                    if (fileDateProvider) {
-                        fileDateProvider.clearAllCaches();
-                        fileDateProvider.refreshAll();
-                    }
-                }
-                
-            } catch (error) {
-                logger.error('Failed to run quick fix', error);
-                vscode.window.showErrorMessage(`Failed to run quick fix: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(quickFix);
-
-        // Register keyboard shortcuts help command
-        const showKeyboardShortcuts = vscode.commands.registerCommand('explorerDates.showKeyboardShortcuts', async () => {
-            try {
-                if (fileDateProvider && fileDateProvider._accessibility) {
-                    await fileDateProvider._accessibility.showKeyboardShortcutsHelp();
-                } else {
-                    vscode.window.showInformationMessage(
-                        'Keyboard shortcuts: Ctrl+Shift+D (toggle), Ctrl+Shift+C (copy date), Ctrl+Shift+I (file details), Ctrl+Shift+R (refresh), Ctrl+Shift+A (workspace activity)'
-                    );
-                }
-                logger.info('Keyboard shortcuts help shown');
-            } catch (error) {
-                logger.error('Failed to show keyboard shortcuts help', error);
-                vscode.window.showErrorMessage(`Failed to show keyboard shortcuts help: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showKeyboardShortcuts);
-
-        // Register feature tour command
-        const showFeatureTour = vscode.commands.registerCommand('explorerDates.showFeatureTour', async () => {
-            try {
-                await getOnboardingManager().showFeatureTour();
-                logger.info('Feature tour opened');
-            } catch (error) {
-                logger.error('Failed to show feature tour', error);
-                vscode.window.showErrorMessage(`Failed to show feature tour: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showFeatureTour);
-
-        // Register quick setup command
-        const showQuickSetup = vscode.commands.registerCommand('explorerDates.showQuickSetup', async () => {
-            try {
-                await getOnboardingManager().showQuickSetupWizard();
-                logger.info('Quick setup wizard opened');
-            } catch (error) {
-                logger.error('Failed to show quick setup wizard', error);
-                vscode.window.showErrorMessage(`Failed to show quick setup wizard: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showQuickSetup);
-
-        // Register "What's New" command for existing users
-        const showWhatsNew = vscode.commands.registerCommand('explorerDates.showWhatsNew', async () => {
-            try {
-                const extensionVersion = context.extension.packageJSON.version;
-                await getOnboardingManager().showWhatsNew(extensionVersion);
-                logger.info('What\'s new panel opened');
-            } catch (error) {
-                logger.error('Failed to show what\'s new', error);
-                vscode.window.showErrorMessage(`Failed to show what's new: ${error.message}`);
-            }
-        });
-        context.subscriptions.push(showWhatsNew);
+        registerOnboardingCommands({ context, logger, getOnboardingManager });
 
         // Register workspace templates commands
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
+                if (!workspaceTemplatesEnabled) {
+                    vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to use this command.');
+                    return;
+                }
                 await getWorkspaceTemplatesManager().showTemplateManager();
                 logger.info('Template manager opened');
             } catch (error) {
@@ -1418,6 +753,10 @@ async function activate(context) {
 
         const saveTemplate = vscode.commands.registerCommand('explorerDates.saveTemplate', async () => {
             try {
+                if (!workspaceTemplatesEnabled) {
+                    vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to save templates.');
+                    return;
+                }
                 const name = await vscode.window.showInputBox({ 
                     prompt: 'Enter template name',
                     placeHolder: 'e.g., My Project Setup'
@@ -1440,6 +779,10 @@ async function activate(context) {
         // Register export/reporting commands
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
             try {
+                if (!reportingEnabled) {
+                    vscode.window.showInformationMessage('Reporting features are disabled. Enable explorerDates.enableReporting to generate reports.');
+                    return;
+                }
                 await getExportReportingManager().showReportDialog();
                 logger.info('Report generation started');
             } catch (error) {
@@ -1452,6 +795,11 @@ async function activate(context) {
         // Register API information command
         const showApiInfo = vscode.commands.registerCommand('explorerDates.showApiInfo', async () => {
             try {
+                if (!apiEnabled) {
+                    vscode.window.showInformationMessage('Explorer Dates API is disabled via settings.');
+                    return;
+                }
+
                 const panel = vscode.window.createWebviewPanel(
                     'apiInfo',
                     'Explorer Dates API Information',
@@ -1459,7 +807,7 @@ async function activate(context) {
                     { enableScripts: true }
                 );
                 
-                panel.webview.html = getApiInformationHtml(api);
+                panel.webview.html = getApiInformationHtml(apiFactory());
                 logger.info('API information panel opened');
             } catch (error) {
                 logger.error('Failed to show API information', error);

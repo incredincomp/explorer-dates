@@ -179,7 +179,7 @@ class LocalizationManager {
     formatDate(date, options = {}) {
         try {
             return date.toLocaleDateString(this._currentLocale, options);
-        } catch (error) {
+        } catch {
             // Fallback to English if locale formatting fails
             return date.toLocaleDateString('en', options);
         }

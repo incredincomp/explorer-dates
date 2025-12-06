@@ -1,9 +1,10 @@
 const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs').promises;
 const { getLogger } = require('./logger');
+const { fileSystem } = require('./filesystem/FileSystemAdapter');
+const { getExtension, normalizePath } = require('./utils/pathUtils');
 
 const logger = getLogger();
+const isWeb = process.env.VSCODE_WEB === 'true';
 
 /**
  * Export & Reporting Manager
@@ -12,8 +13,43 @@ const logger = getLogger();
 class ExportReportingManager {
     constructor() {
         this.fileActivityCache = new Map();
-        this.reportFormats = ['json', 'csv', 'html', 'markdown'];
+        this.allowedFormats = ['json', 'csv', 'html', 'markdown'];
+        this.activityTrackingDays = 30;
+        this.activityCutoffMs = null;
+        this.timeTrackingIntegration = 'none';
+        this._loadConfiguration();
+        this._setupConfigurationWatcher();
         this.initialize();
+    }
+
+    _loadConfiguration() {
+        try {
+            const config = vscode.workspace.getConfiguration('explorerDates');
+            const configuredFormats = config.get('reportFormats', ['json', 'html']);
+            const defaults = ['json', 'csv', 'html', 'markdown'];
+            this.allowedFormats = Array.from(new Set([...configuredFormats, ...defaults]));
+            const days = config.get('activityTrackingDays', 30);
+            this.activityTrackingDays = Math.max(1, Math.min(365, days));
+            this.activityCutoffMs = this.activityTrackingDays * 24 * 60 * 60 * 1000;
+            this.timeTrackingIntegration = config.get('timeTrackingIntegration', 'none');
+        } catch (error) {
+            logger.error('Failed to load reporting configuration', error);
+        }
+    }
+
+    _setupConfigurationWatcher() {
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('explorerDates.reportFormats') ||
+                event.affectsConfiguration('explorerDates.activityTrackingDays') ||
+                event.affectsConfiguration('explorerDates.timeTrackingIntegration')) {
+                this._loadConfiguration();
+                logger.info('Reporting configuration updated', {
+                    allowedFormats: this.allowedFormats,
+                    activityTrackingDays: this.activityTrackingDays,
+                    timeTrackingIntegration: this.timeTrackingIntegration
+                });
+            }
+        });
     }
 
     async initialize() {
@@ -44,7 +80,7 @@ class ExportReportingManager {
 
     recordFileActivity(uri, action) {
         try {
-            const filePath = uri.fsPath;
+            const filePath = uri.fsPath || uri.path;
             const timestamp = new Date();
             
             if (!this.fileActivityCache.has(filePath)) {
@@ -57,14 +93,28 @@ class ExportReportingManager {
                 path: filePath
             });
             
-            // Keep only last 100 activities per file
-            const activities = this.fileActivityCache.get(filePath);
-            if (activities.length > 100) {
-                activities.splice(0, activities.length - 100);
-            }
+            this._enforceActivityRetention(filePath);
             
         } catch (error) {
             logger.error('Failed to record file activity:', error);
+        }
+    }
+
+    _enforceActivityRetention(filePath) {
+        const activities = this.fileActivityCache.get(filePath);
+        if (!activities || activities.length === 0) {
+            return;
+        }
+
+        if (this.activityCutoffMs) {
+            const cutoff = new Date(Date.now() - this.activityCutoffMs);
+            while (activities.length && activities[0].timestamp < cutoff) {
+                activities.shift();
+            }
+        }
+
+        if (activities.length > 100) {
+            activities.splice(0, activities.length - 100);
         }
     }
 
@@ -76,6 +126,13 @@ class ExportReportingManager {
                 includeDeleted = false,
                 outputPath = null
             } = options;
+
+            if (!this.allowedFormats.includes(format)) {
+                const warning = `Report format "${format}" is disabled. Allowed formats: ${this.allowedFormats.join(', ')}`;
+                vscode.window.showWarningMessage(warning);
+                logger.warn(warning);
+                return null;
+            }
 
             const report = await this.collectFileData(timeRange, includeDeleted);
             const formattedReport = await this.formatReport(report, format);
@@ -107,6 +164,8 @@ class ExportReportingManager {
         }
 
         const summary = this.createSummary(files);
+        summary.integrationTarget = this.timeTrackingIntegration;
+        summary.activityTrackingDays = this.activityTrackingDays;
         
         return {
             generatedAt: new Date().toISOString(),
@@ -146,13 +205,13 @@ class ExportReportingManager {
             }
             
             // Add deleted files if requested
-            if (includeDeleted) {
+            if (includeDeleted && folderUri.fsPath) {
                 const deletedFiles = this.getDeletedFiles(folderUri.fsPath, timeRange);
                 files.push(...deletedFiles);
             }
             
         } catch (error) {
-            logger.error(`Failed to scan folder ${folderUri.fsPath}:`, error);
+            logger.error(`Failed to scan folder ${folderUri.fsPath || folderUri.path}:`, error);
         }
         
         return files;
@@ -162,62 +221,73 @@ class ExportReportingManager {
         try {
             const stat = await vscode.workspace.fs.stat(uri);
             const relativePath = vscode.workspace.asRelativePath(uri);
-            const activities = this.fileActivityCache.get(uri.fsPath) || [];
+            const cacheKey = uri.fsPath || uri.path;
+            const activities = this.fileActivityCache.get(cacheKey) || [];
             
             // Filter activities by time range
             const filteredActivities = this.filterActivitiesByTimeRange(activities, timeRange);
             
-            const fileData = {
+            return {
                 path: relativePath,
-                fullPath: uri.fsPath,
+                fullPath: cacheKey,
                 size: stat.size,
                 created: new Date(stat.ctime),
                 modified: new Date(stat.mtime),
                 type: this.getFileType(relativePath),
-                extension: path.extname(relativePath),
+                extension: getExtension(relativePath),
                 activities: filteredActivities,
                 activityCount: filteredActivities.length,
-                lastActivity: filteredActivities.length > 0 ? 
-                    filteredActivities[filteredActivities.length - 1].timestamp : 
-                    new Date(stat.mtime)
+                lastActivity: filteredActivities.length > 0
+                    ? filteredActivities[filteredActivities.length - 1].timestamp
+                    : new Date(stat.mtime)
             };
-            
-            return fileData;
         } catch (error) {
-            logger.error(`Failed to get file data for ${uri.fsPath}:`, error);
+            logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
             return null;
         }
     }
 
     filterActivitiesByTimeRange(activities, timeRange) {
-        if (timeRange === 'all') {
-            return activities;
+        let filtered = activities;
+        if (timeRange !== 'all') {
+            const now = new Date();
+            let cutoff;
+            
+            switch (timeRange) {
+                case '24h':
+                    cutoff = new Date(now - 24 * 60 * 60 * 1000);
+                    break;
+                case '7d':
+                    cutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case '30d':
+                    cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case '90d':
+                    cutoff = new Date(now - 90 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    cutoff = null;
+            }
+            
+            if (cutoff) {
+                filtered = filtered.filter(activity => activity.timestamp >= cutoff);
+            }
         }
-        
-        const now = new Date();
-        let cutoff;
-        
-        switch (timeRange) {
-            case '24h':
-                cutoff = new Date(now - 24 * 60 * 60 * 1000);
-                break;
-            case '7d':
-                cutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
-                break;
-            case '30d':
-                cutoff = new Date(now - 30 * 24 * 60 * 60 * 1000);
-                break;
-            case '90d':
-                cutoff = new Date(now - 90 * 24 * 60 * 60 * 1000);
-                break;
-            default:
-                return activities;
+
+        if (this.activityCutoffMs) {
+            const retentionCutoff = new Date(Date.now() - this.activityCutoffMs);
+            filtered = filtered.filter(activity => activity.timestamp >= retentionCutoff);
         }
-        
-        return activities.filter(activity => activity.timestamp >= cutoff);
+
+        return filtered;
     }
 
     getDeletedFiles(folderPath, timeRange) {
+        if (!folderPath) {
+            return [];
+        }
+
         const deletedFiles = [];
         
         for (const [filePath, activities] of this.fileActivityCache) {
@@ -233,7 +303,7 @@ class ExportReportingManager {
                         created: null,
                         modified: null,
                         type: 'deleted',
-                        extension: path.extname(filePath),
+                        extension: getExtension(filePath),
                         activities: filteredDeletes,
                         activityCount: filteredDeletes.length,
                         lastActivity: filteredDeletes[filteredDeletes.length - 1].timestamp
@@ -263,11 +333,11 @@ class ExportReportingManager {
             summary.fileTypes[type] = (summary.fileTypes[type] || 0) + 1;
         });
 
-        // Activity by day (last 30 days)
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        // Activity by day (tracked window)
+        const retentionWindow = new Date(Date.now() - this.activityTrackingDays * 24 * 60 * 60 * 1000);
         files.forEach(file => {
             file.activities.forEach(activity => {
-                if (activity.timestamp >= thirtyDaysAgo) {
+                if (activity.timestamp >= retentionWindow) {
                     const day = activity.timestamp.toISOString().split('T')[0];
                     summary.activityByDay[day] = (summary.activityByDay[day] || 0) + 1;
                 }
@@ -460,8 +530,16 @@ ${report.files
 
     async saveReport(content, outputPath) {
         try {
-            await fs.writeFile(outputPath, content, 'utf8');
-            logger.info(`Report saved to ${outputPath}`);
+            if (isWeb) {
+                const encoded = encodeURIComponent(content);
+                await vscode.env.openExternal(vscode.Uri.parse(`data:text/plain;charset=utf-8,${encoded}`));
+                vscode.window.showInformationMessage('Report download triggered in browser');
+                return;
+            }
+
+            const target = outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath);
+            await fileSystem.writeFile(target, content, 'utf8');
+            logger.info(`Report saved to ${target.fsPath || target.path}`);
         } catch (error) {
             logger.error('Failed to save report:', error);
             throw error;
@@ -540,12 +618,12 @@ ${report.files
     }
 
     extractProjectName(filePath) {
-        const parts = filePath.split(path.sep);
+        const parts = normalizePath(filePath).split('/');
         return parts[0] || 'Unknown Project';
     }
 
     getFileType(filePath) {
-        const ext = path.extname(filePath).toLowerCase();
+        const ext = getExtension(filePath);
         const typeMap = {
             '.js': 'javascript',
             '.ts': 'typescript',

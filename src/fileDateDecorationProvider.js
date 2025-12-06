@@ -1,17 +1,30 @@
 const vscode = require('vscode');
-const fs = require('fs').promises;
-const path = require('path');
 const { getLogger } = require('./logger');
 const { getLocalization } = require('./localization');
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { SmartExclusionManager } = require('./smartExclusion');
 const { BatchProcessor } = require('./batchProcessor');
 const { AdvancedCache } = require('./advancedCache');
 const { ThemeIntegrationManager } = require('./themeIntegration');
 const { AccessibilityManager } = require('./accessibility');
+const { formatFileSize, trimBadge } = require('./utils/formatters');
+const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, getRelativePath } = require('./utils/pathUtils');
+const { DEFAULT_CACHE_TIMEOUT, DEFAULT_MAX_CACHE_SIZE, MONTH_ABBREVIATIONS, GLOBAL_STATE_KEYS } = require('./constants');
+const { isWebEnvironment } = require('./utils/env');
 
-const execAsync = promisify(exec);
+const describeFile = (input = '') => getFileName(input) || 'unknown';
+
+const isWebBuild = process.env.VSCODE_WEB === 'true';
+let execAsync = null;
+if (!isWebBuild) {
+    try {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        execAsync = promisify(exec);
+    } catch {
+        execAsync = null;
+    }
+}
 
 /**
  * Provides file decorations showing last modified dates in the Explorer
@@ -23,8 +36,12 @@ class FileDateDecorationProvider {
         
         // Enhanced cache to avoid repeated file system calls
         this._decorationCache = new Map();
-        this._cacheTimeout = 120000; // 2 minutes - increased for better hit rate
-        this._maxCacheSize = 10000; // Maximum cache entries
+        this._cacheTimeout = DEFAULT_CACHE_TIMEOUT;
+        this._maxCacheSize = DEFAULT_MAX_CACHE_SIZE;
+        this._fileSystem = fileSystem;
+        this._isWeb = isWebBuild || isWebEnvironment();
+        this._gitAvailable = !this._isWeb && !!execAsync;
+        this._gitWarningShown = false;
         
         // Cache performance tracking
         this._cacheKeyStats = new Map(); // Track cache key usage patterns
@@ -36,6 +53,8 @@ class FileDateDecorationProvider {
         // Initialize performance systems
         this._smartExclusion = new SmartExclusionManager();
         this._batchProcessor = new BatchProcessor();
+        this._progressiveLoadingJobs = new Set();
+        this._progressiveLoadingEnabled = false;
         this._advancedCache = null; // Will be initialized with context
         
         // Initialize UX enhancement systems
@@ -52,6 +71,7 @@ class FileDateDecorationProvider {
 
         // Preview settings for onboarding
         this._previewSettings = null;
+        this._extensionContext = null;
         
         // Watch for file changes to update decorations
         this._setupFileWatcher();
@@ -232,8 +252,68 @@ class FileDateDecorationProvider {
                     e.affectsConfiguration('explorerDates.fileSizeFormat')) {
                     this.refreshAll();
                 }
+                if (e.affectsConfiguration('explorerDates.progressiveLoading')) {
+                    this._applyProgressiveLoadingSetting().catch((error) => {
+                        this._logger.error('Failed to reconfigure progressive loading', error);
+                    });
+                }
             }
         });
+    }
+
+    async _applyProgressiveLoadingSetting() {
+        if (!this._batchProcessor) {
+            return;
+        }
+
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        const enabled = config.get('progressiveLoading', true);
+        this._progressiveLoadingEnabled = enabled;
+
+        if (!enabled) {
+            this._logger.info('Progressive loading disabled via explorerDates.progressiveLoading');
+            this._cancelProgressiveWarmupJobs();
+            return;
+        }
+
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return;
+        }
+
+        this._cancelProgressiveWarmupJobs();
+
+        workspaceFolders.forEach((folder) => {
+            const jobId = this._batchProcessor.processDirectoryProgressively(
+                folder.uri,
+                async (uri) => {
+                    try {
+                        await this.provideFileDecoration(uri);
+                    } catch (error) {
+                        this._logger.debug('Progressive warmup processor failed', error);
+                    }
+                },
+                { background: true, priority: 'low', maxFiles: 500 }
+            );
+            if (jobId) {
+                this._progressiveLoadingJobs.add(jobId);
+            }
+        });
+
+        this._logger.info(`Progressive loading queued for ${workspaceFolders.length} workspace folder(s).`);
+    }
+
+    _cancelProgressiveWarmupJobs() {
+        if (!this._progressiveLoadingJobs || this._progressiveLoadingJobs.size === 0) {
+            return;
+        }
+
+        if (this._batchProcessor) {
+            for (const jobId of this._progressiveLoadingJobs) {
+                this._batchProcessor.cancelBatch(jobId);
+            }
+        }
+        this._progressiveLoadingJobs.clear();
     }
 
     /**
@@ -248,11 +328,11 @@ class FileDateDecorationProvider {
             try {
                 this._advancedCache.invalidateByPattern(cacheKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
             } catch (error) {
-                this._logger.debug(`Could not invalidate advanced cache for ${path.basename(uri.fsPath)}: ${error.message}`);
+                this._logger.debug(`Could not invalidate advanced cache for ${describeFile(uri.fsPath)}: ${error.message}`);
             }
         }
         this._onDidChangeFileDecorations.fire(uri);
-        this._logger.debug(`🔄 Refreshed decoration cache for: ${path.basename(uri.fsPath)}`);
+        this._logger.debug(`🔄 Refreshed decoration cache for: ${describeFile(uri.fsPath)}`);
     }
 
     /**
@@ -263,10 +343,10 @@ class FileDateDecorationProvider {
         this._decorationCache.delete(cacheKey);
         if (this._advancedCache) {
             // Advanced cache doesn't have a delete method, so we'll let it expire naturally
-            this._logger.debug(`Advanced cache entry will expire naturally: ${path.basename(uri.fsPath)}`);
+            this._logger.debug(`Advanced cache entry will expire naturally: ${describeFile(uri.fsPath)}`);
         }
         this._onDidChangeFileDecorations.fire(uri);
-        this._logger.debug(`🗑️ Cleared decoration cache for: ${path.basename(uri.fsPath)}`);
+        this._logger.debug(`🗑️ Cleared decoration cache for: ${describeFile(uri.fsPath)}`);
     }
 
     /**
@@ -311,8 +391,9 @@ class FileDateDecorationProvider {
     async _isExcludedSimple(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const filePath = uri.fsPath;
-        const fileName = path.basename(filePath);
-        const fileExt = path.extname(filePath).toLowerCase();
+        const normalizedPath = normalizePath(filePath);
+        const fileName = getFileName(filePath);
+        const fileExt = getExtension(filePath);
         
         // Check if this file type should always be shown (helpful for JPGs, PNGs, etc.)
         const forceShowTypes = config.get('forceShowForFileTypes', []);
@@ -333,8 +414,8 @@ class FileDateDecorationProvider {
         
         // Check excluded folders (simplified)
         for (const folder of excludedFolders) {
-            if (filePath.includes(`${path.sep}${folder}${path.sep}`) || 
-                filePath.endsWith(`${path.sep}${folder}`)) {
+            const normalizedFolder = folder.replace(/^\/+|\/+$/g, '');
+            if (normalizedPath.includes(`/${normalizedFolder}/`) || normalizedPath.endsWith(`/${normalizedFolder}`)) {
                 if (troubleshootingMode) {
                     this._logger.info(`❌ File excluded by folder: ${filePath} (${folder})`);
                 } else {
@@ -346,10 +427,10 @@ class FileDateDecorationProvider {
         
         // Check excluded patterns (simplified)
         for (const pattern of excludedPatterns) {
-            if (pattern.includes('node_modules') && filePath.includes('node_modules')) {
+            if (pattern.includes('node_modules') && normalizedPath.includes('/node_modules/')) {
                 return true;
             }
-            if (pattern.includes('.git/**') && filePath.includes('.git' + path.sep)) {
+            if (pattern.includes('.git/**') && normalizedPath.includes('/.git/')) {
                 return true;
             }
             if (pattern.includes('*.tmp') && fileName.endsWith('.tmp')) {
@@ -373,7 +454,8 @@ class FileDateDecorationProvider {
     async _isExcluded(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const filePath = uri.fsPath;
-        const fileName = path.basename(filePath);
+        const normalizedPath = normalizePath(filePath);
+        const fileName = getFileName(filePath);
         
         // Get combined exclusions (global + workspace + smart)
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
@@ -383,8 +465,8 @@ class FileDateDecorationProvider {
             // Check excluded folders (must be actual directory paths, not just substrings)
             for (const folder of combined.folders) {
                 // More precise folder matching - ensure we're matching actual directory boundaries
-                const folderPattern = new RegExp(`(^|${path.sep.replace(/[\\]/g, '\\\\')})${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(${path.sep.replace(/[\\]/g, '\\\\')}|$)`);
-                if (folderPattern.test(filePath)) {
+                const folderPattern = new RegExp(`(^|/)${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/|$)`);
+                if (folderPattern.test(normalizedPath)) {
                     this._logger.debug(`File excluded by folder rule: ${filePath} (folder: ${folder})`);
                     return true;
                 }
@@ -398,7 +480,7 @@ class FileDateDecorationProvider {
                     .replace(/\?/g, '.');
                 const regex = new RegExp(regexPattern);
                 
-                if (regex.test(filePath) || regex.test(fileName)) {
+                if (regex.test(normalizedPath) || regex.test(fileName)) {
                     this._logger.debug(`File excluded by pattern: ${filePath} (pattern: ${pattern})`);
                     return true;
                 }
@@ -410,8 +492,8 @@ class FileDateDecorationProvider {
             
             for (const folder of excludedFolders) {
                 // More precise folder matching - ensure we're matching actual directory boundaries
-                const folderPattern = new RegExp(`(^|${path.sep.replace(/[\\]/g, '\\\\')})${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(${path.sep.replace(/[\\]/g, '\\\\')}|$)`);
-                if (folderPattern.test(filePath)) {
+                const folderPattern = new RegExp(`(^|/)${folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(/|$)`);
+                if (folderPattern.test(normalizedPath)) {
                     return true;
                 }
             }
@@ -423,7 +505,7 @@ class FileDateDecorationProvider {
                     .replace(/\?/g, '.');
                 const regex = new RegExp(regexPattern);
                 
-                if (regex.test(filePath) || regex.test(fileName)) {
+                if (regex.test(normalizedPath) || regex.test(fileName)) {
                     return true;
                 }
             }
@@ -452,6 +534,47 @@ class FileDateDecorationProvider {
             }
             
             this._logger.debug(`Removed ${entriesToRemove} old cache entries`);
+        }
+    }
+
+    async _getCachedDecoration(cacheKey, fileLabel) {
+        if (this._advancedCache) {
+            try {
+                const cached = await this._advancedCache.get(cacheKey);
+                if (cached) {
+                    this._metrics.cacheHits++;
+                    this._logger.debug(`🧠 Advanced cache hit for: ${fileLabel}`);
+                    return cached;
+                }
+            } catch (error) {
+                this._logger.debug(`Advanced cache error: ${error.message}`);
+            }
+        }
+
+        const memoryEntry = this._decorationCache.get(cacheKey);
+        if (memoryEntry && (Date.now() - memoryEntry.timestamp) < this._cacheTimeout) {
+            this._metrics.cacheHits++;
+            this._logger.debug(`💾 Memory cache hit for: ${fileLabel}`);
+            return memoryEntry.decoration;
+        }
+
+        return null;
+    }
+
+    async _storeDecorationInCache(cacheKey, decoration, fileLabel) {
+        this._manageCacheSize();
+        this._decorationCache.set(cacheKey, {
+            decoration,
+            timestamp: Date.now()
+        });
+
+        if (this._advancedCache) {
+            try {
+                await this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
+                this._logger.debug(`🧠 Stored in advanced cache: ${fileLabel}`);
+            } catch (error) {
+                this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
+            }
         }
     }
 
@@ -484,11 +607,8 @@ class FileDateDecorationProvider {
                 
             case 'absolute-short':
             case 'absolute-long': {
-                // 2-character date indicators (month abbreviations)
-                const monthNames = ['Ja', 'Fe', 'Mr', 'Ap', 'My', 'Jn', 
-                                  'Jl', 'Au', 'Se', 'Oc', 'No', 'De'];
                 const day = date.getDate();
-                return `${monthNames[date.getMonth()]}${day < 10 ? '0' + day : day}`;
+                return `${MONTH_ABBREVIATIONS[date.getMonth()]}${day < 10 ? '0' + day : day}`;
             }
                 
             case 'technical':
@@ -515,28 +635,7 @@ class FileDateDecorationProvider {
      * Format file size for display
      */
     _formatFileSize(bytes, format = 'auto') {
-        if (format === 'bytes') {
-            return `~${bytes}B`;
-        }
-        
-        const kb = bytes / 1024;
-        if (format === 'kb') {
-            return `~${kb.toFixed(1)}K`;
-        }
-        
-        const mb = kb / 1024;
-        if (format === 'mb') {
-            return `~${mb.toFixed(1)}M`;
-        }
-        
-        // Auto format - keep very compact with size prefix
-        if (bytes < 1024) {
-            return `~${bytes}B`;
-        } else if (kb < 1024) {
-            return `~${Math.round(kb)}K`;
-        } else {
-            return `~${mb.toFixed(1)}M`;
-        }
+        return formatFileSize(bytes, format);
     }
 
     /**
@@ -563,7 +662,7 @@ class FileDateDecorationProvider {
             
             case 'file-type': {
                 // Color by file extension
-                const ext = path.extname(filePath).toLowerCase();
+                const ext = getExtension(filePath);
                 if (['.js', '.ts', '.jsx', '.tsx'].includes(ext)) return new vscode.ThemeColor('charts.blue');
                 if (['.css', '.scss', '.less'].includes(ext)) return new vscode.ThemeColor('charts.purple');
                 if (['.html', '.htm', '.xml'].includes(ext)) return new vscode.ThemeColor('charts.orange');
@@ -621,6 +720,91 @@ class FileDateDecorationProvider {
         }
     }
 
+    _generateBadgeDetails({ filePath, stat, diffMs, dateFormat, badgePriority, showFileSize, fileSizeFormat, gitBlame, showGitInfo }) {
+        const badge = this._formatDateBadge(stat.mtime, dateFormat, diffMs);
+        const readableModified = this._formatDateReadable(stat.mtime);
+        const readableCreated = this._formatDateReadable(stat.birthtime);
+        let displayBadge = badge;
+
+        this._logger.debug(`🏷️ Badge generation for ${describeFile(filePath)}: badgePriority=${badgePriority}, showGitInfo=${showGitInfo}, hasGitBlame=${!!gitBlame}, authorName=${gitBlame?.authorName}, previewMode=${!!this._previewSettings}`);
+
+        if (badgePriority === 'author' && gitBlame?.authorName) {
+            const initials = this._getInitials(gitBlame.authorName);
+            if (initials) {
+                displayBadge = initials;
+                this._logger.debug(`🏷️ Using author initials badge: "${initials}" (from ${gitBlame.authorName})`);
+            }
+        } else if (badgePriority === 'size' && showFileSize) {
+            const compact = this._formatCompactSize(stat.size);
+            if (compact) {
+                displayBadge = compact;
+                this._logger.debug(`🏷️ Using size badge: "${compact}"`);
+            }
+        } else {
+            this._logger.debug(`🏷️ Using time badge: "${badge}" (badgePriority=${badgePriority})`);
+        }
+
+        return {
+            badge,
+            displayBadge,
+            readableModified,
+            readableCreated,
+            fileSizeLabel: showFileSize ? this._formatFileSize(stat.size, fileSizeFormat) : null
+        };
+    }
+
+    async _buildTooltipContent({ filePath, resourceUri, stat, badgeDetails, gitBlame, shouldUseAccessibleTooltips, fileSizeFormat, isCodeFile }) {
+        const fileDisplayName = describeFile(filePath);
+        const fileExt = getExtension(filePath);
+
+        if (shouldUseAccessibleTooltips) {
+            const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, stat.mtime, stat.birthtime, stat.size, gitBlame);
+            if (accessibleTooltip) {
+                this._logger.info(`🔍 Using accessible tooltip (${accessibleTooltip.length} chars): "${accessibleTooltip.substring(0, 50)}..."`);
+                return accessibleTooltip;
+            }
+            this._logger.info('🔍 Accessible tooltip generation failed, using rich tooltip');
+        }
+
+        let tooltip = `📄 File: ${fileDisplayName}\n`;
+        tooltip += `📝 Last Modified: ${badgeDetails.readableModified}\n`;
+        tooltip += `   ${this._formatFullDate(stat.mtime)}\n\n`;
+        tooltip += `📅 Created: ${badgeDetails.readableCreated}\n`;
+        tooltip += `   ${this._formatFullDate(stat.birthtime)}\n\n`;
+
+        const sizeLabel = badgeDetails.fileSizeLabel || this._formatFileSize(stat.size, fileSizeFormat || 'auto');
+        tooltip += `📊 Size: ${sizeLabel} (${stat.size.toLocaleString()} bytes)\n`;
+
+        if (fileExt) {
+            tooltip += `🏷️ Type: ${fileExt.toUpperCase()} file\n`;
+        }
+
+        if (isCodeFile) {
+            try {
+                const contentSource = resourceUri || filePath;
+                const content = await this._fileSystem.readFile(contentSource, 'utf8');
+                const lineCount = content.split('\n').length;
+                tooltip += `📏 Lines: ${lineCount.toLocaleString()}\n`;
+            } catch {
+                // Silently skip line count if file can't be read
+            }
+        }
+
+        tooltip += `📂 Path: ${filePath}`;
+
+        if (gitBlame) {
+            tooltip += `\n\n👤 Last Modified By: ${gitBlame.authorName}`;
+            if (gitBlame.authorEmail) {
+                tooltip += ` (${gitBlame.authorEmail})`;
+            }
+            if (gitBlame.authorDate) {
+                tooltip += `\n   ${gitBlame.authorDate}`;
+            }
+        }
+
+        return tooltip;
+    }
+
     /**
      * Format readable date for tooltip
      */
@@ -658,13 +842,18 @@ class FileDateDecorationProvider {
      * Get Git blame information for a file
      */
     async _getGitBlameInfo(filePath) {
+        if (!this._gitAvailable || !execAsync) {
+            return null;
+        }
+
         try {
             const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
             if (!workspaceFolder) {
                 return null;
             }
 
-            const relativePath = path.relative(workspaceFolder.uri.fsPath, filePath);
+            const workspacePath = workspaceFolder.uri.fsPath || workspaceFolder.uri.path;
+            const relativePath = getRelativePath(workspacePath, filePath);
             const { stdout } = await execAsync(
                 `git log -1 --format="%an|%ae|%ad" -- "${relativePath}"`,
                 { cwd: workspaceFolder.uri.fsPath, timeout: 2000 }
@@ -680,7 +869,7 @@ class FileDateDecorationProvider {
                 authorEmail: authorEmail || '',
                 authorDate: authorDate || ''
             };
-        } catch (error) {
+        } catch {
             // Git might not be available or file not in a git repo
             return null;
         }
@@ -747,36 +936,29 @@ class FileDateDecorationProvider {
      * Normalize cache key to handle different URI representations
      */
     _getCacheKey(uri) {
-        // Normalize path separators and resolve to canonical form
-        const normalized = path.resolve(uri.fsPath).toLowerCase();
-        return normalized;
+        const pathValue = uri?.fsPath || uri?.path || '';
+        return buildCacheKey(pathValue);
     }
 
     /**
      * Get file decoration with enhanced caching
      */
     async provideFileDecoration(uri, token) {
-        let startTime;
-        
+        const startTime = Date.now();
+
         try {
-            startTime = Date.now();
-            
-            // Handle edge cases for URI processing
             if (!uri || !uri.fsPath) {
-                console.error('❌ Invalid URI provided to provideFileDecoration:', uri);
+                this._logger.error('❌ Invalid URI provided to provideFileDecoration:', uri);
                 return undefined;
             }
-            
-            // Extract filename for logging
-            const fileName = require('path').basename(uri.fsPath);
-            
-            // CRITICAL DEBUG: Log every call to this method with context
-            this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileName} (${uri.fsPath})`);
+
+            const filePath = uri.fsPath;
+            const fileLabel = describeFile(filePath);
+
+            this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
             this._logger.info(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
-            
-            // Check if decorations are enabled
+
             const config = vscode.workspace.getConfiguration('explorerDates');
-            // Helper to allow transient preview overrides
             const _get = (key, def) => {
                 if (this._previewSettings && Object.prototype.hasOwnProperty.call(this._previewSettings, key)) {
                     const previewValue = this._previewSettings[key];
@@ -785,330 +967,171 @@ class FileDateDecorationProvider {
                 }
                 return config.get(key, def);
             };
-            
-            // Log preview mode status
+
             if (this._previewSettings) {
-                this._logger.info(`🎭 Processing ${fileName} in PREVIEW MODE with settings:`, this._previewSettings);
+                this._logger.info(`🎭 Processing ${fileLabel} in PREVIEW MODE with settings:`, this._previewSettings);
             }
-            
+
             if (!_get('showDateDecorations', true)) {
-                this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileName}`);
+                this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
                 return undefined;
             }
 
-            // Check if it's a file we should decorate
             if (uri.scheme !== 'file') {
                 this._logger.debug(`Non-file URI scheme: ${uri.scheme}`);
                 return undefined;
             }
 
-            const filePath = uri.fsPath;
-            const cacheKey = this._getCacheKey(uri);
-            
-            // Check if file is excluded (simplified logic)
             if (await this._isExcludedSimple(uri)) {
-                this._logger.info(`❌ File excluded: ${path.basename(filePath)}`);
+                this._logger.info(`❌ File excluded: ${fileLabel}`);
                 return undefined;
             }
-            
-            this._logger.debug(`🔍 Processing file: ${path.basename(filePath)}`);
-            
-            // Skip caching entirely when preview settings are active to ensure immediate updates
-            let cached = null;
+
+            this._logger.debug(`🔍 Processing file: ${fileLabel}`);
+
+            const cacheKey = this._getCacheKey(uri);
             if (!this._previewSettings) {
-                // Try advanced cache if available
-                if (this._advancedCache) {
-                    try {
-                        cached = await this._advancedCache.get(cacheKey);
-                        if (cached) {
-                            this._metrics.cacheHits++;
-                            this._logger.debug(`🧠 Advanced cache hit for: ${path.basename(filePath)}`);
-                            return cached;
-                        }
-                    } catch (error) {
-                        this._logger.debug(`Advanced cache error: ${error.message}`);
-                    }
-                }
-                
-                // Try memory cache with normalized key
-                cached = this._decorationCache.get(cacheKey);
-                if (cached && (Date.now() - cached.timestamp) < this._cacheTimeout) {
-                    this._metrics.cacheHits++;
-                    this._logger.debug(`💾 Memory cache hit for: ${path.basename(filePath)}`);
-                    return cached.decoration;
+                const cachedDecoration = await this._getCachedDecoration(cacheKey, fileLabel);
+                if (cachedDecoration) {
+                    return cachedDecoration;
                 }
             } else {
-                this._logger.debug(`🔄 Skipping cache due to active preview settings for: ${path.basename(filePath)}`);
+                this._logger.debug(`🔄 Skipping cache due to active preview settings for: ${fileLabel}`);
             }
 
             this._metrics.cacheMisses++;
-            this._logger.debug(`❌ Cache miss for: ${path.basename(filePath)} (key: ${cacheKey.substring(0, 50)}...)`);
+            this._logger.debug(`❌ Cache miss for: ${fileLabel} (key: ${cacheKey.substring(0, 50)}...)`);
 
-            // Check for cancellation
-            if (token && token.isCancellationRequested) {
+            if (token?.isCancellationRequested) {
                 this._logger.debug(`Decoration cancelled for: ${filePath}`);
                 return undefined;
             }
 
-            // Get file stats
-            const stat = await fs.stat(filePath);
-            
-            // Only decorate files, not directories (to avoid clutter)
-            if (!stat.isFile()) {
+            const stat = await this._fileSystem.stat(uri);
+            const isRegularFile = typeof stat.isFile === 'function' ? stat.isFile() : true;
+            if (!isRegularFile) {
                 return undefined;
             }
 
-            const mtime = stat.mtime;
-            const ctime = stat.birthtime; // Creation time
-            
-            // Calculate time differences for reuse
-            const now = new Date();
-            const diffMs = now.getTime() - mtime.getTime();
-            
-            // Get configuration settings (allow preview overrides)
+            const modifiedAt = stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime);
+            const createdAt = stat.birthtime instanceof Date ? stat.birthtime : new Date(stat.birthtime || stat.ctime || stat.mtime);
+            const normalizedStat = {
+                mtime: modifiedAt,
+                birthtime: createdAt,
+                size: stat.size
+            };
+            const diffMs = Date.now() - modifiedAt.getTime();
+
             const dateFormat = _get('dateDecorationFormat', 'smart');
             const colorScheme = _get('colorScheme', 'none');
             const highContrastMode = _get('highContrastMode', false);
             const showFileSize = _get('showFileSize', false);
             const fileSizeFormat = _get('fileSizeFormat', 'auto');
-            // Note: VS Code's FileDecorationProvider doesn't support hover events
-            // Decorations are always visible when the provider returns them
-            
-            const badge = this._formatDateBadge(mtime, dateFormat, diffMs);
-            const readableModified = this._formatDateReadable(mtime);
-            const readableCreated = this._formatDateReadable(ctime);
-            
-            // Get Git information and badge preference
-            const showGitInfo = _get('showGitInfo', 'none');
-            const badgePriority = _get('badgePriority', 'time');
-            const needGitBlame = (showGitInfo !== 'none') || (badgePriority === 'author');
-            const gitBlame = needGitBlame ? await this._getGitBlameInfo(filePath) : null;
-            
-            // Build composite badge: allow `badgePriority` to optionally replace the time badge
-            let displayBadge = badge;
-            
-            this._logger.debug(`🏷️ Badge generation for ${path.basename(filePath)}: badgePriority=${badgePriority}, showGitInfo=${showGitInfo}, hasGitBlame=${!!gitBlame}, authorName=${gitBlame?.authorName}, previewMode=${!!this._previewSettings}`);
-
-            if (badgePriority === 'author' && gitBlame && gitBlame.authorName) {
-                const initials = this._getInitials(gitBlame.authorName);
-                if (initials) {
-                    displayBadge = initials;
-                    this._logger.debug(`🏷️ Using author initials badge: "${initials}" (from ${gitBlame.authorName})`);
-                }
-            } else if (badgePriority === 'size' && showFileSize) {
-                const compact = this._formatCompactSize(stat.size);
-                if (compact) {
-                    displayBadge = compact;
-                    this._logger.debug(`🏷️ Using size badge: "${compact}"`);
-                }
-            } else {
-                // Default behavior: keep time badge; don't jam git/size into visual badge
-                displayBadge = badge;
-                this._logger.debug(`🏷️ Using time badge: "${badge}" (badgePriority=${badgePriority})`);
-            }
-
-            
-            // Build detailed tooltip with enhanced information and accessibility support
-            const fileDisplayName = path.basename(filePath);
-            const fileExt = path.extname(filePath);
-            const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt.toLowerCase());
-            
-            // Check if accessibility mode is enabled for enhanced tooltips
-            // Default to rich tooltips unless explicitly set to accessible mode
             const accessibilityMode = _get('accessibilityMode', false);
-            const shouldUseAccessibleTooltips = accessibilityMode && this._accessibility?.shouldEnhanceAccessibility();
-            this._logger.debug(`🔍 Tooltip generation for ${path.basename(filePath)}: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, previewMode=${!!this._previewSettings}`);
-            
-            let tooltip;
-            this._logger.info(`🔍 TOOLTIP GENERATION START: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, file=${path.basename(filePath)}`);
-            
-            if (shouldUseAccessibleTooltips) {
-                const accessibleTooltip = this._accessibility.getAccessibleTooltip(filePath, mtime, ctime, stat.size, gitBlame);
-                if (accessibleTooltip) {
-                    tooltip = accessibleTooltip;
-                    this._logger.info(`🔍 Using accessible tooltip (${accessibleTooltip.length} chars): "${accessibleTooltip.substring(0, 50)}..."`);
-                } else {
-                    // Fall back to rich tooltip even if accessibility mode is on
-                    this._logger.info(`🔍 Accessible tooltip generation failed, using rich tooltip`);
-                }
-            }
-            
-            if (!tooltip) {
-                this._logger.info(`🔍 Creating RICH tooltip for ${path.basename(filePath)}`);
-                // Standard rich tooltip
-                tooltip = `📄 File: ${fileDisplayName}\n`;
-                tooltip += `📝 Last Modified: ${readableModified}\n`;
-                tooltip += `   ${this._formatFullDate(mtime)}\n\n`;
-                tooltip += `📅 Created: ${readableCreated}\n`;
-                tooltip += `   ${this._formatFullDate(ctime)}\n\n`;
-                tooltip += `📊 Size: ${this._formatFileSize(stat.size, 'auto')} (${stat.size.toLocaleString()} bytes)\n`;
-                
-                // Add file type information
-                if (fileExt) {
-                    tooltip += `🏷️ Type: ${fileExt.toUpperCase()} file\n`;
-                }
-                
-                // Add line count for code files
-                if (isCodeFile) {
-                    try {
-                        const content = await fs.readFile(filePath, 'utf8');
-                        const lineCount = content.split('\n').length;
-                        tooltip += `📏 Lines: ${lineCount.toLocaleString()}\n`;
-                    } catch (error) {
-                        // Silently skip line count if file can't be read
-                    }
-                }
-                
-                // Add full path
-                tooltip += `📂 Path: ${filePath}`;
-                
-                if (gitBlame) {
-                    tooltip += `\n\n👤 Last Modified By: ${gitBlame.authorName}`;
-                    if (gitBlame.authorEmail) {
-                        tooltip += ` (${gitBlame.authorEmail})`;
-                    }
-                    if (gitBlame.authorDate) {
-                        tooltip += `\n   ${gitBlame.authorDate}`;
-                    }
-                }
-            }
-            
-            // Get color based on scheme and theme integration
-            let color = undefined;
-            if (colorScheme !== 'none') {
-                if (this._themeIntegration) {
-                    color = this._themeIntegration.applyThemeAwareColorScheme(colorScheme, filePath, diffMs);
-                } else {
-                    // Fallback to basic color scheme logic
-                    color = this._getColorByScheme(mtime, colorScheme, filePath);
-                }
-            }
-            this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
-            
-            // Apply fade effect for old files if enabled
             const fadeOldFiles = _get('fadeOldFiles', false);
             const fadeThreshold = _get('fadeThreshold', 30);
-            
+            const rawShowGitInfo = _get('showGitInfo', 'none');
+            let badgePriority = _get('badgePriority', 'time');
+
+            const gitFeaturesRequested = (rawShowGitInfo !== 'none') || (badgePriority === 'author');
+            const gitFeaturesEnabled = gitFeaturesRequested && this._gitAvailable;
+            const showGitInfo = gitFeaturesEnabled ? rawShowGitInfo : 'none';
+            if (badgePriority === 'author' && !gitFeaturesEnabled) {
+                badgePriority = 'time';
+            }
+
+            const gitBlame = gitFeaturesEnabled ? await this._getGitBlameInfo(filePath) : null;
+
+            const badgeDetails = this._generateBadgeDetails({
+                filePath,
+                stat: normalizedStat,
+                diffMs,
+                dateFormat,
+                badgePriority,
+                showFileSize,
+                fileSizeFormat,
+                gitBlame,
+                showGitInfo
+            });
+
+            const fileExt = getExtension(filePath);
+            const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt);
+            const shouldUseAccessibleTooltips = accessibilityMode && this._accessibility?.shouldEnhanceAccessibility();
+            this._logger.debug(`🔍 Tooltip generation for ${fileLabel}: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, previewMode=${!!this._previewSettings}`);
+
+            const tooltip = await this._buildTooltipContent({
+                filePath,
+                resourceUri: uri,
+                stat: normalizedStat,
+                badgeDetails,
+                gitBlame: showGitInfo === 'none' ? null : gitBlame,
+                shouldUseAccessibleTooltips,
+                fileSizeFormat,
+                isCodeFile
+            });
+
+            let color = undefined;
+            if (colorScheme !== 'none') {
+                color = this._themeIntegration
+                    ? this._themeIntegration.applyThemeAwareColorScheme(colorScheme, filePath, diffMs)
+                    : this._getColorByScheme(modifiedAt, colorScheme, filePath);
+            }
+            this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
+
             if (fadeOldFiles) {
                 const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                 if (daysSinceModified > fadeThreshold) {
-                    // Override color with faded version for old files
                     color = new vscode.ThemeColor('editorGutter.commentRangeForeground');
                 }
             }
-            
-            // Apply accessibility processing if enabled
-            let finalBadge = displayBadge;
-            if (this._accessibility && this._accessibility.shouldEnhanceAccessibility()) {
-                finalBadge = this._accessibility.getAccessibleBadge(displayBadge);
+
+            let finalBadge = trimBadge(badgeDetails.displayBadge) || trimBadge(badgeDetails.badge) || '??';
+            if (this._accessibility?.shouldEnhanceAccessibility()) {
+                finalBadge = this._accessibility.getAccessibleBadge(finalBadge);
             }
 
-            // Ensure badge meets VS Code length requirements (max 2 characters for compatibility)
-            if (finalBadge && finalBadge.length > 2) {
-                finalBadge = finalBadge.substring(0, 2);
-            }
-            
-            // Debug log the final badge value
-            this._logger.info(`🏷️ Final badge for ${path.basename(filePath)}: "${finalBadge}" (type: ${typeof finalBadge})`);
-            
-            // Test with a very simple decoration first to see if VS Code accepts it
             let decoration;
             try {
-                // Try with just badge first (most minimal decoration)
                 decoration = new vscode.FileDecoration(finalBadge);
-                this._logger.info(`🧪 Simple decoration test: badge="${finalBadge}"`);
-                
-                // If simple works, add tooltip
-                if (tooltip && tooltip.length < 500) { // Limit tooltip length
+                if (tooltip && tooltip.length < 500) {
                     decoration.tooltip = tooltip;
                     this._logger.debug(`📝 Added tooltip (${tooltip.length} chars)`);
                 }
-                
-                // If tooltip works, add color with selection-aware adjustment
                 if (color) {
-                    // Apply selection-aware color enhancement
-                    const enhancedColor = this._enhanceColorForSelection(color, colorScheme);
+                    const enhancedColor = this._enhanceColorForSelection(color);
                     decoration.color = enhancedColor;
                     this._logger.debug(`🎨 Added enhanced color: ${enhancedColor.id || enhancedColor} (original: ${color.id || color})`);
                 }
-                
-                // Set propagate to false (don't propagate to parent folders)
                 decoration.propagate = false;
-                
-                this._logger.info(`📝 Final decoration:`, {
-                    badge: decoration.badge,
-                    tooltip: decoration.tooltip ? `${decoration.tooltip.length} chars` : 'none',
-                    color: decoration.color ? (decoration.color.id || 'custom') : 'none',
-                    propagate: decoration.propagate
-                });
-                
-                // Debug: Show actual tooltip content (first 100 chars)
-                if (decoration.tooltip) {
-                    this._logger.info(`📝 Tooltip content preview: "${decoration.tooltip.substring(0, 100)}..."`);
-                }
-                
             } catch (decorationError) {
-                this._logger.error(`❌ Failed to create decoration:`, decorationError);
-                // Fallback to absolute minimal decoration
+                this._logger.error('❌ Failed to create decoration:', decorationError);
                 decoration = new vscode.FileDecoration('!!');
                 decoration.propagate = false;
             }
-            
-            // Apply high contrast styling if enabled
-            this._logger.debug(`🎨 Color/contrast check for ${path.basename(filePath)}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!color}, previewMode=${!!this._previewSettings}`);
+
+            this._logger.debug(`🎨 Color/contrast check for ${fileLabel}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!color}, previewMode=${!!this._previewSettings}`);
             if (highContrastMode) {
                 decoration.color = new vscode.ThemeColor('editorWarning.foreground');
                 this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
             }
 
-            // Only store in cache when not in preview mode
             if (!this._previewSettings) {
-                this._manageCacheSize();
-                const cacheEntry = {
-                    decoration,
-                    timestamp: Date.now()
-                };
-                
-                // Store in memory cache
-                this._decorationCache.set(cacheKey, cacheEntry);
-                
-                // Store in advanced cache if available
-                if (this._advancedCache) {
-                    try {
-                        await this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
-                        this._logger.debug(`🧠 Stored in advanced cache: ${path.basename(filePath)}`);
-                    } catch (error) {
-                        this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
-                    }
-                }
+                await this._storeDecorationInCache(cacheKey, decoration, fileLabel);
             } else {
-                this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${path.basename(filePath)}`);
+                this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${fileLabel}`);
             }
 
             this._metrics.totalDecorations++;
-            
-            // Validate decoration before returning
-            if (!decoration) {
-                this._logger.error(`❌ Decoration is null for: ${path.basename(filePath)}`);
+
+            if (!decoration?.badge) {
+                this._logger.error(`❌ Decoration badge is invalid for: ${fileLabel}`);
                 return undefined;
             }
-            
-            if (!decoration.badge) {
-                this._logger.error(`❌ Decoration badge is empty for: ${path.basename(filePath)}`);
-                return undefined;
-            }
-            
-            // Final validation - ensure badge is string and not too long
-            if (typeof decoration.badge !== 'string' || decoration.badge.length === 0) {
-                this._logger.error(`❌ Invalid badge type/length for: ${path.basename(filePath)} - Badge: ${decoration.badge}`);
-                return undefined;
-            }
-            
-            this._logger.info(`✅ Decoration created for: ${path.basename(filePath)} (badge: ${finalBadge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
+
             const processingTime = Date.now() - startTime;
-            
-            this._logger.info(`🎯 RETURNING DECORATION TO VSCODE:`, {
-                file: fileDisplayName,
+            this._logger.info(`✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
+            this._logger.info('🎯 RETURNING DECORATION TO VSCODE:', {
+                file: fileLabel,
                 badge: decoration.badge,
                 hasTooltip: !!decoration.tooltip,
                 hasColor: !!decoration.color,
@@ -1116,35 +1139,30 @@ class FileDateDecorationProvider {
                 processingTimeMs: processingTime,
                 decorationType: decoration.constructor.name
             });
-            
-            // Also log to console for immediate visibility
-            console.log(`🎯 DECORATION RETURNED: ${fileDisplayName} → "${decoration.badge}"`);
+            console.log(`🎯 DECORATION RETURNED: ${fileLabel} → "${decoration.badge}"`);
 
             return decoration;
-
         } catch (error) {
             this._metrics.errors++;
             const processingTime = startTime ? Date.now() - startTime : 0;
-            const safeFileName = uri?.fsPath ? require('path').basename(uri.fsPath) : 'unknown-file';
+            const safeFileName = describeFile(uri?.fsPath);
             const safeUri = uri?.fsPath || 'unknown-uri';
-            
+
             this._logger.error(`❌ DECORATION ERROR for ${safeFileName}:`, {
                 error: error.message,
                 stack: error.stack?.split('\n')[0],
                 processingTimeMs: processingTime,
                 uri: safeUri
             });
-            
-            // Also log to console for immediate visibility
+
             console.error(`❌ DECORATION ERROR: ${safeFileName} → ${error.message}`);
-            console.error(`❌ Full error:`, error);
-            console.error(`❌ Stack trace:`, error.stack);
-            
-            // Log error to VS Code output immediately
+            console.error('❌ Full error:', error);
+            console.error('❌ Stack trace:', error.stack);
+
             this._logger.error(`❌ CRITICAL ERROR DETAILS for ${safeFileName}: ${error.message}`);
             this._logger.error(`❌ Error type: ${error.constructor.name}`);
             this._logger.error(`❌ Full stack: ${error.stack}`);
-            
+
             this._logger.info(`❌ RETURNED UNDEFINED: Error occurred for ${safeFileName}`);
             return undefined;
         }
@@ -1186,6 +1204,11 @@ class FileDateDecorationProvider {
      */
     async initializeAdvancedSystems(context) {
         try {
+            this._extensionContext = context;
+            if (this._isWeb) {
+                this._maybeWarnAboutGitLimitations();
+            }
+
             // Initialize advanced cache
             this._advancedCache = new AdvancedCache(context);
             await this._advancedCache.initialize();
@@ -1194,6 +1217,7 @@ class FileDateDecorationProvider {
             // Initialize batch processor
             this._batchProcessor.initialize();
             this._logger.info('Batch processor initialized');
+            await this._applyProgressiveLoadingSetting();
             
             // Setup theme integration
             const config = vscode.workspace.getConfiguration('explorerDates');
@@ -1227,10 +1251,34 @@ class FileDateDecorationProvider {
         }
     }
 
+    _maybeWarnAboutGitLimitations() {
+        try {
+            if (this._gitWarningShown) {
+                return;
+            }
+
+            const storage = this._extensionContext?.globalState;
+            const storageKey = GLOBAL_STATE_KEYS.WEB_GIT_NOTICE;
+            const alreadyShown = storage?.get(storageKey, false);
+            if (alreadyShown) {
+                this._gitWarningShown = true;
+                return;
+            }
+
+            this._gitWarningShown = true;
+            storage?.update(storageKey, true);
+            vscode.window.showInformationMessage(
+                'Explorer Dates: Git attribution badges are unavailable on VS Code for Web. Time-based decorations remain available.'
+            );
+        } catch (error) {
+            this._logger.debug('Failed to display Git limitation notice', error);
+        }
+    }
+
     /**
      * Enhance color for better visibility against selection backgrounds
      */
-    _enhanceColorForSelection(color, colorScheme) {
+    _enhanceColorForSelection(color) {
         // Map problematic colors to selection-safe alternatives
         const colorEnhancementMap = {
             // Chart colors that may not work well with selections
@@ -1279,6 +1327,7 @@ class FileDateDecorationProvider {
         if (this._advancedCache) {
             await this._advancedCache.dispose();
         }
+        this._cancelProgressiveWarmupJobs();
         if (this._batchProcessor) {
             this._batchProcessor.dispose();
         }

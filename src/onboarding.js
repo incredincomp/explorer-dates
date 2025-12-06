@@ -41,8 +41,8 @@ class OnboardingManager {
     _shouldShowVersionUpdate(currentVersion) {
         if (this._onboardingVersion === '0.0.0') return true;
         
-        const [currentMajor, currentMinor] = currentVersion.split('.').map(Number);
-        const [savedMajor, savedMinor] = this._onboardingVersion.split('.').map(Number);
+        const [currentMajor] = currentVersion.split('.').map(Number);
+        const [savedMajor] = this._onboardingVersion.split('.').map(Number);
         
         // Only show for major version updates to reduce notification fatigue
         // Minor updates get gentler notifications

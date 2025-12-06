@@ -1,0 +1,12 @@
+{
+  "name": "sample-workspace",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "build": "echo \"building\"",
+    "test": "echo \"testing\""
+  },
+  "dependencies": {
+    "left-pad": "^1.0.0"
+  }
+}

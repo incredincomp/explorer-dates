@@ -1,6 +1,44 @@
 const vscode = require('vscode');
-const EventEmitter = require('events');
 const { getLogger } = require('./logger');
+
+class BaseEventEmitter {
+    constructor() {
+        this._listeners = new Map();
+    }
+
+    on(event, listener) {
+        const handlers = this._listeners.get(event) || [];
+        handlers.push(listener);
+        this._listeners.set(event, handlers);
+        return this;
+    }
+
+    off(event, listener) {
+        const handlers = this._listeners.get(event);
+        if (!handlers) {
+            return this;
+        }
+        const index = handlers.indexOf(listener);
+        if (index !== -1) {
+            handlers.splice(index, 1);
+        }
+        return this;
+    }
+
+    emit(event, ...args) {
+        const handlers = this._listeners.get(event);
+        if (handlers) {
+            handlers.slice().forEach((handler) => {
+                try {
+                    handler(...args);
+                } catch (error) {
+                    console.error(`Explorer Dates API handler failed for "${event}":`, error);
+                }
+            });
+        }
+        return this;
+    }
+}
 
 const logger = getLogger();
 
@@ -8,13 +46,14 @@ const logger = getLogger();
  * Extension API Manager
  * Provides public APIs for other extensions and manages the plugin system
  */
-class ExtensionApiManager extends EventEmitter {
+class ExtensionApiManager extends BaseEventEmitter {
     constructor() {
         super();
         this.plugins = new Map();
         this.api = null;
         this.decorationProviders = new Map();
         this.initialize();
+        this._setupConfigurationListener();
     }
 
     initialize() {
@@ -57,6 +96,9 @@ class ExtensionApiManager extends EventEmitter {
      * Get file decorations for specified files
      */
     async getFileDecorations(filePaths) {
+        if (!this._isApiUsable('getFileDecorations')) {
+            return [];
+        }
         try {
             const decorations = [];
             
@@ -80,6 +122,9 @@ class ExtensionApiManager extends EventEmitter {
     }
 
     async getDecorationForFile(uri) {
+        if (!this._isApiUsable('getDecorationForFile')) {
+            return null;
+        }
         try {
             const stat = await vscode.workspace.fs.stat(uri);
             const lastModified = new Date(stat.mtime);
@@ -114,6 +159,9 @@ class ExtensionApiManager extends EventEmitter {
      * Refresh decorations for all files or specific files
      */
     async refreshDecorations(filePaths = null) {
+        if (!this._isApiUsable('refreshDecorations')) {
+            return false;
+        }
         try {
             this.emit('decorationRefreshRequested', filePaths);
             logger.info('Decoration refresh requested');
@@ -128,6 +176,9 @@ class ExtensionApiManager extends EventEmitter {
      * Register a plugin with the extension
      */
     registerPlugin(pluginId, plugin) {
+        if (!this._canUsePlugins(`registerPlugin:${pluginId}`)) {
+            return false;
+        }
         try {
             // Validate plugin structure
             if (!this.validatePlugin(plugin)) {
@@ -159,6 +210,9 @@ class ExtensionApiManager extends EventEmitter {
      * Unregister a plugin
      */
     unregisterPlugin(pluginId) {
+        if (!this._canUsePlugins(`unregisterPlugin:${pluginId}`)) {
+            return false;
+        }
         try {
             const plugin = this.plugins.get(pluginId);
             if (!plugin) {
@@ -185,6 +239,9 @@ class ExtensionApiManager extends EventEmitter {
      * Register a custom decoration provider
      */
     registerDecorationProvider(providerId, provider) {
+        if (!this._canUsePlugins(`registerDecorationProvider:${providerId}`)) {
+            return false;
+        }
         try {
             if (!this.validateDecorationProvider(provider)) {
                 throw new Error('Invalid decoration provider');
@@ -205,6 +262,9 @@ class ExtensionApiManager extends EventEmitter {
      * Unregister a decoration provider
      */
     unregisterDecorationProvider(providerId) {
+        if (!this._canUsePlugins(`unregisterDecorationProvider:${providerId}`)) {
+            return false;
+        }
         try {
             const removed = this.decorationProviders.delete(providerId);
             if (removed) {
@@ -238,6 +298,9 @@ class ExtensionApiManager extends EventEmitter {
      * Utility: Format date according to current settings
      */
     formatDate(date, format = null) {
+        if (!this._isApiUsable('formatDate')) {
+            return '';
+        }
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const displayFormat = format || config.get('displayFormat', 'smart');
@@ -274,6 +337,9 @@ class ExtensionApiManager extends EventEmitter {
      * Utility: Get file statistics
      */
     async getFileStats(filePath) {
+        if (!this._isApiUsable('getFileStats')) {
+            return null;
+        }
         try {
             const uri = vscode.Uri.file(filePath);
             const stat = await vscode.workspace.fs.stat(uri);
@@ -447,6 +513,45 @@ class ExtensionApiManager extends EventEmitter {
                 console.log('File Size Display plugin deactivated');
             }
         };
+    }
+
+    _setupConfigurationListener() {
+        vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('explorerDates.enableExtensionApi') ||
+                event.affectsConfiguration('explorerDates.allowExternalPlugins')) {
+                logger.info('Explorer Dates API configuration changed', {
+                    apiEnabled: this._isApiEnabled(),
+                    externalPluginsAllowed: this._allowsExternalPlugins()
+                });
+            }
+        });
+    }
+
+    _isApiEnabled() {
+        return vscode.workspace.getConfiguration('explorerDates').get('enableExtensionApi', true);
+    }
+
+    _allowsExternalPlugins() {
+        return vscode.workspace.getConfiguration('explorerDates').get('allowExternalPlugins', true);
+    }
+
+    _isApiUsable(featureName) {
+        if (!this._isApiEnabled()) {
+            logger.warn(`Explorer Dates API request "${featureName}" ignored because enableExtensionApi is disabled.`);
+            return false;
+        }
+        return true;
+    }
+
+    _canUsePlugins(featureName) {
+        if (!this._isApiUsable(featureName)) {
+            return false;
+        }
+        if (!this._allowsExternalPlugins()) {
+            logger.warn(`Explorer Dates plugin request "${featureName}" ignored because allowExternalPlugins is disabled.`);
+            return false;
+        }
+        return true;
     }
 
     formatFileSize(bytes) {

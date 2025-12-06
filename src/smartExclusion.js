@@ -1,7 +1,7 @@
 const vscode = require('vscode');
-const path = require('path');
-const fs = require('fs').promises;
 const { getLogger } = require('./logger');
+const { fileSystem } = require('./filesystem/FileSystemAdapter');
+const { normalizePath, getRelativePath, getFileName } = require('./utils/pathUtils');
 
 /**
  * Smart Exclusion Pattern Manager
@@ -10,6 +10,7 @@ const { getLogger } = require('./logger');
 class SmartExclusionManager {
     constructor() {
         this._logger = getLogger();
+        this._fs = fileSystem;
         
         // Common build/cache folders that should be excluded
         this._commonExclusions = [
@@ -47,7 +48,7 @@ class SmartExclusionManager {
      */
     async analyzeWorkspace(workspaceUri) {
         try {
-            const workspacePath = workspaceUri.fsPath;
+            const workspacePath = normalizePath(workspaceUri?.fsPath || workspaceUri?.path || '');
             const analysis = {
                 detectedPatterns: [],
                 suggestedExclusions: [],
@@ -56,10 +57,10 @@ class SmartExclusionManager {
             };
 
             // Detect project type from files
-            analysis.projectType = await this._detectProjectType(workspacePath);
+            analysis.projectType = await this._detectProjectType(workspaceUri);
             
             // Scan for common exclusion patterns
-            const foundFolders = await this._scanForExclusionCandidates(workspacePath);
+            const foundFolders = await this._scanForExclusionCandidates(workspaceUri, workspacePath);
             
             // Score and rank patterns
             const scoredPatterns = this._scorePatterns(foundFolders, analysis.projectType);
@@ -85,7 +86,7 @@ class SmartExclusionManager {
     /**
      * Detect project type from package files and directory structure
      */
-    async _detectProjectType(workspacePath) {
+    async _detectProjectType(workspaceUri) {
         const indicators = [
             { file: 'package.json', type: 'javascript' },
             { file: 'pom.xml', type: 'java' },
@@ -99,12 +100,19 @@ class SmartExclusionManager {
             { file: 'Dockerfile', type: 'docker' }
         ];
 
+        if (!workspaceUri) {
+            return 'unknown';
+        }
+
         for (const indicator of indicators) {
             try {
-                await fs.access(path.join(workspacePath, indicator.file));
-                return indicator.type;
-            } catch (error) {
-                // File doesn't exist, continue
+                const target = vscode.Uri.joinPath(workspaceUri, indicator.file);
+                const exists = await this._fs.exists(target);
+                if (exists) {
+                    return indicator.type;
+                }
+            } catch {
+                // Ignore and continue
             }
         }
 
@@ -114,19 +122,20 @@ class SmartExclusionManager {
     /**
      * Scan workspace for folders that should likely be excluded
      */
-    async _scanForExclusionCandidates(workspacePath, maxDepth = 2) {
+    async _scanForExclusionCandidates(workspaceUri, workspacePath, maxDepth = 2) {
         const candidates = [];
         
-        const scanDirectory = async (dirPath, currentDepth = 0) => {
+        const scanDirectory = async (dirUri, currentDepth = 0) => {
             if (currentDepth > maxDepth) return;
             
             try {
-                const entries = await fs.readdir(dirPath, { withFileTypes: true });
+                const entries = await this._fs.readdir(dirUri, { withFileTypes: true });
                 
                 for (const entry of entries) {
                     if (entry.isDirectory()) {
-                        const fullPath = path.join(dirPath, entry.name);
-                        const relativePath = path.relative(workspacePath, fullPath);
+                        const fullUri = vscode.Uri.joinPath(dirUri, entry.name);
+                        const fullPath = normalizePath(fullUri.fsPath || fullUri.path);
+                        const relativePath = getRelativePath(workspacePath, fullPath);
                         
                         // Check if this matches our common exclusions
                         if (this._commonExclusions.includes(entry.name)) {
@@ -134,12 +143,12 @@ class SmartExclusionManager {
                                 name: entry.name,
                                 path: relativePath,
                                 type: 'common',
-                                size: await this._getDirectorySize(fullPath)
+                                size: await this._getDirectorySize(fullUri)
                             });
                         }
                         
                         // Check for large directories that might be build outputs
-                        const size = await this._getDirectorySize(fullPath);
+                        const size = await this._getDirectorySize(fullUri);
                         if (size > 10 * 1024 * 1024) { // > 10MB
                             candidates.push({
                                 name: entry.name,
@@ -150,24 +159,24 @@ class SmartExclusionManager {
                         }
                         
                         // Recursively scan subdirectories
-                        await scanDirectory(fullPath, currentDepth + 1);
+                        await scanDirectory(fullUri, currentDepth + 1);
                     }
                 }
-            } catch (error) {
+            } catch {
                 // Skip directories we can't access
             }
         };
         
-        await scanDirectory(workspacePath);
+        await scanDirectory(workspaceUri);
         return candidates;
     }
 
     /**
      * Get directory size (approximate)
      */
-    async _getDirectorySize(dirPath) {
+    async _getDirectorySize(dirUri) {
         try {
-            const entries = await fs.readdir(dirPath, { withFileTypes: true });
+            const entries = await this._fs.readdir(dirUri, { withFileTypes: true });
             let size = 0;
             let fileCount = 0;
             
@@ -176,17 +185,18 @@ class SmartExclusionManager {
                 
                 if (entry.isFile()) {
                     try {
-                        const stat = await fs.stat(path.join(dirPath, entry.name));
+                        const fileUri = vscode.Uri.joinPath(dirUri, entry.name);
+                        const stat = await this._fs.stat(fileUri);
                         size += stat.size;
                         fileCount++;
-                    } catch (error) {
+                    } catch {
                         // Skip files we can't access
                     }
                 }
             }
             
             return size;
-        } catch (error) {
+        } catch {
             return 0;
         }
     }
@@ -314,7 +324,12 @@ class SmartExclusionManager {
      * Generate workspace key for storing profiles
      */
     _getWorkspaceKey(workspaceUri) {
-        return path.basename(workspaceUri.fsPath);
+        if (!workspaceUri) {
+            return 'unknown-workspace';
+        }
+
+        const fsPath = workspaceUri.fsPath || workspaceUri.path || '';
+        return getFileName(fsPath) || normalizePath(fsPath);
     }
 
     /**

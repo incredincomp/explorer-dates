@@ -6,7 +6,7 @@ console.log('🔍 Testing bundled extension API...');
 
 try {
     // Check if the bundle exists
-    const bundlePath = path.join(__dirname, 'dist', 'extension.js');
+    const bundlePath = path.join(__dirname, '..', 'dist', 'extension.js');
     if (!fs.existsSync(bundlePath)) {
         throw new Error('Bundle not found');
     }

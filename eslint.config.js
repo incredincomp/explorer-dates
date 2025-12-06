@@ -2,7 +2,14 @@ const globals = require("globals");
 
 module.exports = [
     {
-        ignores: ["node_modules/**", ".vscode-test/**", "*.vsix", ".env"]
+        ignores: [
+            "node_modules/**",
+            ".vscode-test/**",
+            "*.vsix",
+            ".env",
+            "dist/**",
+            "tests/artifacts/**"
+        ]
     },
     {
         files: ["**/*.js"],
@@ -37,4 +44,3 @@ module.exports = [
         }
     }
 ];
-

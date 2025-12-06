@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.2.0 - Configuration Validation & Progressive Loading
+
+### Feature Gating & Extensibility Controls
+- `enableWorkspaceTemplates`, `enableReporting`, `enableExtensionApi`, and `allowExternalPlugins` now actively gate the managers, commands, and exported APIs that rely on them so locked-down workspaces can fully disable optional systems.
+- Public API exports and plugin hooks check the new toggles at runtime to prevent accidental access when organizations need a hardened configuration.
+
+### Reporting Accuracy & Retention
+- Reporting flows now respect every `reportFormats` selection and embed `timeTrackingIntegration` metadata for downstream tools.
+- Historical activity caches are trimmed automatically according to `activityTrackingDays`, keeping bundle sizes small while still providing useful analytics snapshots.
+
+### Progressive Loading Warm-up
+- When `progressiveLoading` is true, the decoration provider now stages background batches so large workspaces see warm Explorer badges without blocking VS Code startup.
+- Added configuration listeners to ensure the warm-up queue shuts down cleanly when the feature is disabled mid-session.
+
+### VS Code for Web Support
+- Added a dedicated browser bundle (served via `dist/extension.web.js`) plus a normalized file-system adapter so Explorer Dates runs inside `vscode.dev`, `github.dev`, and other web-backed workspaces.
+- Template exports/imports fall back to download prompts, persistent cache/onboarding data migrates to `globalState`, and Git-locked commands stay hidden automatically in sandboxed environments.
+
+### Workspace Templates
+- Built-in workspace templates point to the real Explorer Dates setting keys/values instead of placeholders, so exports/imports stay accurate across machines.
+- Template exports include the new gating toggles so teams can share hardened presets confidently.
+
+### Configuration Verification Tooling
+- Added `npm run test:config` (backed by `tests/verify-config.js`) to ensure every contributed setting is referenced in code/docs before publishing.
+- Extended `tests/exercise-flows.js` and bundle tests to cover the new gating paths so regressions are caught prior to packaging.
+- Introduced `tests/test-feature-gates.js` plus a consolidated `npm test` workflow that runs linting, configuration coverage, feature-gate activation scenarios, flow exercises, and bundle sanity checks with one command before release.
+
 ## 1.1.0
 
 ### Major Configuration Improvements
