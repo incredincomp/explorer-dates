@@ -8,11 +8,15 @@ const { AdvancedCache } = require('./advancedCache');
 const { ThemeIntegrationManager } = require('./themeIntegration');
 const { AccessibilityManager } = require('./accessibility');
 const { formatFileSize, trimBadge } = require('./utils/formatters');
-const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, getRelativePath } = require('./utils/pathUtils');
+const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, getRelativePath, getUriPath } = require('./utils/pathUtils');
 const { DEFAULT_CACHE_TIMEOUT, DEFAULT_MAX_CACHE_SIZE, MONTH_ABBREVIATIONS, GLOBAL_STATE_KEYS } = require('./constants');
 const { isWebEnvironment } = require('./utils/env');
 
-const describeFile = (input = '') => getFileName(input) || 'unknown';
+const describeFile = (input = '') => {
+    const pathValue = typeof input === 'string' ? input : getUriPath(input);
+    const normalized = normalizePath(pathValue);
+    return getFileName(normalized) || normalized || 'unknown';
+};
 
 const isWebBuild = process.env.VSCODE_WEB === 'true';
 let execAsync = null;
@@ -191,8 +195,9 @@ class FileDateDecorationProvider {
         const originalProvide = this.provideFileDecoration.bind(this);
         this.provideFileDecoration = async (uri, token) => {
             this._providerCallCount++;
-            this._providerCallFiles.add(uri.fsPath);
-            this._logger.info(`🔍 Provider called ${this._providerCallCount} times for: ${uri.fsPath}`);
+            const trackedPath = getUriPath(uri) || uri?.toString(true) || 'unknown';
+            this._providerCallFiles.add(normalizePath(trackedPath));
+            this._logger.info(`🔍 Provider called ${this._providerCallCount} times for: ${describeFile(uri || trackedPath)}`);
             return await originalProvide(uri, token);
         };
         
@@ -328,11 +333,11 @@ class FileDateDecorationProvider {
             try {
                 this._advancedCache.invalidateByPattern(cacheKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
             } catch (error) {
-                this._logger.debug(`Could not invalidate advanced cache for ${describeFile(uri.fsPath)}: ${error.message}`);
+                this._logger.debug(`Could not invalidate advanced cache for ${describeFile(uri)}: ${error.message}`);
             }
         }
         this._onDidChangeFileDecorations.fire(uri);
-        this._logger.debug(`🔄 Refreshed decoration cache for: ${describeFile(uri.fsPath)}`);
+        this._logger.debug(`🔄 Refreshed decoration cache for: ${describeFile(uri)}`);
     }
 
     /**
@@ -343,10 +348,10 @@ class FileDateDecorationProvider {
         this._decorationCache.delete(cacheKey);
         if (this._advancedCache) {
             // Advanced cache doesn't have a delete method, so we'll let it expire naturally
-            this._logger.debug(`Advanced cache entry will expire naturally: ${describeFile(uri.fsPath)}`);
+            this._logger.debug(`Advanced cache entry will expire naturally: ${describeFile(uri)}`);
         }
         this._onDidChangeFileDecorations.fire(uri);
-        this._logger.debug(`🗑️ Cleared decoration cache for: ${describeFile(uri.fsPath)}`);
+        this._logger.debug(`🗑️ Cleared decoration cache for: ${describeFile(uri)}`);
     }
 
     /**
@@ -390,9 +395,12 @@ class FileDateDecorationProvider {
      */
     async _isExcludedSimple(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const filePath = uri.fsPath;
+        const filePath = getUriPath(uri);
+        if (!filePath) {
+            return false;
+        }
         const normalizedPath = normalizePath(filePath);
-        const fileName = getFileName(filePath);
+        const fileName = getFileName(normalizedPath);
         const fileExt = getExtension(filePath);
         
         // Check if this file type should always be shown (helpful for JPGs, PNGs, etc.)
@@ -453,9 +461,12 @@ class FileDateDecorationProvider {
      */
     async _isExcluded(uri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const filePath = uri.fsPath;
+        const filePath = getUriPath(uri);
+        if (!filePath) {
+            return false;
+        }
         const normalizedPath = normalizePath(filePath);
-        const fileName = getFileName(filePath);
+        const fileName = getFileName(normalizedPath);
         
         // Get combined exclusions (global + workspace + smart)
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
@@ -936,8 +947,7 @@ class FileDateDecorationProvider {
      * Normalize cache key to handle different URI representations
      */
     _getCacheKey(uri) {
-        const pathValue = uri?.fsPath || uri?.path || '';
-        return buildCacheKey(pathValue);
+        return buildCacheKey(getUriPath(uri));
     }
 
     /**
@@ -947,12 +957,16 @@ class FileDateDecorationProvider {
         const startTime = Date.now();
 
         try {
-            if (!uri || !uri.fsPath) {
+            if (!uri) {
                 this._logger.error('❌ Invalid URI provided to provideFileDecoration:', uri);
                 return undefined;
             }
 
-            const filePath = uri.fsPath;
+            const filePath = getUriPath(uri);
+            if (!filePath) {
+                this._logger.error('❌ Could not resolve path for URI in provideFileDecoration:', uri);
+                return undefined;
+            }
             const fileLabel = describeFile(filePath);
 
             this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
@@ -974,11 +988,6 @@ class FileDateDecorationProvider {
 
             if (!_get('showDateDecorations', true)) {
                 this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
-                return undefined;
-            }
-
-            if (uri.scheme !== 'file') {
-                this._logger.debug(`Non-file URI scheme: ${uri.scheme}`);
                 return undefined;
             }
 
@@ -1145,8 +1154,8 @@ class FileDateDecorationProvider {
         } catch (error) {
             this._metrics.errors++;
             const processingTime = startTime ? Date.now() - startTime : 0;
-            const safeFileName = describeFile(uri?.fsPath);
-            const safeUri = uri?.fsPath || 'unknown-uri';
+            const safeFileName = describeFile(uri);
+            const safeUri = getUriPath(uri) || 'unknown-uri';
 
             this._logger.error(`❌ DECORATION ERROR for ${safeFileName}:`, {
                 error: error.message,
@@ -1206,7 +1215,7 @@ class FileDateDecorationProvider {
         try {
             this._extensionContext = context;
             if (this._isWeb) {
-                this._maybeWarnAboutGitLimitations();
+                await this._maybeWarnAboutGitLimitations();
             }
 
             // Initialize advanced cache
@@ -1251,25 +1260,35 @@ class FileDateDecorationProvider {
         }
     }
 
-    _maybeWarnAboutGitLimitations() {
-        try {
-            if (this._gitWarningShown) {
-                return;
-            }
+    async _maybeWarnAboutGitLimitations() {
+        if (this._gitWarningShown) {
+            return;
+        }
 
+        this._gitWarningShown = true;
+
+        try {
             const storage = this._extensionContext?.globalState;
             const storageKey = GLOBAL_STATE_KEYS.WEB_GIT_NOTICE;
             const alreadyShown = storage?.get(storageKey, false);
             if (alreadyShown) {
-                this._gitWarningShown = true;
                 return;
             }
 
-            this._gitWarningShown = true;
-            storage?.update(storageKey, true);
-            vscode.window.showInformationMessage(
-                'Explorer Dates: Git attribution badges are unavailable on VS Code for Web. Time-based decorations remain available.'
-            );
+            if (storage?.update) {
+                try {
+                    await storage.update(storageKey, true);
+                } catch (storageError) {
+                    this._logger.debug('Failed to persist Git limitation notice flag', storageError);
+                }
+            }
+
+            // Fire-and-forget so we do not block activation waiting on user interaction
+            Promise.resolve().then(() => {
+                vscode.window.showInformationMessage(
+                    'Explorer Dates: Git attribution badges are unavailable on VS Code for Web. Time-based decorations remain available.'
+                );
+            });
         } catch (error) {
             this._logger.debug('Failed to display Git limitation notice', error);
         }

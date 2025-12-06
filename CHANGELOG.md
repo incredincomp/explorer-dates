@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 - Web Stability Hotfix
+
+### Web Decorations
+- Normalized URI handling so VS Code for Web workspaces no longer require `fsPath`, restoring Explorer decorations on `vscode.dev`, `github.dev`, and other browser hosts.
+- Simplified exclusion logic to use the same URI helper, ensuring cached badges refresh correctly regardless of scheme.
+
+### Git Notice Reliability
+- The Git feature warning now awaits storage writes and schedules the info toast without blocking activation, preventing configuration initialization from hanging after install.
+
 ## 1.2.0 - Configuration Validation & Progressive Loading
 
 ### Feature Gating & Extensibility Controls

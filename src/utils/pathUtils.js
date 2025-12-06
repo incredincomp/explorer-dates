@@ -41,6 +41,29 @@ function getCacheKey(input = '') {
     return normalizePath(input).toLowerCase();
 }
 
+function getUriPath(target = '') {
+    if (!target) {
+        return '';
+    }
+    if (typeof target === 'string') {
+        return target;
+    }
+    if (typeof target.fsPath === 'string' && target.fsPath.length > 0) {
+        return target.fsPath;
+    }
+    if (typeof target.path === 'string' && target.path.length > 0) {
+        return target.path;
+    }
+    if (typeof target.toString === 'function') {
+        try {
+            return target.toString(true);
+        } catch {
+            return target.toString();
+        }
+    }
+    return String(target);
+}
+
 function getRelativePath(base = '', target = '') {
     const normalizedBase = normalizePath(base);
     const normalizedTarget = normalizePath(target);
@@ -62,5 +85,6 @@ module.exports = {
     getDirectory,
     joinPath,
     getCacheKey,
+    getUriPath,
     getRelativePath
 };
