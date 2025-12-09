@@ -44,6 +44,38 @@ class SmartExclusionManager {
     }
 
     /**
+     * Clean up duplicate exclusions for all workspaces
+     */
+    async cleanupAllWorkspaceProfiles() {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        const profiles = config.get('workspaceExclusionProfiles', {});
+        let updated = false;
+
+        for (const [workspaceKey, exclusions] of Object.entries(profiles)) {
+            const list = Array.isArray(exclusions) ? exclusions : [];
+            const deduped = this._dedupeList(list);
+
+            if (!this._areListsEqual(list, deduped)) {
+                profiles[workspaceKey] = deduped;
+                updated = true;
+                this._logger.debug(`Deduped workspace exclusions for ${workspaceKey}`, {
+                    before: list.length,
+                    after: deduped.length
+                });
+            }
+        }
+
+        if (updated) {
+            await config.update('workspaceExclusionProfiles', profiles, vscode.ConfigurationTarget.Global);
+            this._logger.info('Cleaned up duplicate workspace exclusions', {
+                workspaceCount: Object.keys(profiles).length
+            });
+        } else {
+            this._logger.debug('Workspace exclusion profiles already clean');
+        }
+    }
+
+    /**
      * Analyze workspace and suggest exclusions
      */
     async analyzeWorkspace(workspaceUri) {
@@ -264,12 +296,32 @@ class SmartExclusionManager {
     /**
      * Get workspace-specific exclusion profile
      */
-    getWorkspaceExclusions(workspaceUri) {
+    async getWorkspaceExclusions(workspaceUri) {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const profiles = config.get('workspaceExclusionProfiles', {});
         const workspaceKey = this._getWorkspaceKey(workspaceUri);
-        
-        return profiles[workspaceKey] || [];
+
+        const stored = profiles[workspaceKey] || [];
+        const deduped = this._dedupeList(stored);
+
+        if (deduped.length !== stored.length) {
+            profiles[workspaceKey] = deduped;
+            try {
+                await config.update(
+                    'workspaceExclusionProfiles',
+                    profiles,
+                    vscode.ConfigurationTarget.Global
+                );
+                this._logger.info(`Cleaned duplicate exclusions for ${workspaceKey}`, {
+                    before: stored.length,
+                    after: deduped.length
+                });
+            } catch (error) {
+                this._logger.warn(`Failed to persist cleaned exclusions for ${workspaceKey}`, error);
+            }
+        }
+
+        return deduped;
     }
 
     /**
@@ -279,11 +331,21 @@ class SmartExclusionManager {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const profiles = config.get('workspaceExclusionProfiles', {});
         const workspaceKey = this._getWorkspaceKey(workspaceUri);
-        
-        profiles[workspaceKey] = exclusions;
-        
+
+        const normalized = this._dedupeList(exclusions);
+        const previouslySaved = Array.isArray(profiles[workspaceKey])
+            ? this._areListsEqual(profiles[workspaceKey], normalized)
+            : false;
+
+        if (previouslySaved) {
+            this._logger.debug(`No workspace exclusion changes for ${workspaceKey}`);
+            return;
+        }
+
+        profiles[workspaceKey] = normalized;
+
         await config.update('workspaceExclusionProfiles', profiles, vscode.ConfigurationTarget.Global);
-        this._logger.info(`Saved workspace exclusions for ${workspaceKey}`, exclusions);
+        this._logger.info(`Saved workspace exclusions for ${workspaceKey}`, normalized);
     }
 
     /**
@@ -299,7 +361,7 @@ class SmartExclusionManager {
         let combinedPatterns = [...globalPatterns];
         
         // Add workspace-specific exclusions
-        const workspaceExclusions = this.getWorkspaceExclusions(workspaceUri);
+        const workspaceExclusions = await this.getWorkspaceExclusions(workspaceUri);
         combinedFolders.push(...workspaceExclusions);
         
         // Add smart exclusions if enabled
@@ -337,25 +399,64 @@ class SmartExclusionManager {
      */
     async suggestExclusions(workspaceUri) {
         const analysis = await this.analyzeWorkspace(workspaceUri);
-        if (!analysis || analysis.suggestedExclusions.length === 0) {
+        const suggestions = this._dedupeList(analysis?.suggestedExclusions || []);
+
+        if (!analysis || suggestions.length === 0) {
             return;
         }
 
-        const message = `Found ${analysis.suggestedExclusions.length} folders that could be excluded for better performance.`;
+        const existing = await this.getWorkspaceExclusions(workspaceUri);
+        const newExclusions = suggestions.filter(pattern => !existing.includes(pattern));
+
+        if (newExclusions.length === 0) {
+            this._logger.debug('No new smart exclusions detected', {
+                workspace: this._getWorkspaceKey(workspaceUri)
+            });
+            return;
+        }
+
+        const updated = this._mergeExclusions(existing, newExclusions);
+        await this.saveWorkspaceExclusions(workspaceUri, updated);
+
+        const summary = newExclusions.length === 1
+            ? `Explorer Dates automatically excluded "${newExclusions[0]}" to keep Explorer responsive.`
+            : `Explorer Dates automatically excluded ${newExclusions.length} folders to keep Explorer responsive.`;
+
         const action = await vscode.window.showInformationMessage(
-            message,
-            'Apply Suggestions',
+            `${summary} Keep these exclusions?`,
+            'Keep',
             'Review',
-            'Dismiss'
+            'Revert'
         );
 
-        if (action === 'Apply Suggestions') {
-            await this.saveWorkspaceExclusions(workspaceUri, analysis.suggestedExclusions);
-            vscode.window.showInformationMessage('Smart exclusions applied!');
+        if (action === 'Revert') {
+            await this.saveWorkspaceExclusions(workspaceUri, existing);
+            vscode.window.showInformationMessage(
+                'Smart exclusions reverted. Decorations will refresh for the restored folders.'
+            );
+            this._logger.info('User reverted smart exclusions', { reverted: newExclusions });
         } else if (action === 'Review') {
-            // Show detailed review dialog
             this._showExclusionReview(analysis);
+            this._logger.info('User reviewing smart exclusions', { pending: newExclusions });
+        } else {
+            this._logger.info('User kept smart exclusions', { accepted: newExclusions });
         }
+    }
+
+    _dedupeList(values = []) {
+        return Array.from(new Set(values.filter(Boolean)));
+    }
+
+    _mergeExclusions(current = [], additions = []) {
+        return this._dedupeList([...(current || []), ...(additions || [])]);
+    }
+
+    _areListsEqual(a = [], b = []) {
+        if (a.length !== b.length) {
+            return false;
+        }
+
+        return a.every((value, index) => value === b[index]);
     }
 
     /**

@@ -1,5 +1,17 @@
 # Changelog
 
+# Changelog
+
+## 1.2.2 - Workspace Exclusion Reliability
+
+### Automatic Profile Cleanup
+- Smart Exclusion Manager now deduplicates every workspace profile at startup and quietly persists the trimmed list, preventing `.vscode/settings.json` from ballooning with repeated entries.
+- Existing installs are cleaned in-place before any new suggestions run, so users who already had hundreds of redundant exclusions immediately regain a tidy configuration.
+
+### Smarter Suggestions
+- When Explorer Dates auto-detects new heavy folders it adds only the delta, informs you once, and lets you keep, review, or revert those exclusions without re-adding everything on the next reload.
+- Workspace-level exclusion saves are now idempotent and skip pointless writes when nothing changed, removing the repeated prompts you were seeing on every reload.
+
 ## 1.2.1 - Web Stability Hotfix
 
 ### Web Decorations

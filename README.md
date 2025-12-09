@@ -139,7 +139,19 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.2.0 (Latest)
+### Version 1.2.2 (Latest)
+
+**Workspace Exclusion Reliability**
+
+- Automatic profile cleanup deduplicates every workspace exclusion list at startup, keeping `.vscode/settings.json` lean even after months of smart suggestions.
+- Existing installs are sanitized before new suggestions run, so previously duplicated folders disappear without manual cleanup.
+
+**Smarter Suggestions & Prompts**
+
+- Smart Exclusion now only writes newly detected folders, preventing the repeated "add the same exclusions" prompts on every reload.
+- When Explorer Dates auto-excludes something, you get a single Keep/Review/Revert prompt so you stay in control without cluttering settings.
+
+### Version 1.2.0
 
 **Configuration Validation & Progressive Loading**
 

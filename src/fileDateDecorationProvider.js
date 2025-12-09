@@ -1240,6 +1240,12 @@ class FileDateDecorationProvider {
                 await this._accessibility.applyAccessibilityRecommendations();
                 this._logger.info('Accessibility recommendations applied');
             }
+
+            try {
+                await this._smartExclusion.cleanupAllWorkspaceProfiles();
+            } catch (error) {
+                this._logger.warn('Failed to clean workspace exclusion profiles', error);
+            }
             
             // Suggest smart exclusions for workspace
             if (vscode.workspace.workspaceFolders) {
