@@ -597,6 +597,13 @@ class FileDateDecorationProvider {
         const now = new Date();
         const diffMs = precalcDiffMs !== null ? precalcDiffMs : (now.getTime() - date.getTime());
         
+        // Handle future-dated files (negative diffMs due to clock skew, timezone issues, etc.)
+        // Treat them as "just modified" to avoid displaying negative values
+        if (diffMs < 0) {
+            this._logger.debug(`File has future modification time (diffMs: ${diffMs}), treating as just modified`);
+            return '●●';
+        }
+        
         // Using 2-character indicators for better readability
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
