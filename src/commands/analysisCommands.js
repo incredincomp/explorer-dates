@@ -143,8 +143,20 @@ function registerAnalysisCommands({
                 diagnosticResults['Performance'] = {
                     'Total Decorations': metrics.totalDecorations,
                     'Cache Size': metrics.cacheSize,
+                    'Cache Hit Rate': metrics.cacheHitRate,
                     'Errors': metrics.errors
                 };
+
+                if (metrics.performanceTiming) {
+                    diagnosticResults['Performance Timing'] = {
+                        'Avg Git Blame (ms)': metrics.performanceTiming.avgGitBlameMs,
+                        'Avg File Stat (ms)': metrics.performanceTiming.avgFileStatMs,
+                        'Git Calls': metrics.performanceTiming.gitBlameCalls,
+                        'File Stat Calls': metrics.performanceTiming.fileStatCalls,
+                        'Total Git Time (ms)': metrics.performanceTiming.totalGitBlameTimeMs,
+                        'Total File Stat Time (ms)': metrics.performanceTiming.totalFileStatTimeMs
+                    };
+                }
             }
 
             const panel = vscode.window.createWebviewPanel(

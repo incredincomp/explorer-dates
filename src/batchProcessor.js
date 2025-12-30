@@ -14,6 +14,7 @@ class BatchProcessor {
         this._processedCount = 0;
         this._totalCount = 0;
         this._statusBar = null;
+        this._configurationWatcher = null;
         
         // Performance tracking
         this._metrics = {
@@ -36,7 +37,10 @@ class BatchProcessor {
         this._statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -1000);
         
         // Listen for configuration changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.batchSize')) {
                 this._batchSize = vscode.workspace.getConfiguration('explorerDates').get('batchSize', 50);
                 this._logger.debug(`Batch size updated to: ${this._batchSize}`);
@@ -333,6 +337,10 @@ class BatchProcessor {
         this.cancelAll();
         if (this._statusBar) {
             this._statusBar.dispose();
+        }
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
         }
         this._logger.info('BatchProcessor disposed', this.getMetrics());
     }

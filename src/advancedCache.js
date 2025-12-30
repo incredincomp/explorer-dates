@@ -25,6 +25,7 @@ class AdvancedCache {
         this._storageKey = GLOBAL_STATE_KEYS.ADVANCED_CACHE;
         this._metadataKey = GLOBAL_STATE_KEYS.ADVANCED_CACHE_METADATA;
         this._fs = fileSystem;
+        this._configurationWatcher = null;
         
         // Performance metrics
         this._metrics = {
@@ -78,10 +79,15 @@ class AdvancedCache {
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._persistentCacheEnabled = config.get('persistentCache', true);
         this._maxMemoryUsage = config.get('maxMemoryUsage', 50) * 1024 * 1024; // Convert MB to bytes
-        
-        // Listen for configuration changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('explorerDates.persistentCache') || 
+        this._ensureConfigurationWatcher();
+    }
+
+    _ensureConfigurationWatcher() {
+        if (this._configurationWatcher) {
+            return;
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('explorerDates.persistentCache') ||
                 e.affectsConfiguration('explorerDates.maxMemoryUsage')) {
                 this._loadConfiguration();
             }
@@ -475,6 +481,10 @@ class AdvancedCache {
         
         // Clear memory
         this.clear();
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
         
         this._logger.info('Advanced cache disposed', this.getStats());
     }

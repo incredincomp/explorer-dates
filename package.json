@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -320,6 +320,12 @@
     "configuration": {
       "title": "Explorer Dates",
       "properties": {
+        "explorerDates.performanceMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable minimal performance mode: disables all features except basic date/time tooltips on files (no Git info, no auto-updates, no status bar, no progressive loading). Recommended for large projects or low-resource systems.",
+          "scope": "window"
+        },
         "explorerDates.showDateDecorations": {
           "type": "boolean",
           "default": true,
@@ -727,10 +733,11 @@
   "scripts": {
     "lint": "eslint .",
     "test": "npm run test:suite",
-    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
+    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:performance-mode && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
     "test:config": "node tests/verify-config.js",
     "test:config-scenarios": "node tests/test-configuration-scenarios.js",
     "test:feature-gates": "node tests/test-feature-gates.js",
+    "test:performance-mode": "node tests/test-performance-mode.js",
     "test:flows": "node tests/exercise-flows.js",
     "test:bundle": "node tests/test-bundle.js",
     "test:verify-bundle": "node tests/verify-bundle.js",

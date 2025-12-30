@@ -52,6 +52,7 @@ class ExtensionApiManager extends BaseEventEmitter {
         this.plugins = new Map();
         this.api = null;
         this.decorationProviders = new Map();
+        this._configurationWatcher = null;
         this.initialize();
         this._setupConfigurationListener();
     }
@@ -516,7 +517,10 @@ class ExtensionApiManager extends BaseEventEmitter {
     }
 
     _setupConfigurationListener() {
-        vscode.workspace.onDidChangeConfiguration((event) => {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration('explorerDates.enableExtensionApi') ||
                 event.affectsConfiguration('explorerDates.allowExternalPlugins')) {
                 logger.info('Explorer Dates API configuration changed', {
@@ -560,6 +564,16 @@ class ExtensionApiManager extends BaseEventEmitter {
         const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    dispose() {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
+        this.plugins.clear();
+        this.decorationProviders.clear();
+        logger.info('Extension API Manager disposed');
     }
 }
 
