@@ -457,7 +457,8 @@
             "recent": "#ffff00",
             "old": "#ff0000"
           },
-          "markdownDescription": "Define custom colors for the 'custom' color scheme. To apply these colors, use the `Explorer Dates: Apply Custom Colors` command or manually add them to your `workbench.colorCustomizations` setting. [Learn more](https://code.visualstudio.com/api/references/theme-color)",
+          "markdownDescription": "**DEPRECATED:** This setting is deprecated. Use `workbench.colorCustomizations` instead to define custom colors for the 'custom' color scheme. Run the `Explorer Dates: Apply Custom Colors` command to set up custom colors properly. [Learn more](https://code.visualstudio.com/api/references/theme-color)",
+          "deprecationMessage": "This setting is deprecated. Use 'workbench.colorCustomizations' with the color IDs 'explorerDates.customColor.veryRecent', 'explorerDates.customColor.recent', and 'explorerDates.customColor.old' instead.",
           "properties": {
             "veryRecent": {
               "type": "string",
