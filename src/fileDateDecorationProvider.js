@@ -77,6 +77,10 @@ class FileDateDecorationProvider {
         this._previewSettings = null;
         this._extensionContext = null;
         
+        // Periodic refresh timer for time-based badges
+        this._refreshTimer = null;
+        this._refreshInterval = 60000; // 1 minute default
+        
         // Check if performance mode is enabled
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._performanceMode = config.get('performanceMode', false);
@@ -88,6 +92,11 @@ class FileDateDecorationProvider {
         
         // Listen for configuration changes
         this._setupConfigurationWatcher();
+        
+        // Start periodic refresh for time-based badges (disabled in performance mode)
+        if (!this._performanceMode) {
+            this._setupPeriodicRefresh();
+        }
         
         this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
     }
@@ -234,6 +243,53 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Set up periodic refresh to keep time-based badges current
+     */
+    _setupPeriodicRefresh() {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        this._refreshInterval = config.get('badgeRefreshInterval', 60000); // Default 1 minute
+        
+        this._logger.info(`Setting up periodic refresh with interval: ${this._refreshInterval}ms`);
+        
+        // Clear any existing timer
+        if (this._refreshTimer) {
+            clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+        }
+        
+        // Only set up periodic refresh if decorations are enabled
+        if (!config.get('showDateDecorations', true)) {
+            this._logger.info('Decorations disabled, skipping periodic refresh setup');
+            return;
+        }
+        
+        // Set up periodic refresh timer
+        this._refreshTimer = setInterval(() => {
+            this._logger.debug('Periodic refresh triggered - clearing caches and refreshing decorations');
+            
+            // Track cache size before clearing for logging
+            const memoryCacheSize = this._decorationCache.size;
+            
+            // Clear both memory and advanced cache to force recalculation
+            this._decorationCache.clear();
+            if (this._advancedCache) {
+                try {
+                    this._advancedCache.clear();
+                } catch (error) {
+                    this._logger.debug(`Failed to clear advanced cache during periodic refresh: ${error.message}`);
+                }
+            }
+            
+            // Trigger refresh of all decorations
+            this._onDidChangeFileDecorations.fire(undefined);
+            
+            this._logger.debug(`Periodic refresh completed - cleared ${memoryCacheSize} cached items from memory`);
+        }, this._refreshInterval);
+        
+        this._logger.info('Periodic refresh timer started');
+    }
+
+    /**
      * Set up configuration watcher to update settings
      */
     _setupConfigurationWatcher() {
@@ -263,8 +319,27 @@ class FileDateDecorationProvider {
                             this._logger.info('File watcher enabled (performance mode off)');
                         }
                         
+                        // Handle periodic refresh timer
+                        if (newPerformanceMode && this._refreshTimer) {
+                            clearInterval(this._refreshTimer);
+                            this._refreshTimer = null;
+                            this._logger.info('Periodic refresh disabled for performance mode');
+                        } else if (!newPerformanceMode && !this._refreshTimer) {
+                            this._setupPeriodicRefresh();
+                            this._logger.info('Periodic refresh enabled (performance mode off)');
+                        }
+                        
                         // Clear caches and refresh when switching modes
                         this.refreshAll();
+                    }
+                }
+                
+                // Update refresh interval and restart timer if changed
+                if (e.affectsConfiguration('explorerDates.badgeRefreshInterval')) {
+                    this._refreshInterval = config.get('badgeRefreshInterval', 60000);
+                    this._logger.info(`Badge refresh interval updated to: ${this._refreshInterval}ms`);
+                    if (!this._performanceMode) {
+                        this._setupPeriodicRefresh();
                     }
                 }
                 
@@ -287,6 +362,11 @@ class FileDateDecorationProvider {
                     this._applyProgressiveLoadingSetting().catch((error) => {
                         this._logger.error('Failed to reconfigure progressive loading', error);
                     });
+                }
+                
+                // Restart periodic refresh if decorations setting changed
+                if (e.affectsConfiguration('explorerDates.showDateDecorations')) {
+                    this._setupPeriodicRefresh();
                 }
             }
         });
@@ -631,6 +711,13 @@ class FileDateDecorationProvider {
         const now = new Date();
         const diffMs = precalcDiffMs !== null ? precalcDiffMs : (now.getTime() - date.getTime());
         
+        // Handle future-dated files (negative diffMs due to clock skew, timezone issues, etc.)
+        // Treat them as "just modified" to avoid displaying negative values
+        if (diffMs < 0) {
+            this._logger.debug(`File has future modification time (diffMs: ${diffMs}), treating as just modified`);
+            return '●●';
+        }
+        
         // Using 2-character indicators for better readability
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -731,33 +818,16 @@ class FileDateDecorationProvider {
                 return new vscode.ThemeColor('terminal.ansiRed');
             
             case 'custom': {
-                // Use custom colors from configuration
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const customColors = config.get('customColors', {
-                    veryRecent: '#00ff00',
-                    recent: '#ffff00',
-                    old: '#ff0000'
-                });
-                
-                // Create custom color decorations based on user's hex values
-                // Note: VS Code doesn't directly support hex colors in ThemeColor,
-                // but we can use the closest semantic theme colors that will adapt to themes
+                // Use custom color IDs registered in package.json
+                // Users customize these colors via workbench.colorCustomizations
+                // Example: "explorerDates.customColor.veryRecent": "#FF6095"
                 if (diffHours < 1) {
-                    // For veryRecent files - use success/positive color
-                    return customColors.veryRecent.toLowerCase().includes('green') || customColors.veryRecent === '#00ff00' 
-                        ? new vscode.ThemeColor('terminal.ansiGreen')
-                        : new vscode.ThemeColor('editorInfo.foreground');
+                    return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
                 }
                 if (diffHours < 24) {
-                    // For recent files - use warning/caution color  
-                    return customColors.recent.toLowerCase().includes('yellow') || customColors.recent === '#ffff00'
-                        ? new vscode.ThemeColor('terminal.ansiYellow')
-                        : new vscode.ThemeColor('editorWarning.foreground');
+                    return new vscode.ThemeColor('explorerDates.customColor.recent');
                 }
-                // For old files - use error/danger color
-                return customColors.old.toLowerCase().includes('red') || customColors.old === '#ff0000'
-                    ? new vscode.ThemeColor('terminal.ansiRed') 
-                    : new vscode.ThemeColor('editorError.foreground');
+                return new vscode.ThemeColor('explorerDates.customColor.old');
             }
             
             default:
@@ -1396,6 +1466,13 @@ class FileDateDecorationProvider {
      */
     async dispose() {
         this._logger.info('Disposing FileDateDecorationProvider', this.getMetrics());
+        
+        // Clear periodic refresh timer
+        if (this._refreshTimer) {
+            clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+            this._logger.info('Cleared periodic refresh timer');
+        }
         
         // Dispose advanced systems
         if (this._advancedCache) {
