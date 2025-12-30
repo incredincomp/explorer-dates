@@ -90,8 +90,6 @@ class FileDateDecorationProvider {
         this._setupConfigurationWatcher();
         
         this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
-        // Preview settings (transient overrides used by onboarding quick-setup)
-        this._previewSettings = null;
     }
 
     /**

@@ -822,7 +822,8 @@ async function activate(context) {
         let statusBarItem;
         const config = vscode.workspace.getConfiguration('explorerDates');
         const performanceMode = config.get('performanceMode', false);
-        if (config.get('showStatusBar', false) && !performanceMode) {
+        const showStatusBar = config.get('showStatusBar', false);
+        if (showStatusBar && !performanceMode) {
             statusBarItem = initializeStatusBar(context);
         }
         
