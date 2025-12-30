@@ -50,6 +50,48 @@ Compact size formatting examples:
 - `explorerDates.highContrastMode` — `true`/`false` — toggles high-contrast color choices and accessibility text improvements
 - The extension always supplies an accessibility-friendly text string for screen readers combining full date, author (if any), and size.
 
+#### Custom Colors Configuration
+
+To use custom colors with Explorer Dates, you need to:
+
+1. **Set the color scheme to custom**:
+   ```json
+   "explorerDates.colorScheme": "custom"
+   ```
+
+2. **Define your custom colors in workbench.colorCustomizations**:
+   ```json
+   "workbench.colorCustomizations": {
+     "explorerDates.customColor.veryRecent": "#FF6095",
+     "explorerDates.customColor.recent": "#E72969",
+     "explorerDates.customColor.old": "#CCCCCC"
+   }
+   ```
+
+3. **Or use the built-in command**:
+   - Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+   - Run `Explorer Dates: Apply Custom Colors`
+   - Choose "Copy to Clipboard" or "Open Settings"
+
+**Color Categories**:
+- `explorerDates.customColor.veryRecent` — Files modified within 1 hour
+- `explorerDates.customColor.recent` — Files modified within 1 day  
+- `explorerDates.customColor.old` — Files modified more than 1 day ago
+
+**Example Configuration**:
+```json
+{
+  "explorerDates.colorScheme": "custom",
+  "workbench.colorCustomizations": {
+    "explorerDates.customColor.veryRecent": "#00ff00",
+    "explorerDates.customColor.recent": "#ffaa00",
+    "explorerDates.customColor.old": "#888888"
+  }
+}
+```
+
+**Note**: The old `explorerDates.customColors` setting is deprecated. Use `workbench.colorCustomizations` instead for proper theme integration and full hex color support.
+
 ### Git Integration
 - `explorerDates.showGitInfo` — `none`, `author`, `both`
 - `author` shows initials in tooltip and optionally in the visual badge when `badgePriority` is set to `author`.
