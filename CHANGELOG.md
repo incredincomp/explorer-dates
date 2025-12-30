@@ -2,6 +2,27 @@
 
 # Changelog
 
+## 1.2.3 - Performance Mode
+
+### Minimal Resource Mode
+- Added `performanceMode` setting to reduce CPU and memory usage for large projects or low-resource systems
+- When enabled, disables resource-intensive features:
+  - File system watching for automatic updates (manual refresh still available)
+  - Git blame operations and author information
+  - Progressive loading and background batch processing
+  - Status bar integration
+  - Advanced caching layers (uses simple memory cache only)
+  - Color schemes and visual enhancements
+  - File size display calculations
+  - Verbose logging (reduces console output)
+- Full date/time information remains available in tooltips on hover
+- Recommended for users experiencing high CPU usage, laptop fan noise, or working with very large workspaces
+
+### User Experience
+- Performance mode can be toggled at runtime without restarting VS Code
+- Automatically disables file watcher and reinitializes when mode is changed
+- Clear documentation in README about when to use performance mode and what gets disabled
+
 ## 1.2.2 - Workspace Exclusion Reliability
 
 ### Automatic Profile Cleanup
