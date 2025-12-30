@@ -828,7 +828,7 @@ async function activate(context) {
         }
         
         // Watch for status bar setting changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        const statusBarConfigWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.showStatusBar') || e.affectsConfiguration('explorerDates.performanceMode')) {
                 const newConfig = vscode.workspace.getConfiguration('explorerDates');
                 const newValue = newConfig.get('showStatusBar', false);
@@ -843,6 +843,7 @@ async function activate(context) {
                 }
             }
         });
+        context.subscriptions.push(statusBarConfigWatcher);
         
         logger.info('Explorer Dates: Date decorations ready');
         
