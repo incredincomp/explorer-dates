@@ -51,6 +51,11 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.applyCustomColors",
+        "title": "Apply Custom Colors",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.toggleDecorations",
         "title": "Toggle Date Decorations",
         "category": "Explorer Dates"
@@ -283,6 +288,35 @@
         }
       ]
     },
+    "colors": [
+      {
+        "id": "explorerDates.customColor.veryRecent",
+        "description": "Custom color for files modified within 1 hour",
+        "defaults": {
+          "dark": "#00ff00",
+          "light": "#00aa00",
+          "highContrast": "#00ff00"
+        }
+      },
+      {
+        "id": "explorerDates.customColor.recent",
+        "description": "Custom color for files modified within 1 day",
+        "defaults": {
+          "dark": "#ffff00",
+          "light": "#cc9900",
+          "highContrast": "#ffff00"
+        }
+      },
+      {
+        "id": "explorerDates.customColor.old",
+        "description": "Custom color for files modified more than 1 day ago",
+        "defaults": {
+          "dark": "#ff0000",
+          "light": "#cc0000",
+          "highContrast": "#ff0000"
+        }
+      }
+    ],
     "configuration": {
       "title": "Explorer Dates",
       "properties": {
@@ -386,6 +420,14 @@
           "description": "Cache timeout in milliseconds (5000-300000)",
           "scope": "window"
         },
+        "explorerDates.badgeRefreshInterval": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 600000,
+          "description": "Interval in milliseconds to refresh time-based badges (10000-600000). Lower values keep badges more current but may impact performance.",
+          "scope": "window"
+        },
         "explorerDates.maxCacheSize": {
           "type": "number",
           "default": 10000,
@@ -423,7 +465,8 @@
             "recent": "#ffff00",
             "old": "#ff0000"
           },
-          "description": "Custom color configuration when colorScheme is 'custom'",
+          "markdownDescription": "**DEPRECATED:** This setting is deprecated. Use `workbench.colorCustomizations` instead to define custom colors for the 'custom' color scheme. Run the `Explorer Dates: Apply Custom Colors` command to set up custom colors properly. [Learn more](https://code.visualstudio.com/api/references/theme-color)",
+          "deprecationMessage": "This setting is deprecated. Use 'workbench.colorCustomizations' with the color IDs 'explorerDates.customColor.veryRecent', 'explorerDates.customColor.recent', and 'explorerDates.customColor.old' instead.",
           "properties": {
             "veryRecent": {
               "type": "string",

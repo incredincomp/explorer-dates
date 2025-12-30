@@ -309,6 +309,49 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
+        try {
+            const config = vscode.workspace.getConfiguration('explorerDates');
+            const customColors = config.get('customColors', {
+                veryRecent: '#00ff00',
+                recent: '#ffff00',
+                old: '#ff0000'
+            });
+
+            const message = `To use custom colors with Explorer Dates, add the following to your settings.json:\n\n` +
+                `"workbench.colorCustomizations": {\n` +
+                `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
+                `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
+                `  "explorerDates.customColor.old": "${customColors.old}"\n` +
+                `}\n\n` +
+                `Also set: "explorerDates.colorScheme": "custom"`;
+
+            const choice = await vscode.window.showInformationMessage(
+                'Custom colors configuration',
+                { modal: true, detail: message },
+                'Copy to Clipboard',
+                'Open Settings'
+            );
+
+            if (choice === 'Copy to Clipboard') {
+                const configText = `"workbench.colorCustomizations": {\n` +
+                    `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
+                    `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
+                    `  "explorerDates.customColor.old": "${customColors.old}"\n` +
+                    `}`;
+                await vscode.env.clipboard.writeText(configText);
+                vscode.window.showInformationMessage('Custom color configuration copied to clipboard');
+            } else if (choice === 'Open Settings') {
+                await vscode.commands.executeCommand('workbench.action.openSettings', 'workbench.colorCustomizations');
+            }
+
+            logger.info('Custom colors help displayed');
+        } catch (error) {
+            logger.error('Failed to apply custom colors', error);
+            vscode.window.showErrorMessage(`Failed to apply custom colors: ${error.message}`);
+        }
+    }));
+
     subscriptions.forEach(disposable => context.subscriptions.push(disposable));
 }
 
