@@ -77,13 +77,19 @@ class FileDateDecorationProvider {
         this._previewSettings = null;
         this._extensionContext = null;
         
-        // Watch for file changes to update decorations
-        this._setupFileWatcher();
+        // Check if performance mode is enabled
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        this._performanceMode = config.get('performanceMode', false);
+        
+        // Watch for file changes to update decorations (disabled in performance mode)
+        if (!this._performanceMode) {
+            this._setupFileWatcher();
+        }
         
         // Listen for configuration changes
         this._setupConfigurationWatcher();
         
-        this._logger.info('FileDateDecorationProvider initialized');
+        this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
         // Preview settings (transient overrides used by onboarding quick-setup)
         this._previewSettings = null;
     }
@@ -242,6 +248,28 @@ class FileDateDecorationProvider {
                 this._cacheTimeout = config.get('cacheTimeout', 30000);
                 this._maxCacheSize = config.get('maxCacheSize', 10000);
                 
+                // Handle performance mode changes
+                if (e.affectsConfiguration('explorerDates.performanceMode')) {
+                    const newPerformanceMode = config.get('performanceMode', false);
+                    if (newPerformanceMode !== this._performanceMode) {
+                        this._performanceMode = newPerformanceMode;
+                        this._logger.info(`Performance mode changed to: ${newPerformanceMode}`);
+                        
+                        // Set up or tear down file watcher based on performance mode
+                        if (newPerformanceMode && this._fileWatcher) {
+                            this._fileWatcher.dispose();
+                            this._fileWatcher = null;
+                            this._logger.info('File watcher disabled for performance mode');
+                        } else if (!newPerformanceMode && !this._fileWatcher) {
+                            this._setupFileWatcher();
+                            this._logger.info('File watcher enabled (performance mode off)');
+                        }
+                        
+                        // Clear caches and refresh when switching modes
+                        this.refreshAll();
+                    }
+                }
+                
                 // Refresh all decorations if relevant settings changed
                 if (e.affectsConfiguration('explorerDates.showDateDecorations') ||
                     e.affectsConfiguration('explorerDates.dateDecorationFormat') ||
@@ -268,6 +296,14 @@ class FileDateDecorationProvider {
 
     async _applyProgressiveLoadingSetting() {
         if (!this._batchProcessor) {
+            return;
+        }
+
+        // Disable progressive loading in performance mode
+        if (this._performanceMode) {
+            this._logger.info('Progressive loading disabled due to performance mode');
+            this._cancelProgressiveWarmupJobs();
+            this._progressiveLoadingEnabled = false;
             return;
         }
 
@@ -969,8 +1005,11 @@ class FileDateDecorationProvider {
             }
             const fileLabel = describeFile(filePath);
 
-            this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
-            this._logger.info(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+            // Reduce verbose logging in performance mode
+            if (!this._performanceMode) {
+                this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
+                this._logger.info(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+            }
 
             const config = vscode.workspace.getConfiguration('explorerDates');
             const _get = (key, def) => {
@@ -987,12 +1026,16 @@ class FileDateDecorationProvider {
             }
 
             if (!_get('showDateDecorations', true)) {
-                this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
+                if (!this._performanceMode) {
+                    this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
+                }
                 return undefined;
             }
 
             if (await this._isExcludedSimple(uri)) {
-                this._logger.info(`❌ File excluded: ${fileLabel}`);
+                if (!this._performanceMode) {
+                    this._logger.info(`❌ File excluded: ${fileLabel}`);
+                }
                 return undefined;
             }
 
@@ -1032,18 +1075,18 @@ class FileDateDecorationProvider {
             const diffMs = Date.now() - modifiedAt.getTime();
 
             const dateFormat = _get('dateDecorationFormat', 'smart');
-            const colorScheme = _get('colorScheme', 'none');
+            const colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
             const highContrastMode = _get('highContrastMode', false);
-            const showFileSize = _get('showFileSize', false);
+            const showFileSize = this._performanceMode ? false : _get('showFileSize', false);
             const fileSizeFormat = _get('fileSizeFormat', 'auto');
             const accessibilityMode = _get('accessibilityMode', false);
-            const fadeOldFiles = _get('fadeOldFiles', false);
+            const fadeOldFiles = this._performanceMode ? false : _get('fadeOldFiles', false);
             const fadeThreshold = _get('fadeThreshold', 30);
-            const rawShowGitInfo = _get('showGitInfo', 'none');
-            let badgePriority = _get('badgePriority', 'time');
+            const rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
+            let badgePriority = this._performanceMode ? 'time' : _get('badgePriority', 'time');
 
             const gitFeaturesRequested = (rawShowGitInfo !== 'none') || (badgePriority === 'author');
-            const gitFeaturesEnabled = gitFeaturesRequested && this._gitAvailable;
+            const gitFeaturesEnabled = gitFeaturesRequested && this._gitAvailable && !this._performanceMode;
             const showGitInfo = gitFeaturesEnabled ? rawShowGitInfo : 'none';
             if (badgePriority === 'author' && !gitFeaturesEnabled) {
                 badgePriority = 'time';
@@ -1138,17 +1181,19 @@ class FileDateDecorationProvider {
             }
 
             const processingTime = Date.now() - startTime;
-            this._logger.info(`✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
-            this._logger.info('🎯 RETURNING DECORATION TO VSCODE:', {
-                file: fileLabel,
-                badge: decoration.badge,
-                hasTooltip: !!decoration.tooltip,
-                hasColor: !!decoration.color,
-                colorType: decoration.color?.constructor?.name,
-                processingTimeMs: processingTime,
-                decorationType: decoration.constructor.name
-            });
-            console.log(`🎯 DECORATION RETURNED: ${fileLabel} → "${decoration.badge}"`);
+            if (!this._performanceMode) {
+                this._logger.info(`✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
+                this._logger.info('🎯 RETURNING DECORATION TO VSCODE:', {
+                    file: fileLabel,
+                    badge: decoration.badge,
+                    hasTooltip: !!decoration.tooltip,
+                    hasColor: !!decoration.color,
+                    colorType: decoration.color?.constructor?.name,
+                    processingTimeMs: processingTime,
+                    decorationType: decoration.constructor.name
+                });
+                console.log(`🎯 DECORATION RETURNED: ${fileLabel} → "${decoration.badge}"`);
+            }
 
             return decoration;
         } catch (error) {
@@ -1216,6 +1261,12 @@ class FileDateDecorationProvider {
             this._extensionContext = context;
             if (this._isWeb) {
                 await this._maybeWarnAboutGitLimitations();
+            }
+
+            // Skip advanced systems in performance mode
+            if (this._performanceMode) {
+                this._logger.info('Performance mode enabled - skipping advanced cache, batch processor, and progressive loading');
+                return;
             }
 
             // Initialize advanced cache

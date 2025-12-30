@@ -54,7 +54,8 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 4. **Try shortcuts**: Ctrl+Shift+D to toggle, right-click files for options
 
 ### First-Time Setup Recommendations
-- **Large projects**: Enable performance exclusions for `node_modules`, `dist`, etc.
+- **Large projects / Low resource systems**: Enable `performanceMode: true` to disable all features except basic date/time tooltips
+- **Large projects (without performance mode)**: Enable performance exclusions for `node_modules`, `dist`, etc.
 - **Visual preference**: Try `colorScheme: "recency"` and `showFileSize: true`
 - **Minimal look**: Use `dateDecorationFormat: "smart"` (default)
 - **Accessibility**: Enable `highContrastMode` if needed
@@ -85,6 +86,28 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 ## Configuration
 
 **Quick Setup**: Most users only need to configure the first 2-3 settings below. See [SETTINGS_GUIDE.md](./DOCS/SETTINGS_GUIDE.md) for detailed configuration examples.
+
+### Performance Settings
+
+| Setting | Options | Default | Description |
+|---------|---------|---------|-------------|
+| `performanceMode` | `true`/`false` | `false` | **Minimal performance mode**: disables all features except basic date/time tooltips on files. Disables Git info, auto-updates, status bar, progressive loading, and advanced caching. Recommended for large projects or low-resource systems. |
+
+**When to use Performance Mode:**
+- Large projects with thousands of files
+- Systems with limited CPU or memory
+- When you only need basic date/time information on hover
+- When experiencing high resource usage (laptop fan noise, CPU spikes)
+
+**What gets disabled in Performance Mode:**
+- Git blame operations (no author information)
+- File system watching for auto-updates (manual refresh still available)
+- Status bar integration
+- Progressive loading and background processing
+- Advanced caching layers
+- Color schemes and visual enhancements
+- File size display
+- Reduced logging overhead
 
 ### Essential Settings
 

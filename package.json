@@ -286,6 +286,12 @@
     "configuration": {
       "title": "Explorer Dates",
       "properties": {
+        "explorerDates.performanceMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable minimal performance mode: disables all features except basic date/time tooltips on files (no Git info, no auto-updates, no status bar, no progressive loading). Recommended for large projects or low-resource systems.",
+          "scope": "window"
+        },
         "explorerDates.showDateDecorations": {
           "type": "boolean",
           "default": true,

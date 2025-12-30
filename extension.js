@@ -818,20 +818,25 @@ async function activate(context) {
 
 
 
-        // Initialize status bar integration
+        // Initialize status bar integration (disabled in performance mode)
         let statusBarItem;
         const config = vscode.workspace.getConfiguration('explorerDates');
-        if (config.get('showStatusBar', false)) {
+        const performanceMode = config.get('performanceMode', false);
+        if (config.get('showStatusBar', false) && !performanceMode) {
             statusBarItem = initializeStatusBar(context);
         }
         
         // Watch for status bar setting changes
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('explorerDates.showStatusBar')) {
-                const newValue = vscode.workspace.getConfiguration('explorerDates').get('showStatusBar', false);
-                if (newValue && !statusBarItem) {
+            if (e.affectsConfiguration('explorerDates.showStatusBar') || e.affectsConfiguration('explorerDates.performanceMode')) {
+                const newConfig = vscode.workspace.getConfiguration('explorerDates');
+                const newValue = newConfig.get('showStatusBar', false);
+                const newPerformanceMode = newConfig.get('performanceMode', false);
+                const shouldShowStatusBar = newValue && !newPerformanceMode;
+                
+                if (shouldShowStatusBar && !statusBarItem) {
                     statusBarItem = initializeStatusBar(context);
-                } else if (!newValue && statusBarItem) {
+                } else if (!shouldShowStatusBar && statusBarItem) {
                     statusBarItem.dispose();
                     statusBarItem = null;
                 }
