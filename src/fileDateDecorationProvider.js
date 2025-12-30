@@ -11,6 +11,7 @@ const { formatFileSize, trimBadge } = require('./utils/formatters');
 const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, getRelativePath, getUriPath } = require('./utils/pathUtils');
 const { DEFAULT_CACHE_TIMEOUT, DEFAULT_MAX_CACHE_SIZE, MONTH_ABBREVIATIONS, GLOBAL_STATE_KEYS } = require('./constants');
 const { isWebEnvironment } = require('./utils/env');
+const CONFIG_DEFAULT_CACHE_TIMEOUT = 30000;
 
 const describeFile = (input = '') => {
     const pathValue = typeof input === 'string' ? input : getUriPath(input);
@@ -40,10 +41,12 @@ class FileDateDecorationProvider {
         
         // Enhanced cache to avoid repeated file system calls
         this._decorationCache = new Map();
-        this._cacheTimeout = DEFAULT_CACHE_TIMEOUT;
+        this._isWeb = isWebBuild || isWebEnvironment();
+        this._baselineDesktopCacheTimeout = DEFAULT_CACHE_TIMEOUT * 4; // 8 minutes baseline
+        this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout * 2; // 16 minutes ceiling
+        this._lastCacheTimeoutBoostLookups = 0;
         this._maxCacheSize = DEFAULT_MAX_CACHE_SIZE;
         this._fileSystem = fileSystem;
-        this._isWeb = isWebBuild || isWebEnvironment();
         this._gitAvailable = !this._isWeb && !!execAsync;
         this._gitWarningShown = false;
         
@@ -60,6 +63,8 @@ class FileDateDecorationProvider {
         this._progressiveLoadingJobs = new Set();
         this._progressiveLoadingEnabled = false;
         this._advancedCache = null; // Will be initialized with context
+        this._gitCache = new Map();
+        this._maxGitCacheEntries = 1000;
         
         // Initialize UX enhancement systems
         this._themeIntegration = new ThemeIntegrationManager();
@@ -70,7 +75,11 @@ class FileDateDecorationProvider {
             totalDecorations: 0,
             cacheHits: 0,
             cacheMisses: 0,
-            errors: 0
+            errors: 0,
+            gitBlameTimeMs: 0,
+            gitBlameCalls: 0,
+            fileStatTimeMs: 0,
+            fileStatCalls: 0
         };
 
         // Periodic refresh timer for time-based badges
@@ -79,6 +88,9 @@ class FileDateDecorationProvider {
         
         // Check if performance mode is enabled
         const config = vscode.workspace.getConfiguration('explorerDates');
+        const configuredTimeout = config.get('cacheTimeout', CONFIG_DEFAULT_CACHE_TIMEOUT);
+        this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
+        this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
         this._performanceMode = config.get('performanceMode', false);
         
         // Watch for file changes to update decorations (disabled in performance mode)
@@ -297,9 +309,11 @@ class FileDateDecorationProvider {
             if (e.affectsConfiguration('explorerDates')) {
                 this._logger.debug('Configuration changed, updating settings');
                 
-                // Update cache settings
+                // Update cache settings, maintaining desktop vs web differentiation
                 const config = vscode.workspace.getConfiguration('explorerDates');
-                this._cacheTimeout = config.get('cacheTimeout', 30000);
+                const configuredTimeout = config.get('cacheTimeout', CONFIG_DEFAULT_CACHE_TIMEOUT);
+                this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
+                this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
                 this._maxCacheSize = config.get('maxCacheSize', 10000);
                 
                 // Handle performance mode changes
@@ -369,6 +383,97 @@ class FileDateDecorationProvider {
                     this._setupPeriodicRefresh();
                 }
             }
+        });
+    }
+
+    _detectCacheTimeoutOverride(config, configuredTimeout) {
+        if (typeof configuredTimeout === 'number' && configuredTimeout !== CONFIG_DEFAULT_CACHE_TIMEOUT) {
+            return true;
+        }
+
+        if (!config || typeof config.inspect !== 'function') {
+            return false;
+        }
+
+        try {
+            const inspected = config.inspect('cacheTimeout');
+            if (!inspected) {
+                return false;
+            }
+
+            // Real VS Code inspect returns direct object with value properties
+            if (typeof inspected === 'object' && (
+                typeof inspected.globalValue === 'number' ||
+                typeof inspected.workspaceValue === 'number' ||
+                typeof inspected.workspaceFolderValue === 'number'
+            )) {
+                return true;
+            }
+
+            // Mock VS Code inspect may return map of keys
+            if (inspected.cacheTimeout && typeof inspected.cacheTimeout === 'object') {
+                const entry = inspected.cacheTimeout;
+                const hasValue = typeof entry.globalValue === 'number' ||
+                    typeof entry.workspaceValue === 'number' ||
+                    typeof entry.workspaceFolderValue === 'number';
+
+                if (hasValue) {
+                    const value = entry.globalValue ?? entry.workspaceValue ?? entry.workspaceFolderValue;
+                    return typeof value === 'number' && value !== CONFIG_DEFAULT_CACHE_TIMEOUT;
+                }
+            }
+        } catch {
+            return false;
+        }
+
+        return false;
+    }
+
+    _resolveCacheTimeout(configuredTimeout) {
+        if (this._isWeb) {
+            return configuredTimeout;
+        }
+
+        if (this._hasCustomCacheTimeout) {
+            return configuredTimeout;
+        }
+
+        return Math.max(this._baselineDesktopCacheTimeout, configuredTimeout || this._baselineDesktopCacheTimeout);
+    }
+
+    _getGitCacheKey(workspacePath, relativePath, mtimeMs) {
+        const safeWorkspace = workspacePath || 'unknown-workspace';
+        const safeRelative = relativePath || 'unknown-relative';
+        const safeMtime = Number.isFinite(mtimeMs) ? mtimeMs : 'unknown-mtime';
+        return `${safeWorkspace}::${safeRelative}::${safeMtime}`;
+    }
+
+    _getCachedGitInfo(cacheKey) {
+        const cached = this._gitCache.get(cacheKey);
+        if (!cached) {
+            return null;
+        }
+        cached.lastAccess = Date.now();
+        return cached.value;
+    }
+
+    _setCachedGitInfo(cacheKey, value) {
+        if (this._gitCache.size >= this._maxGitCacheEntries) {
+            let oldestKey = null;
+            let oldestAccess = Infinity;
+            for (const [key, entry] of this._gitCache.entries()) {
+                if (entry.lastAccess < oldestAccess) {
+                    oldestAccess = entry.lastAccess;
+                    oldestKey = key;
+                }
+            }
+            if (oldestKey) {
+                this._gitCache.delete(oldestKey);
+            }
+        }
+        this._gitCache.set(cacheKey, {
+            value,
+            lastAccess: Date.now()
         });
     }
 
@@ -662,6 +767,37 @@ class FileDateDecorationProvider {
         }
     }
 
+    _maybeExtendCacheTimeout() {
+        if (this._isWeb || this._hasCustomCacheTimeout) {
+            return;
+        }
+
+        const totalLookups = this._metrics.cacheHits + this._metrics.cacheMisses;
+        if (totalLookups < 200 || this._cacheTimeout >= this._maxDesktopCacheTimeout) {
+            return;
+        }
+
+        const hitRate = totalLookups > 0 ? (this._metrics.cacheHits / totalLookups) : 0;
+        if (hitRate < 0.85) {
+            return;
+        }
+
+        if (totalLookups <= this._lastCacheTimeoutBoostLookups) {
+            return;
+        }
+
+        const previousTimeout = this._cacheTimeout;
+        this._cacheTimeout = Math.min(this._cacheTimeout + DEFAULT_CACHE_TIMEOUT, this._maxDesktopCacheTimeout);
+        this._lastCacheTimeoutBoostLookups = totalLookups;
+
+        this._logger.info('⚙️ Cache timeout auto-extended', {
+            previousTimeout,
+            newTimeout: this._cacheTimeout,
+            hitRate: Number(hitRate.toFixed(2)),
+            totalLookups
+        });
+    }
+
     async _getCachedDecoration(cacheKey, fileLabel) {
         if (this._advancedCache) {
             try {
@@ -701,6 +837,8 @@ class FileDateDecorationProvider {
                 this._logger.debug(`Failed to store in advanced cache: ${error.message}`);
             }
         }
+
+        this._maybeExtendCacheTimeout();
     }
 
     /**
@@ -956,7 +1094,7 @@ class FileDateDecorationProvider {
     /**
      * Get Git blame information for a file
      */
-    async _getGitBlameInfo(filePath) {
+    async _getGitBlameInfo(filePath, statMtimeMs = null) {
         if (!this._gitAvailable || !execAsync) {
             return null;
         }
@@ -969,21 +1107,38 @@ class FileDateDecorationProvider {
 
             const workspacePath = workspaceFolder.uri.fsPath || workspaceFolder.uri.path;
             const relativePath = getRelativePath(workspacePath, filePath);
-            const { stdout } = await execAsync(
-                `git log -1 --format="%an|%ae|%ad" -- "${relativePath}"`,
-                { cwd: workspaceFolder.uri.fsPath, timeout: 2000 }
-            );
-
-            if (!stdout || !stdout.trim()) {
-                return null;
+            const cacheKey = this._getGitCacheKey(workspacePath, relativePath, statMtimeMs);
+            const cached = this._getCachedGitInfo(cacheKey);
+            if (cached) {
+                return cached;
             }
 
-            const [authorName, authorEmail, authorDate] = stdout.trim().split('|');
-            return {
-                authorName: authorName || 'Unknown',
-                authorEmail: authorEmail || '',
-                authorDate: authorDate || ''
-            };
+            const gitStartTime = Date.now();
+            try {
+                const { stdout } = await execAsync(
+                    `git log -1 --format="%H|%an|%ae|%ad" -- "${relativePath}"`,
+                    { cwd: workspaceFolder.uri.fsPath, timeout: 2000 }
+                );
+
+                if (!stdout || !stdout.trim()) {
+                    return null;
+                }
+
+                const [hash, authorName, authorEmail, authorDate] = stdout.trim().split('|');
+                const gitInfo = {
+                    hash: hash || '',
+                    authorName: authorName || 'Unknown',
+                    authorEmail: authorEmail || '',
+                    authorDate: authorDate || ''
+                };
+
+                this._setCachedGitInfo(cacheKey, gitInfo);
+                return gitInfo;
+            } finally {
+                const gitDuration = Date.now() - gitStartTime;
+                this._metrics.gitBlameTimeMs += gitDuration;
+                this._metrics.gitBlameCalls++;
+            }
         } catch {
             // Git might not be available or file not in a git repo
             return null;
@@ -1127,7 +1282,11 @@ class FileDateDecorationProvider {
                 return undefined;
             }
 
+            const fileStatStartTime = Date.now();
             const stat = await this._fileSystem.stat(uri);
+            this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
+            this._metrics.fileStatCalls++;
+            
             const isRegularFile = typeof stat.isFile === 'function' ? stat.isFile() : true;
             if (!isRegularFile) {
                 return undefined;
@@ -1160,7 +1319,7 @@ class FileDateDecorationProvider {
                 badgePriority = 'time';
             }
 
-            const gitBlame = gitFeaturesEnabled ? await this._getGitBlameInfo(filePath) : null;
+            const gitBlame = gitFeaturesEnabled ? await this._getGitBlameInfo(filePath, modifiedAt.getTime()) : null;
 
             const badgeDetails = this._generateBadgeDetails({
                 filePath,
@@ -1316,6 +1475,18 @@ class FileDateDecorationProvider {
             cacheTimeout: this._cacheTimeout,
             maxCacheSize: this._maxCacheSize,
             keyStatsSize: this._cacheKeyStats ? this._cacheKeyStats.size : 0
+        };
+        
+        // Add performance timing metrics
+        baseMetrics.performanceTiming = {
+            avgGitBlameMs: this._metrics.gitBlameCalls > 0 ? 
+                (this._metrics.gitBlameTimeMs / this._metrics.gitBlameCalls).toFixed(1) : '0.0',
+            avgFileStatMs: this._metrics.fileStatCalls > 0 ? 
+                (this._metrics.fileStatTimeMs / this._metrics.fileStatCalls).toFixed(1) : '0.0',
+            totalGitBlameTimeMs: this._metrics.gitBlameTimeMs,
+            totalFileStatTimeMs: this._metrics.fileStatTimeMs,
+            gitBlameCalls: this._metrics.gitBlameCalls,
+            fileStatCalls: this._metrics.fileStatCalls
         };
         
         return baseMetrics;
