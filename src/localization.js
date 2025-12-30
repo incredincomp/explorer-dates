@@ -120,10 +120,11 @@ const translations = {
 class LocalizationManager {
     constructor() {
         this._currentLocale = 'en';
+        this._configurationWatcher = null;
         this._updateLocale();
         
         // Listen for configuration changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.locale')) {
                 this._updateLocale();
             }
@@ -182,6 +183,16 @@ class LocalizationManager {
         } catch {
             // Fallback to English if locale formatting fails
             return date.toLocaleDateString('en', options);
+        }
+    }
+
+    dispose() {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
+        if (localizationInstance === this) {
+            localizationInstance = null;
         }
     }
 }

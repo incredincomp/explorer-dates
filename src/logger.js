@@ -7,10 +7,11 @@ class Logger {
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('Explorer Dates');
         this._isEnabled = false;
+        this._configurationWatcher = null;
         this._updateConfig();
         
         // Listen for configuration changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.enableLogging')) {
                 this._updateConfig();
             }
@@ -104,6 +105,13 @@ class Logger {
      */
     dispose() {
         this._outputChannel.dispose();
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
+        if (loggerInstance === this) {
+            loggerInstance = null;
+        }
     }
 }
 

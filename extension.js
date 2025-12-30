@@ -634,6 +634,7 @@ async function activate(context) {
         // Initialize logger and localization
         logger = getLogger();
         l10n = getLocalization();
+        context.subscriptions.push(l10n);
         
         logger.info('Explorer Dates: Extension activated');
 
@@ -685,6 +686,7 @@ async function activate(context) {
             if (!extensionApiManager) {
                 const { ExtensionApiManager } = require('./src/extensionApi');
                 extensionApiManager = new ExtensionApiManager();
+                context.subscriptions.push(extensionApiManager);
             }
             return extensionApiManager;
         };
@@ -696,6 +698,7 @@ async function activate(context) {
             if (!exportReportingManager) {
                 const { ExportReportingManager } = require('./src/exportReporting');
                 exportReportingManager = new ExportReportingManager();
+                context.subscriptions.push(exportReportingManager);
             }
             return exportReportingManager;
         };

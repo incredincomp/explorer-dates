@@ -63,6 +63,7 @@ class FileDateDecorationProvider {
         this._progressiveLoadingJobs = new Set();
         this._progressiveLoadingEnabled = false;
         this._advancedCache = null; // Will be initialized with context
+        this._configurationWatcher = null;
         this._gitCache = new Map();
         this._maxGitCacheEntries = 1000;
         
@@ -305,7 +306,10 @@ class FileDateDecorationProvider {
      * Set up configuration watcher to update settings
      */
     _setupConfigurationWatcher() {
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates')) {
                 this._logger.debug('Configuration changed, updating settings');
                 
@@ -379,7 +383,7 @@ class FileDateDecorationProvider {
                 }
                 
                 // Restart periodic refresh if decorations setting changed
-                if (e.affectsConfiguration('explorerDates.showDateDecorations')) {
+                if (e.affectsConfiguration('explorerDates.showDateDecorations') && !this._performanceMode) {
                     this._setupPeriodicRefresh();
                 }
             }
@@ -600,6 +604,7 @@ class FileDateDecorationProvider {
      */
     refreshAll() {
         this._decorationCache.clear();
+        this._gitCache.clear();
         // Clear advanced cache if available
         if (this._advancedCache) {
             this._advancedCache.clear();
@@ -777,7 +782,7 @@ class FileDateDecorationProvider {
             return;
         }
 
-        const hitRate = totalLookups > 0 ? (this._metrics.cacheHits / totalLookups) : 0;
+        const hitRate = this._metrics.cacheHits / totalLookups;
         if (hitRate < 0.85) {
             return;
         }
@@ -1653,12 +1658,20 @@ class FileDateDecorationProvider {
         if (this._batchProcessor) {
             this._batchProcessor.dispose();
         }
+        if (this._accessibility && typeof this._accessibility.dispose === 'function') {
+            this._accessibility.dispose();
+        }
         
         // Dispose basic systems
         this._decorationCache.clear();
+        this._gitCache.clear();
         this._onDidChangeFileDecorations.dispose();
         if (this._fileWatcher) {
             this._fileWatcher.dispose();
+        }
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
         }
     }
 }

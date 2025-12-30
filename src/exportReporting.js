@@ -17,6 +17,9 @@ class ExportReportingManager {
         this.activityTrackingDays = 30;
         this.activityCutoffMs = null;
         this.timeTrackingIntegration = 'none';
+        this._configurationWatcher = null;
+        this._fileWatcher = null;
+        this._fileWatcherSubscriptions = [];
         this._loadConfiguration();
         this._setupConfigurationWatcher();
         this.initialize();
@@ -38,7 +41,10 @@ class ExportReportingManager {
     }
 
     _setupConfigurationWatcher() {
-        vscode.workspace.onDidChangeConfiguration((event) => {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration('explorerDates.reportFormats') ||
                 event.affectsConfiguration('explorerDates.activityTrackingDays') ||
                 event.affectsConfiguration('explorerDates.timeTrackingIntegration')) {
@@ -62,20 +68,18 @@ class ExportReportingManager {
     }
 
     startFileWatcher() {
+        if (this._fileWatcher) {
+            return;
+        }
         // Watch for file changes to track activity
         const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+        this._fileWatcher = watcher;
         
-        watcher.onDidChange((uri) => {
-            this.recordFileActivity(uri, 'modified');
-        });
-        
-        watcher.onDidCreate((uri) => {
-            this.recordFileActivity(uri, 'created');
-        });
-        
-        watcher.onDidDelete((uri) => {
-            this.recordFileActivity(uri, 'deleted');
-        });
+        this._fileWatcherSubscriptions = [
+            watcher.onDidChange((uri) => this.recordFileActivity(uri, 'modified')),
+            watcher.onDidCreate((uri) => this.recordFileActivity(uri, 'created')),
+            watcher.onDidDelete((uri) => this.recordFileActivity(uri, 'deleted'))
+        ];
     }
 
     recordFileActivity(uri, action) {
@@ -701,6 +705,25 @@ ${report.files
             logger.error('Failed to show report dialog:', error);
             vscode.window.showErrorMessage('Failed to generate report');
         }
+    }
+
+    dispose() {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
+        if (this._fileWatcherSubscriptions.length > 0) {
+            for (const disposable of this._fileWatcherSubscriptions) {
+                disposable.dispose();
+            }
+            this._fileWatcherSubscriptions = [];
+        }
+        if (this._fileWatcher) {
+            this._fileWatcher.dispose();
+            this._fileWatcher = null;
+        }
+        this.fileActivityCache.clear();
+        logger.info('Export & Reporting Manager disposed');
     }
 }
 

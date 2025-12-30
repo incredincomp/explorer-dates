@@ -13,6 +13,7 @@ class AccessibilityManager {
         this._isAccessibilityMode = false;
         this._keyboardNavigationEnabled = true;
         this._focusIndicators = new Map();
+        this._configurationWatcher = null;
         
         // Load configuration
         this._loadConfiguration();
@@ -48,7 +49,10 @@ class AccessibilityManager {
      * Setup configuration change listener
      */
     _setupConfigurationListener() {
-        vscode.workspace.onDidChangeConfiguration((e) => {
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+        }
+        this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.accessibilityMode') ||
                 e.affectsConfiguration('explorerDates.keyboardNavigation')) {
                 this._loadConfiguration();
@@ -421,6 +425,10 @@ class AccessibilityManager {
      */
     dispose() {
         this._focusIndicators.clear();
+        if (this._configurationWatcher) {
+            this._configurationWatcher.dispose();
+            this._configurationWatcher = null;
+        }
         this._logger.info('AccessibilityManager disposed');
     }
 }
