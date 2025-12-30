@@ -99,6 +99,8 @@ class FileDateDecorationProvider {
         }
         
         this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
+
+        this._previewSettings = null;
     }
 
     /**
