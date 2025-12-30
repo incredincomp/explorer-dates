@@ -117,6 +117,39 @@ Notes:
 - Git author initials and compact size indicators are shown only when requested via `badgePriority`. Otherwise Git/size information is surfaced in the tooltip and the accessibility text.
 - Compact size examples: `5K`, `2M`, or `12` (two-digit fallback).
 
+### Custom Colors Configuration
+
+To use custom colors for file decorations:
+
+1. **Set the color scheme**:
+   ```json
+   "explorerDates.colorScheme": "custom"
+   ```
+
+2. **Apply your custom colors** using one of these methods:
+
+   **Method 1: Use the command** (Recommended)
+   - Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+   - Run `Explorer Dates: Apply Custom Colors`
+   - Choose "Copy to Clipboard" or "Open Settings"
+
+   **Method 2: Manual configuration**
+   - Add to your `settings.json`:
+   ```json
+   "workbench.colorCustomizations": {
+     "explorerDates.customColor.veryRecent": "#FF6095",
+     "explorerDates.customColor.recent": "#E72969",
+     "explorerDates.customColor.old": "#CCCCCC"
+   }
+   ```
+
+3. **Color categories**:
+   - `veryRecent`: Files modified within 1 hour
+   - `recent`: Files modified within 1 day
+   - `old`: Files modified more than 1 day ago
+
+**Note**: The `explorerDates.customColors` setting in the extension configuration is deprecated. Use `workbench.colorCustomizations` instead for proper theme integration and color support.
+
 ## Debugging & Diagnostics
 
 - **Developer Tools**: If you need to verify badge acceptance, open `Help → Toggle Developer Tools` (Extension Host console) while running the extension to view any rejection messages.
