@@ -420,6 +420,14 @@
           "description": "Cache timeout in milliseconds (5000-300000)",
           "scope": "window"
         },
+        "explorerDates.badgeRefreshInterval": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 600000,
+          "description": "Interval in milliseconds to refresh time-based badges (10000-600000). Lower values keep badges more current but may impact performance.",
+          "scope": "window"
+        },
         "explorerDates.maxCacheSize": {
           "type": "number",
           "default": 10000,

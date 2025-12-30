@@ -77,11 +77,18 @@ class FileDateDecorationProvider {
         this._previewSettings = null;
         this._extensionContext = null;
         
+        // Periodic refresh timer for time-based badges
+        this._refreshTimer = null;
+        this._refreshInterval = 60000; // 1 minute default
+        
         // Watch for file changes to update decorations
         this._setupFileWatcher();
         
         // Listen for configuration changes
         this._setupConfigurationWatcher();
+        
+        // Start periodic refresh for time-based badges
+        this._setupPeriodicRefresh();
         
         this._logger.info('FileDateDecorationProvider initialized');
         // Preview settings (transient overrides used by onboarding quick-setup)
@@ -230,6 +237,53 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Set up periodic refresh to keep time-based badges current
+     */
+    _setupPeriodicRefresh() {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        this._refreshInterval = config.get('badgeRefreshInterval', 60000); // Default 1 minute
+        
+        this._logger.info(`Setting up periodic refresh with interval: ${this._refreshInterval}ms`);
+        
+        // Clear any existing timer
+        if (this._refreshTimer) {
+            clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+        }
+        
+        // Only set up periodic refresh if decorations are enabled
+        if (!config.get('showDateDecorations', true)) {
+            this._logger.info('Decorations disabled, skipping periodic refresh setup');
+            return;
+        }
+        
+        // Set up periodic refresh timer
+        this._refreshTimer = setInterval(() => {
+            this._logger.debug('Periodic refresh triggered - clearing caches and refreshing decorations');
+            
+            // Track cache size before clearing for logging
+            const memoryCacheSize = this._decorationCache.size;
+            
+            // Clear both memory and advanced cache to force recalculation
+            this._decorationCache.clear();
+            if (this._advancedCache) {
+                try {
+                    this._advancedCache.clear();
+                } catch (error) {
+                    this._logger.debug(`Failed to clear advanced cache during periodic refresh: ${error.message}`);
+                }
+            }
+            
+            // Trigger refresh of all decorations
+            this._onDidChangeFileDecorations.fire(undefined);
+            
+            this._logger.debug(`Periodic refresh completed - cleared ${memoryCacheSize} cached items from memory`);
+        }, this._refreshInterval);
+        
+        this._logger.info('Periodic refresh timer started');
+    }
+
+    /**
      * Set up configuration watcher to update settings
      */
     _setupConfigurationWatcher() {
@@ -241,6 +295,13 @@ class FileDateDecorationProvider {
                 const config = vscode.workspace.getConfiguration('explorerDates');
                 this._cacheTimeout = config.get('cacheTimeout', 30000);
                 this._maxCacheSize = config.get('maxCacheSize', 10000);
+                
+                // Update refresh interval and restart timer if changed
+                if (e.affectsConfiguration('explorerDates.badgeRefreshInterval')) {
+                    this._refreshInterval = config.get('badgeRefreshInterval', 60000);
+                    this._logger.info(`Badge refresh interval updated to: ${this._refreshInterval}ms`);
+                    this._setupPeriodicRefresh();
+                }
                 
                 // Refresh all decorations if relevant settings changed
                 if (e.affectsConfiguration('explorerDates.showDateDecorations') ||
@@ -261,6 +322,11 @@ class FileDateDecorationProvider {
                     this._applyProgressiveLoadingSetting().catch((error) => {
                         this._logger.error('Failed to reconfigure progressive loading', error);
                     });
+                }
+                
+                // Restart periodic refresh if decorations setting changed
+                if (e.affectsConfiguration('explorerDates.showDateDecorations')) {
+                    this._setupPeriodicRefresh();
                 }
             }
         });
@@ -1337,6 +1403,13 @@ class FileDateDecorationProvider {
      */
     async dispose() {
         this._logger.info('Disposing FileDateDecorationProvider', this.getMetrics());
+        
+        // Clear periodic refresh timer
+        if (this._refreshTimer) {
+            clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
+            this._logger.info('Cleared periodic refresh timer');
+        }
         
         // Dispose advanced systems
         if (this._advancedCache) {
