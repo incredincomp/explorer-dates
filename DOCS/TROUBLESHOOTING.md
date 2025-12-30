@@ -57,7 +57,7 @@ If the above doesn't work:
    - Current File: "Is Excluded" should be "No" or "false"
    - Configuration issues
 
-3. **Try the debug cache command:** `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+B`)
+3. **Try the debug cache command:** `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M`)
 
 ### **Platform-Specific Issues** 💻
 
