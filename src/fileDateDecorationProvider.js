@@ -663,6 +663,13 @@ class FileDateDecorationProvider {
         const now = new Date();
         const diffMs = precalcDiffMs !== null ? precalcDiffMs : (now.getTime() - date.getTime());
         
+        // Handle future-dated files (negative diffMs due to clock skew, timezone issues, etc.)
+        // Treat them as "just modified" to avoid displaying negative values
+        if (diffMs < 0) {
+            this._logger.debug(`File has future modification time (diffMs: ${diffMs}), treating as just modified`);
+            return '●●';
+        }
+        
         // Using 2-character indicators for better readability
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -763,33 +770,16 @@ class FileDateDecorationProvider {
                 return new vscode.ThemeColor('terminal.ansiRed');
             
             case 'custom': {
-                // Use custom colors from configuration
-                const config = vscode.workspace.getConfiguration('explorerDates');
-                const customColors = config.get('customColors', {
-                    veryRecent: '#00ff00',
-                    recent: '#ffff00',
-                    old: '#ff0000'
-                });
-                
-                // Create custom color decorations based on user's hex values
-                // Note: VS Code doesn't directly support hex colors in ThemeColor,
-                // but we can use the closest semantic theme colors that will adapt to themes
+                // Use custom color IDs registered in package.json
+                // Users customize these colors via workbench.colorCustomizations
+                // Example: "explorerDates.customColor.veryRecent": "#FF6095"
                 if (diffHours < 1) {
-                    // For veryRecent files - use success/positive color
-                    return customColors.veryRecent.toLowerCase().includes('green') || customColors.veryRecent === '#00ff00' 
-                        ? new vscode.ThemeColor('terminal.ansiGreen')
-                        : new vscode.ThemeColor('editorInfo.foreground');
+                    return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
                 }
                 if (diffHours < 24) {
-                    // For recent files - use warning/caution color  
-                    return customColors.recent.toLowerCase().includes('yellow') || customColors.recent === '#ffff00'
-                        ? new vscode.ThemeColor('terminal.ansiYellow')
-                        : new vscode.ThemeColor('editorWarning.foreground');
+                    return new vscode.ThemeColor('explorerDates.customColor.recent');
                 }
-                // For old files - use error/danger color
-                return customColors.old.toLowerCase().includes('red') || customColors.old === '#ff0000'
-                    ? new vscode.ThemeColor('terminal.ansiRed') 
-                    : new vscode.ThemeColor('editorError.foreground');
+                return new vscode.ThemeColor('explorerDates.customColor.old');
             }
             
             default:
