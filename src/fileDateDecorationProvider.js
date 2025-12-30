@@ -73,10 +73,6 @@ class FileDateDecorationProvider {
             errors: 0
         };
 
-        // Preview settings for onboarding
-        this._previewSettings = null;
-        this._extensionContext = null;
-        
         // Periodic refresh timer for time-based badges
         this._refreshTimer = null;
         this._refreshInterval = 60000; // 1 minute default
@@ -100,7 +96,9 @@ class FileDateDecorationProvider {
         
         this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
 
+        // Preview settings for onboarding
         this._previewSettings = null;
+        this._extensionContext = null;
     }
 
     /**

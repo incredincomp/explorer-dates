@@ -1,7 +1,5 @@
 # Changelog
 
-# Changelog
-
 ## 1.2.3 - Performance Mode
 
 ### Minimal Resource Mode
