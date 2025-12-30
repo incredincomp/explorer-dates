@@ -248,6 +248,7 @@ class FileDateDecorationProvider {
         // Clear any existing timer
         if (this._refreshTimer) {
             clearInterval(this._refreshTimer);
+            this._refreshTimer = null;
         }
         
         // Only set up periodic refresh if decorations are enabled
@@ -259,6 +260,9 @@ class FileDateDecorationProvider {
         // Set up periodic refresh timer
         this._refreshTimer = setInterval(() => {
             this._logger.debug('Periodic refresh triggered - clearing caches and refreshing decorations');
+            
+            // Track cache size before clearing for logging
+            const memoryCacheSize = this._decorationCache.size;
             
             // Clear both memory and advanced cache to force recalculation
             this._decorationCache.clear();
@@ -273,7 +277,7 @@ class FileDateDecorationProvider {
             // Trigger refresh of all decorations
             this._onDidChangeFileDecorations.fire(undefined);
             
-            this._logger.debug(`Periodic refresh completed - cleared ${this._decorationCache.size} cached items`);
+            this._logger.debug(`Periodic refresh completed - cleared ${memoryCacheSize} cached items from memory`);
         }, this._refreshInterval);
         
         this._logger.info('Periodic refresh timer started');
