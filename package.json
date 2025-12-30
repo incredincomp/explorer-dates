@@ -222,8 +222,8 @@
       },
       {
         "command": "explorerDates.debugCache",
-        "key": "ctrl+shift+b",
-        "mac": "cmd+shift+b",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
         "when": "explorerViewletVisible"
       },
       {
