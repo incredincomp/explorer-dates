@@ -11,9 +11,8 @@ class AdvancedCache {
         this._logger = getLogger();
         this._context = context;
         
-        // In-memory cache
+        // In-memory cache (key -> entry)
         this._memoryCache = new Map();
-        this._cacheMetadata = new Map();
         
         // Configuration
         this._maxMemoryUsage = 50 * 1024 * 1024; // 50MB default
@@ -94,36 +93,90 @@ class AdvancedCache {
         });
     }
 
+    _createCacheEntry(value, overrides = {}) {
+        const now = Date.now();
+        return {
+            value,
+            size: overrides.size ?? this._estimateSize(value),
+            ttl: overrides.ttl ?? DEFAULT_PERSISTENT_CACHE_TTL,
+            tags: overrides.tags && overrides.tags.length > 0 ? [...overrides.tags] : undefined,
+            version: overrides.version ?? 1,
+            timestamp: overrides.timestamp ?? now,
+            lastAccess: overrides.lastAccess ?? now
+        };
+    }
+
+    _touchEntry(entry) {
+        entry.lastAccess = Date.now();
+    }
+
+    _serializeMetadata(entry) {
+        return {
+            ts: entry.timestamp,
+            la: entry.lastAccess,
+            ttl: entry.ttl,
+            sz: entry.size,
+            tg: entry.tags,
+            v: entry.version
+        };
+    }
+
+    _normalizePersistedMetadata(metadata) {
+        if (!metadata) {
+            return null;
+        }
+        return {
+            timestamp: metadata.timestamp ?? metadata.ts ?? Date.now(),
+            lastAccess: metadata.lastAccess ?? metadata.la ?? Date.now(),
+            ttl: metadata.ttl ?? metadata.tt ?? DEFAULT_PERSISTENT_CACHE_TTL,
+            size: metadata.size ?? metadata.sz,
+            tags: metadata.tags ?? metadata.tg,
+            version: metadata.version ?? metadata.v ?? 1
+        };
+    }
+
+    _hydratePersistedEntry(snapshot) {
+        if (!snapshot) {
+            return null;
+        }
+        const metadata = this._normalizePersistedMetadata(snapshot.metadata || snapshot.meta);
+        if (!metadata) {
+            return null;
+        }
+        return this._createCacheEntry(snapshot.data ?? snapshot.value, metadata);
+    }
+
+    _serializeEntry(entry) {
+        return {
+            data: entry.value,
+            metadata: this._serializeMetadata(entry)
+        };
+    }
+
     /**
      * Get item from cache with intelligent fallback
      */
     async get(key) {
-        // Try memory cache first
-        if (this._memoryCache.has(key)) {
-            const item = this._memoryCache.get(key);
-            const metadata = this._cacheMetadata.get(key);
-            
-            // Check if item is still valid
-            if (this._isValid(metadata)) {
+        const entry = this._memoryCache.get(key);
+
+        if (entry) {
+            if (this._isValid(entry)) {
                 this._metrics.memoryHits++;
-                this._updateAccessTime(key);
-                return item;
-            } else {
-                // Remove expired item
-                this._removeFromMemory(key);
+                this._touchEntry(entry);
+                return entry.value;
             }
+            this._removeFromMemory(key);
         }
         
         this._metrics.memoryMisses++;
         
         // Try persistent cache if enabled
         if (this._persistentCacheEnabled) {
-            const persistentItem = await this._getFromPersistentCache(key);
-            if (persistentItem) {
-                // Add back to memory cache
-                this._addToMemory(key, persistentItem.data, persistentItem.metadata);
+            const persistentEntry = await this._getFromPersistentCache(key);
+            if (persistentEntry) {
+                this._addToMemory(key, persistentEntry);
                 this._metrics.diskHits++;
-                return persistentItem.data;
+                return persistentEntry.value;
             }
         }
         
@@ -135,17 +188,13 @@ class AdvancedCache {
      * Set item in cache with metadata
      */
     async set(key, value, options = {}) {
-        const metadata = {
-            timestamp: Date.now(),
-            lastAccess: Date.now(),
-            size: this._estimateSize(value),
-            ttl: options.ttl || DEFAULT_PERSISTENT_CACHE_TTL,
-            tags: options.tags || [],
-            version: options.version || 1
-        };
+        const entry = this._createCacheEntry(value, {
+            ttl: options.ttl,
+            tags: options.tags,
+            version: options.version
+        });
         
-        // Add to memory cache
-        this._addToMemory(key, value, metadata);
+        this._addToMemory(key, entry);
         
         // Schedule persistent save if enabled
         if (this._persistentCacheEnabled) {
@@ -156,53 +205,44 @@ class AdvancedCache {
     /**
      * Add item to memory cache with eviction handling
      */
-    _addToMemory(key, value, metadata) {
-        // Check if adding this item would exceed memory limit
-        if (this._currentMemoryUsage + metadata.size > this._maxMemoryUsage) {
-            this._evictOldestItems(metadata.size);
+    _addToMemory(key, entry) {
+        if (this._currentMemoryUsage + entry.size > this._maxMemoryUsage) {
+            this._evictOldestItems(entry.size);
         }
         
-        // Remove existing item if present
         if (this._memoryCache.has(key)) {
             this._removeFromMemory(key);
         }
         
-        // Add new item
-        this._memoryCache.set(key, value);
-        this._cacheMetadata.set(key, metadata);
-        this._currentMemoryUsage += metadata.size;
+        this._memoryCache.set(key, entry);
+        this._currentMemoryUsage += entry.size;
         
-        this._logger.debug(`Added to cache: ${key} (${metadata.size} bytes)`);
+        this._logger.debug(`Added to cache: ${key} (${entry.size} bytes)`);
     }
 
     /**
      * Remove item from memory cache
      */
     _removeFromMemory(key) {
-        if (this._memoryCache.has(key)) {
-            const metadata = this._cacheMetadata.get(key);
-            this._memoryCache.delete(key);
-            this._cacheMetadata.delete(key);
-            
-            if (metadata) {
-                this._currentMemoryUsage -= metadata.size;
-            }
+        const entry = this._memoryCache.get(key);
+        if (!entry) {
+            return;
         }
+        this._memoryCache.delete(key);
+        this._currentMemoryUsage -= entry.size;
     }
 
     /**
      * Evict oldest items to make space
      */
     _evictOldestItems(requiredSpace) {
-        const entries = Array.from(this._cacheMetadata.entries());
-        
-        // Sort by last access time (oldest first)
+        const entries = Array.from(this._memoryCache.entries());
         entries.sort((a, b) => a[1].lastAccess - b[1].lastAccess);
-        
+
         let freedSpace = 0;
-        for (const [key, metadata] of entries) {
+        for (const [key, entry] of entries) {
             this._removeFromMemory(key);
-            freedSpace += metadata.size;
+            freedSpace += entry.size;
             this._metrics.evictions++;
             
             if (freedSpace >= requiredSpace) {
@@ -216,23 +256,13 @@ class AdvancedCache {
     /**
      * Check if cache item is still valid
      */
-    _isValid(metadata) {
-        if (!metadata) return false;
-        
-        const now = Date.now();
-        const age = now - metadata.timestamp;
-        
-        return age < metadata.ttl;
-    }
-
-    /**
-     * Update access time for cache item
-     */
-    _updateAccessTime(key) {
-        const metadata = this._cacheMetadata.get(key);
-        if (metadata) {
-            metadata.lastAccess = Date.now();
+    _isValid(entry) {
+        if (!entry) {
+            return false;
         }
+        const now = Date.now();
+        const age = now - entry.timestamp;
+        return age < entry.ttl;
     }
 
     /**
@@ -272,12 +302,13 @@ class AdvancedCache {
             let skippedCount = 0;
 
             for (const [key, item] of Object.entries(cache)) {
-                if (item && this._isValid(item.metadata)) {
-                    this._addToMemory(key, item.data, item.metadata);
+                const entry = this._hydratePersistedEntry(item);
+                if (entry && this._isValid(entry)) {
+                    this._addToMemory(key, entry);
                     loadedCount++;
-                } else {
-                    skippedCount++;
+                    continue;
                 }
+                skippedCount++;
             }
 
             this._metrics.persistentLoads++;
@@ -298,10 +329,9 @@ class AdvancedCache {
         try {
             const cache = {};
 
-            for (const [key, value] of this._memoryCache.entries()) {
-                const metadata = this._cacheMetadata.get(key);
-                if (metadata && this._isValid(metadata)) {
-                    cache[key] = { data: value, metadata };
+            for (const [key, entry] of this._memoryCache.entries()) {
+                if (this._isValid(entry)) {
+                    cache[key] = this._serializeEntry(entry);
                 }
             }
 
@@ -323,11 +353,10 @@ class AdvancedCache {
 
         const cache = this._storage.get(this._storageKey, {});
         const item = cache[key];
-
-        if (item && this._isValid(item.metadata)) {
-            return item;
+        const entry = this._hydratePersistedEntry(item);
+        if (entry && this._isValid(entry)) {
+            return entry;
         }
-
         return null;
     }
 
@@ -370,17 +399,17 @@ class AdvancedCache {
      */
     _cleanupExpiredItems() {
         const keysToRemove = [];
-        
-        for (const [key, metadata] of this._cacheMetadata.entries()) {
-            if (!this._isValid(metadata)) {
+
+        for (const [key, entry] of this._memoryCache.entries()) {
+            if (!this._isValid(entry)) {
                 keysToRemove.push(key);
             }
         }
-        
+
         for (const key of keysToRemove) {
             this._removeFromMemory(key);
         }
-        
+
         if (keysToRemove.length > 0) {
             this._logger.debug(`Cleaned up ${keysToRemove.length} expired cache items`);
         }
@@ -392,8 +421,8 @@ class AdvancedCache {
     invalidateByTags(tags) {
         const keysToRemove = [];
         
-        for (const [key, metadata] of this._cacheMetadata.entries()) {
-            if (metadata.tags && metadata.tags.some(tag => tags.includes(tag))) {
+        for (const [key, entry] of this._memoryCache.entries()) {
+            if (entry.tags && entry.tags.some(tag => tags.includes(tag))) {
                 keysToRemove.push(key);
             }
         }
@@ -430,7 +459,6 @@ class AdvancedCache {
      */
     clear() {
         this._memoryCache.clear();
-        this._cacheMetadata.clear();
         this._currentMemoryUsage = 0;
         
         this._logger.info('Cache cleared');

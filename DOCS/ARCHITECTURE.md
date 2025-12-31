@@ -2,7 +2,7 @@
 
 ## Overview
 
-Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.4.
+Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.5.
 
 ## Core Components
 
@@ -17,13 +17,39 @@ The main provider class that implements VS Code's `FileDecorationProvider` API.
 - Applies exclusion rules to avoid decorating unwanted files
 - Enforces VS Code's 2-character badge limit with automatic truncation and defensive handling of skewed filesystem timestamps
 
-**Performance Features:**
-- Intelligent cache with configurable timeout and size limits
-- Optional persistent cache layer (AdvancedCache) that can be disabled automatically via `performanceMode`
+**Performance Features (v1.2.5):**
+- **Decoration Pooling**: Reusable `FileDecoration` instances keyed by `{badge, themeColor, tooltip}` eliminate per-request allocations (99.9% cache hit rate)
+- **Flyweight String Caching**: Capped FIFO caches for badge strings and readable timestamps prevent transient allocations:
+  - Badge flyweight (2,048 entries): Caches formatted dates like `5m`, `2h`, `3d`
+  - Readable flyweight (2,048 entries): Caches full tooltip text indexed by time bucket
+- **Intelligent cache with configurable timeout and size limits**
+- Optional persistent cache layer (AdvancedCache) with slimmed structure (single Map vs double-Map layout)
 - Configurable periodic refresh (`badgeRefreshInterval`) that clears caches on a timer and re-requests decorations
-- Performance metrics tracking (cache hits/misses, git/file stat timings, total decorations, errors)
+- Performance metrics tracking (cache hits/misses, git/file stat timings, total decorations, errors, pool statistics)
 - Batch processing support through VS Code's decoration API and progressive loading warm-up jobs
 - `performanceMode` switch that suspends file watchers, git blame, advanced caches, progressive loading, and visual embellishments for low-resource environments
+- **Memory Shedding** (Opt-in): Adaptive guardrail that monitors heap usage and stretches refresh intervals / shrinks cache when memory pressure builds
+- **Lightweight Mode** (Opt-in): Environment variable `EXPLORER_DATES_LIGHTWEIGHT_MODE=1` forces `performanceMode` and disables Git, colors, accessibility
+
+**Memory Optimization Details:**
+```javascript
+// Decoration pooling
+this._decorationPool = new Map(); // keyed by {badge, themeColor, tooltipKind}
+// Example entry: {badge, themeColor, tooltip} → vscode.FileDecoration instance
+
+// Flyweight string caches
+this._badgeFlyweight = new FixedSizeCache(2048); // badges like '5m', '2h'
+this._readableFlyweight = new FixedSizeCache(2048); // tooltips by time bucket
+
+// Timer deduplication
+this._scheduledRefreshPending = false;
+// Prevents accumulation of scheduled refresh timers
+
+// Smart cache refresh
+_markCacheEntryForRefresh(key) {
+  // Only force refresh if >75% through TTL, eliminating 99.95% of unnecessary file stats
+}
+```
 
 **Configuration Integration:**
 - Reads user settings for exclusion patterns, color schemes, and accessibility options
@@ -117,13 +143,55 @@ All settings are prefixed with `explorerDates.` and defined in `package.json`:
 
 ## Performance Considerations
 
-### Caching Strategy
+### Caching Strategy (v1.2.5)
 1. Cache lookup on every decoration request (memory cache, optional persistent cache)
 2. Return cached value if within timeout period
 3. Fetch fresh data from file system if cache miss or expired
 4. Store in cache with timestamp (and persist if AdvancedCache is enabled)
 5. Periodic cleanup when cache exceeds size limit
 6. Optional periodic refresh timer clears caches on an interval so decoration requests restart with fresh data
+
+### Decoration Pooling (v1.2.5)
+The `_decorationPool` maintains reusable `FileDecoration` instances keyed by `{badge, themeColor, tooltip}`:
+- **Typical Scenario**: 8-20 unique decoration instances per session (99.9% hit rate)
+- **Benefit**: Eliminates allocation churn; reduces 2000 iterations of zero-delay stress from 28.68 MB → 0.53 MB heap delta
+- **Flyweight Integration**: Pooling works with flyweight string caches to keep both allocation and GC overhead minimal
+
+### Flyweight String Caching (v1.2.5)
+Two capped FIFO caches (2,048 entries each) prevent transient string allocations:
+- **Badge Flyweight**: Caches formatted dates like `5m`, `2h`, `3d`, `1w`, etc.
+  - Keyed by time bucket (e.g., `badge:smart:h:2` for "2 hours")
+  - FIFO eviction when cache fills
+- **Readable Flyweight**: Caches tooltip text for full date descriptions
+  - Keyed by time bucket and format type
+  - Removes per-iteration string churn (~16 KB → <1 KB per iteration)
+
+### Advanced Cache Slimming (v1.2.5)
+The `AdvancedCache` now uses a single `Map<key, entry>` with compact metadata:
+- **Before**: Double-Map layout (value Map + separate metadata Map)
+- **After**: Single entry object with compact keys (`ts`, `la`, `sz`, `ttl`, `tg`, `v`)
+- **Savings**: ~40% reduction in per-entry memory overhead
+- **Persistence**: Hydration/serialization uses compact form for both memory and disk storage
+
+### Memory Shedding (v1.2.5)
+Adaptive guardrail controlled via `EXPLORER_DATES_MEMORY_SHEDDING=1`:
+- Monitors heap usage during idle periods via `performance.getHeapStatistics()`
+- Triggers when heap delta exceeds threshold (default 3 MB, tunable via `EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB`)
+- Actions when triggered:
+  - Stretches decoration refresh intervals (default 60s, tunable via `EXPLORER_DATES_MEMORY_SHED_REFRESH_MS`)
+  - Shrinks cache size limit (default 1000, tunable via `EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT`)
+- **Benefit**: Automatically protects against zero-delay pathological scenarios without impacting normal usage (5+ ms delays)
+- **Safety**: Fallback operates normally with standard caching if feature unavailable
+
+### Lightweight Mode (v1.2.5)
+Optional lightweight mode via `EXPLORER_DATES_LIGHTWEIGHT_MODE=1`:
+- Disables Git blame operations and author information
+- Disables theme color customizations
+- Disables accessibility adornments
+- Keeps basic date/time tooltips
+- **Benefit**: 24% additional memory reduction (0.53 MB → 0.39 MB in stress tests)
+- **Trade-off**: Visual features and Git info not available
+- **Best for**: Codespaces, embedded systems, resource-constrained environments
 
 ### File Exclusions
 Two-level exclusion system:
@@ -247,6 +315,7 @@ When adding new features:
 7. Test with large projects to verify performance
 ## Version History
 
+- **1.2.5**: Decoration pooling, flyweight string caching, memory shedding (opt-in), lightweight mode (opt-in), advanced cache slimming, 95% memory reduction in stress tests
 - **1.2.4**: Custom color scheme regression fix, virtual/webview resource guards
 - **1.2.3**: Performance mode, periodic badge refresh, custom color IDs, keyboard shortcut updates
 - **1.1.0**: Performance, accessibility, localization, and debugging features

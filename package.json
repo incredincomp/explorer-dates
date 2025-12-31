@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -741,6 +741,10 @@
     "test:flows": "node tests/exercise-flows.js",
     "test:bundle": "node tests/test-bundle.js",
     "test:verify-bundle": "node tests/verify-bundle.js",
+    "test:memory": "node --expose-gc tests/test-memory-soak.js",
+    "test:memory-fuzz": "node --expose-gc tests/test-memory-fuzz.js",
+    "test:memory-shedding": "EXPLORER_DATES_MEMORY_SHEDDING=1 EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2 node --expose-gc tests/test-memory-soak.js",
+    "test:memory-lightweight": "EXPLORER_DATES_LIGHTWEIGHT_MODE=1 node --expose-gc tests/test-memory-soak.js",
     "compile": "node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

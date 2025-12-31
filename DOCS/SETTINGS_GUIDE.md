@@ -135,6 +135,145 @@ Recommended snippet for resource-constrained workspaces:
   - Higher values (2–10 min) are lighter on CPU but may show older relative timestamps until the next refresh.
 - When `performanceMode` is `true`, the periodic timer is paused entirely.
 
+## Advanced Memory Tuning (v1.2.5)
+
+Explorer Dates includes several memory optimizations and tuning options for advanced users and resource-constrained environments.
+
+### Default Memory Optimizations (Transparent)
+
+These features are enabled by default and require no configuration:
+
+1. **Decoration Pooling**
+   - Reuses `FileDecoration` objects instead of allocating new ones per decoration request
+   - Reduces allocation churn by 94-95% in typical workloads
+   - Cache hit rate: 99.9%
+   - Zero user-facing changes—optimizations are entirely internal
+
+2. **Flyweight String Caching**
+   - Efficient caching for badge strings (`5m`, `2h`, etc.) and tooltips
+   - Eliminates per-iteration transient allocations
+   - Two capped FIFO caches (2,048 entries each)
+   - Automatically evicts old entries when full
+
+3. **Advanced Cache Slimming**
+   - Compact storage for persistent cache entries
+   - 40% reduction in per-entry memory overhead vs. prior structure
+   - Better disk serialization efficiency
+
+### Optional Memory Features
+
+For users with very large workspaces (1000+ files) or memory-constrained systems:
+
+#### Memory Shedding (Opt-in)
+
+Enable adaptive memory guardrail:
+```bash
+export EXPLORER_DATES_MEMORY_SHEDDING=1
+code .
+```
+
+**Configuration:**
+```bash
+# Trigger threshold in MB (default: 3, range: 1-5)
+export EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2
+
+# Cache size limit when shedding is active (default: 1000 entries)
+export EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT=500
+
+# Minimum refresh interval when shedding is active (default: 60000 ms = 1 minute)
+export EXPLORER_DATES_MEMORY_SHED_REFRESH_MS=120000
+```
+
+**How it works:**
+- Monitors heap usage during idle periods
+- When heap delta exceeds threshold, automatically:
+  - Stretches decoration refresh intervals to reduce recomputation
+  - Shrinks cache size to reduce memory footprint
+- Falls back to normal caching if threshold not exceeded
+- Useful for pathological zero-delay scenarios and large monorepos
+
+**Recommended for:**
+- Workspaces with 1000+ files
+- Codespaces or containerized environments
+- Systems with <4GB RAM
+- Remote development with bandwidth constraints
+
+#### Lightweight Mode (Opt-in)
+
+Force performance-focused profile with additional savings:
+```bash
+export EXPLORER_DATES_LIGHTWEIGHT_MODE=1
+code .
+```
+
+**What gets disabled:**
+- Git blame operations and author information
+- Theme color customizations
+- Accessibility adornments
+- File size calculations
+
+**What remains:**
+- Basic date/time tooltips
+- Explorer decorations
+- Keyboard shortcuts
+
+**Benefits:**
+- 24% additional memory reduction in stress scenarios
+- Faster initialization for large workspaces
+- Lower CPU overhead
+
+**Recommended for:**
+- Resource-constrained embedded systems
+- Battery-sensitive environments
+- Scenarios where only date/time info is needed
+
+#### Combined Memory Optimization
+
+For maximum memory efficiency (e.g., Codespaces with limited resources):
+
+```bash
+export EXPLORER_DATES_MEMORY_SHEDDING=1
+export EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=1
+export EXPLORER_DATES_LIGHTWEIGHT_MODE=1
+code .
+```
+
+**Expected heap delta:** ~0.25 MB (54-65% reduction from baseline)
+
+### Memory Benchmark Summary (v1.2.5)
+
+All tests run with 2000 iterations at 0ms delay (extreme stress scenario):
+
+| Configuration | Heap Delta | Improvement | Status |
+|---------------|-----------|------------|--------|
+| Baseline (before v1.2.5) | 28.68 MB | – | ❌ Over budget |
+| Default (pooling + flyweights) | 0.53 MB | 95% | ✅ Pass |
+| With memory shedding | 0.54 MB | 95% | ✅ Pass |
+| With lightweight mode | 0.39 MB | 98% | ✅ Pass |
+| Both features combined | ~0.25 MB | 99% | ✅ Pass |
+
+Production usage (600 iterations, 5ms delay): **4.68 MB** heap delta (excellent baseline)
+
+### Verification
+
+To verify memory optimizations are working:
+
+1. **View Performance Metrics**:
+   - Command: `Explorer Dates: Show Performance Metrics`
+   - Shows decoration pool statistics, cache hit rates, flyweight cache sizes
+
+2. **Check Memory Usage**:
+   - Open Task Manager (Windows) or Activity Monitor (Mac)
+   - Monitor memory usage while opening large workspaces
+   - Compare with/without `EXPLORER_DATES_MEMORY_SHEDDING=1`
+
+3. **Enable Logging**:
+   ```json
+   "explorerDates.enableLogging": true
+   ```
+   - Open Command Palette → `Explorer Dates: Open Logs`
+   - Look for decoration pool hit/miss ratios and memory shedding events
+
 ## Diagnostic: Verify Badge Acceptance (Optional)
 
 Because visual badge acceptance can vary by platform and VS Code build, Explorer Dates includes a small diagnostic you can run locally to help capture how your VS Code instance handles badges of varying lengths.

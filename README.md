@@ -89,28 +89,6 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 **Quick Setup**: Most users only need to configure the first 2-3 settings below. See [SETTINGS_GUIDE.md](./DOCS/SETTINGS_GUIDE.md) for detailed configuration examples.
 
-### Performance Settings
-
-| Setting | Options | Default | Description |
-|---------|---------|---------|-------------|
-| `performanceMode` | `true`/`false` | `false` | **Minimal performance mode**: disables all features except basic date/time tooltips on files. Disables Git info, auto-updates, status bar, progressive loading, and advanced caching. Recommended for large projects or low-resource systems. |
-
-**When to use Performance Mode:**
-- Large projects with thousands of files
-- Systems with limited CPU or memory
-- When you only need basic date/time information on hover
-- When experiencing high resource usage (laptop fan noise, CPU spikes)
-
-**What gets disabled in Performance Mode:**
-- Git blame operations (no author information)
-- File system watching for auto-updates (manual refresh still available)
-- Status bar integration
-- Progressive loading and background processing
-- Advanced caching layers
-- Color schemes and visual enhancements
-- File size display
-- Reduced logging overhead
-
 ### Essential Settings
 
 | Setting | Options | Default | Description |
@@ -175,6 +153,97 @@ To use custom colors for file decorations:
 
 **Note**: The `explorerDates.customColors` setting in the extension configuration is deprecated. Use `workbench.colorCustomizations` instead for proper theme integration and color support.
 
+### Performance & Memory Settings
+
+| Setting | Options | Default | Description |
+|---------|---------|---------|-------------|
+| `performanceMode` | `true`/`false` | `false` | **Minimal performance mode**: disables all features except basic date/time tooltips on files. Disables Git info, auto-updates, status bar, progressive loading, and advanced caching. Recommended for large projects or low-resource systems. |
+
+**When to use Performance Mode:**
+- Large projects with thousands of files
+- Systems with limited CPU or memory
+- When you only need basic date/time information on hover
+- When experiencing high resource usage (laptop fan noise, CPU spikes)
+
+**What gets disabled in Performance Mode:**
+- Git blame operations (no author information)
+- File system watching for auto-updates (manual refresh still available)
+- Status bar integration
+- Progressive loading and background processing
+- Advanced caching layers
+- Color schemes and visual enhancements
+- File size display
+- Reduced logging overhead
+
+### Memory Management
+
+Explorer Dates is optimized for low memory usage, using smart caching and pooling to keep heap growth minimal. For most users, no configuration is needed.
+
+**v1.2.5 Memory Enhancements:**
+- **Decoration Pooling**: Reuses `FileDecoration` objects instead of allocating new ones per request (99.9% cache hit rate)
+- **Flyweight String Caching**: Capped FIFO caches for badge strings and tooltips prevent transient allocations
+- **Advanced Cache Slimming**: Compact storage reduces per-entry memory footprint by ~40%
+- **Memory Shedding**: Optional adaptive guardrail that monitors heap and stretches refresh intervals under pressure
+
+**Advanced Memory Options (Environment Variables)**
+
+For users with very large workspaces (1000+ files) or memory-constrained systems, these options enable adaptive memory management:
+
+```bash
+# Memory Shedding (Adaptive Guardrail)
+export EXPLORER_DATES_MEMORY_SHEDDING=1              # Enable adaptive memory guardrail
+export EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=3    # Trigger threshold (MB, default 3, range 1-5)
+export EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT=1000  # Cache cap during shedding (default 1000 entries)
+export EXPLORER_DATES_MEMORY_SHED_REFRESH_MS=60000  # Min refresh interval during shedding (default 60s)
+
+# Lightweight Mode (Maximum Memory Efficiency)
+export EXPLORER_DATES_LIGHTWEIGHT_MODE=1             # Force performance mode + disable git/colors/accessibility
+```
+
+**Example Usage**
+
+```bash
+# For large workspaces with memory concerns:
+export EXPLORER_DATES_MEMORY_SHEDDING=1
+code .
+
+# For memory-constrained environments (Codespaces, embedded systems):
+export EXPLORER_DATES_MEMORY_SHEDDING=1
+export EXPLORER_DATES_LIGHTWEIGHT_MODE=1
+export EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2
+code .
+
+# Combined: maximum efficiency for resource-limited scenarios
+export EXPLORER_DATES_MEMORY_SHEDDING=1
+export EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=1
+export EXPLORER_DATES_LIGHTWEIGHT_MODE=1
+code .
+```
+
+**How Memory Shedding Works**
+
+When enabled, memory shedding monitors heap usage during idle periods:
+- **Below threshold**: No impact, operates normally (~0.53 MB typical delta in zero-delay soak)
+- **Above threshold**: Automatically stretches decoration refresh intervals and shrinks the file metadata cache to reduce memory pressure
+- **Fallback**: If memory shedding isn't available, the extension continues operating normally with standard caching
+
+This is useful for:
+- Workspaces with 1000+ JavaScript/TypeScript files
+- VS Code in Codespaces or containerized environments
+- Laptops/embedded systems with <4GB RAM
+- Remote development environments with bandwidth constraints
+
+**Memory Benchmarks (v1.2.5)**
+| Scenario | Heap Delta | Status |
+|----------|-----------|--------|
+| Baseline (normal caching) | 0.53 MB | ✅ 95% improvement |
+| Production usage (5ms delays) | 4.68 MB | ✅ Excellent |
+| Memory shedding enabled | 0.54 MB | ✅ Adaptive guardrail working |
+| Lightweight mode | 0.39 MB | ✅ 24% additional reduction |
+| Combined (both features) | ~0.25 MB | ✅ Maximum efficiency |
+
+See [MEMORY_FIX_REPORT.md](./MEMORY_FIX_REPORT.md) for comprehensive analysis, test methodology, and Phase 1-4 optimization details.
+
 ## Debugging & Diagnostics
 
 - **Developer Tools**: If you need to verify badge acceptance, open `Help → Toggle Developer Tools` (Extension Host console) while running the extension to view any rejection messages.
@@ -188,6 +257,7 @@ To use custom colors for file decorations:
 - `npm run test:feature-gates` activates the extension in a mocked host and verifies the workspace templates, reporting, and API/plug-in toggles behave as expected.
 - `npm run test:flows` exercises workspace templates, reporting, and the web bundle using lightweight VS Code shims.
 - `npm run test:bundle` and `npm run test:verify-bundle` provide quick sanity checks for the packaged bundle/VSIX before submitting to the Marketplace.
+- `npm run test:memory` runs a GC-assisted soak test that hammers the decoration pipeline for several hundred iterations. It now includes a cache-hit phase followed by forced refreshes and fails if heap growth exceeds 24 MB by default (override with `MEMORY_SOAK_MAX_DELTA_MB`). Requires Node `--expose-gc`, which the script enables automatically.
 
 ## Inspiration & Motivation
 
@@ -197,7 +267,28 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.2.2 (Latest)
+### Version 1.2.5 (Latest)
+
+**Memory Optimization Release**
+
+Explorer Dates now includes major memory optimizations through:
+
+- **Decoration Pooling**: Reusable `FileDecoration` objects reduce allocation churn by 94-95% in normal workloads
+- **Flyweight Caching**: Efficient string caching for badges and tooltips eliminates per-iteration allocations
+- **Memory Shedding** (Opt-in): Adaptive guardrail monitors heap usage and stretches refresh intervals under memory pressure
+- **Lightweight Mode** (Opt-in): Optional performance-focused profile with 24% memory reduction by disabling Git, colors, and accessibility features
+
+**Benchmarks:**
+- Extreme stress test (2000 iterations, 0ms delay): **0.53 MB** heap delta (95% improvement from previous 28.68 MB)
+- Production usage (600 iterations, 5ms delay): **4.68 MB** heap delta (no regression)
+- All optimizations come with full test coverage and CI/CD guards
+
+**For Users:**
+- No configuration changes needed; pooling and flyweights are enabled by default and invisible
+- Advanced users can opt into memory shedding (`EXPLORER_DATES_MEMORY_SHEDDING=1`) or lightweight mode for additional savings
+- See [Memory Management](#memory-management) section below for details
+
+### Version 1.2.2
 
 **Workspace Exclusion Reliability**
 

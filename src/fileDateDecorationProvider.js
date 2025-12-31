@@ -41,9 +41,32 @@ class FileDateDecorationProvider {
         
         // Enhanced cache to avoid repeated file system calls
         this._decorationCache = new Map();
+        this._decorationPool = new Map();
+        this._decorationPoolOrder = [];
+        this._decorationPoolStats = { hits: 0, misses: 0 };
+        this._maxDecorationPoolSize = 512;
+        this._badgeFlyweightCache = new Map();
+        this._badgeFlyweightOrder = [];
+        this._badgeFlyweightLimit = 2048;
+        this._badgeFlyweightStats = { hits: 0, misses: 0 };
+        this._readableDateFlyweightCache = new Map();
+        this._readableDateFlyweightOrder = [];
+        this._readableDateFlyweightLimit = 2048;
+        this._readableFlyweightStats = { hits: 0, misses: 0 };
+        this._enableDecorationPool = process.env.EXPLORER_DATES_ENABLE_DECORATION_POOL !== '0';
+        this._enableFlyweights = process.env.EXPLORER_DATES_ENABLE_FLYWEIGHTS !== '0';
+        this._lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+        this._memorySheddingEnabled = process.env.EXPLORER_DATES_MEMORY_SHEDDING === '1';
+        this._memorySheddingThresholdMB = Number(process.env.EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB || 3);
+        this._memorySheddingActive = false;
+        this._memoryBaselineMB = this._memorySheddingEnabled ? this._safeHeapUsedMB() : 0;
+        this._memoryShedCacheLimit = Number(process.env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT || 1000);
+        this._memoryShedRefreshIntervalMs = Number(process.env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS || 60000);
+        this._refreshIntervalOverride = null;
+        this._forceCacheBypass = process.env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
         this._isWeb = isWebBuild || isWebEnvironment();
         this._baselineDesktopCacheTimeout = DEFAULT_CACHE_TIMEOUT * 4; // 8 minutes baseline
-        this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout * 2; // 16 minutes ceiling
+        this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout; // Keep at 8 minutes max, don't extend to 16
         this._lastCacheTimeoutBoostLookups = 0;
         this._maxCacheSize = DEFAULT_MAX_CACHE_SIZE;
         this._fileSystem = fileSystem;
@@ -70,6 +93,11 @@ class FileDateDecorationProvider {
         // Initialize UX enhancement systems
         this._themeIntegration = new ThemeIntegrationManager();
         this._accessibility = new AccessibilityManager();
+        this._stressLogOptions = {
+            profile: 'stress',
+            throttleKey: 'decorations:request',
+            throttleLimit: Number(process.env.EXPLORER_DATES_LOG_INFO_LIMIT || 50)
+        };
         
         // Performance metrics
         this._metrics = {
@@ -86,6 +114,9 @@ class FileDateDecorationProvider {
         // Periodic refresh timer for time-based badges
         this._refreshTimer = null;
         this._refreshInterval = 60000; // 1 minute default
+        this._incrementalRefreshTimers = new Set();
+        this._incrementalRefreshInProgress = false;
+        this._scheduledRefreshPending = false; // Debounce rapid refresh requests
         
         // Check if performance mode is enabled
         const config = vscode.workspace.getConfiguration('explorerDates');
@@ -93,6 +124,9 @@ class FileDateDecorationProvider {
         this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
         this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
         this._performanceMode = config.get('performanceMode', false);
+        if (this._lightweightMode) {
+            this._performanceMode = true;
+        }
         
         // Watch for file changes to update decorations (disabled in performance mode)
         if (!this._performanceMode) {
@@ -108,6 +142,21 @@ class FileDateDecorationProvider {
         }
         
         this._logger.info(`FileDateDecorationProvider initialized (performanceMode: ${this._performanceMode})`);
+        if (this._forceCacheBypass) {
+            this._logger.warn('Force cache bypass mode enabled - decoration caches will be skipped');
+        }
+        if (!this._enableDecorationPool) {
+            this._logger.warn('Decoration pool disabled via EXPLORER_DATES_ENABLE_DECORATION_POOL=0');
+        }
+        if (!this._enableFlyweights) {
+            this._logger.warn('Flyweight caches disabled via EXPLORER_DATES_ENABLE_FLYWEIGHTS=0');
+        }
+        if (this._lightweightMode) {
+            this._logger.warn('Lightweight mode enabled via EXPLORER_DATES_LIGHTWEIGHT_MODE=1 (performanceMode forced on)');
+        }
+        if (this._memorySheddingEnabled) {
+            this._logger.warn(`Memory shedding enabled (threshold ${this._memorySheddingThresholdMB} MB); will stretch refresh interval and shrink cache if exceeded.`);
+        }
 
         // Preview settings for onboarding
         this._previewSettings = null;
@@ -132,6 +181,7 @@ class FileDateDecorationProvider {
         // Always clear caches when entering or exiting preview mode
         const memorySize = this._decorationCache.size;
         this._decorationCache.clear();
+        this._clearDecorationPool('preview-mode-change');
         this._logger.info(`🗑️ Cleared memory cache (${memorySize} items) for preview mode change`);
         
         if (this._advancedCache) {
@@ -197,9 +247,11 @@ class FileDateDecorationProvider {
      */
     forceRefreshAllDecorations() {
         this._logger.info('🔄 Force refreshing ALL decorations...');
+        this._cancelIncrementalRefreshTimers();
         
         // Clear all caches first
         this._decorationCache.clear();
+        this._clearDecorationPool('force-refresh');
         if (this._advancedCache) {
             this._advancedCache.clear();
         }
@@ -260,7 +312,9 @@ class FileDateDecorationProvider {
      */
     _setupPeriodicRefresh() {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        this._refreshInterval = config.get('badgeRefreshInterval', 60000); // Default 1 minute
+        const configuredInterval = config.get('badgeRefreshInterval', 60000); // Default 1 minute
+        const interval = this._refreshIntervalOverride || configuredInterval;
+        this._refreshInterval = interval;
         
         this._logger.info(`Setting up periodic refresh with interval: ${this._refreshInterval}ms`);
         
@@ -269,6 +323,7 @@ class FileDateDecorationProvider {
             clearInterval(this._refreshTimer);
             this._refreshTimer = null;
         }
+        this._cancelIncrementalRefreshTimers();
         
         // Only set up periodic refresh if decorations are enabled
         if (!config.get('showDateDecorations', true)) {
@@ -278,28 +333,136 @@ class FileDateDecorationProvider {
         
         // Set up periodic refresh timer
         this._refreshTimer = setInterval(() => {
-            this._logger.debug('Periodic refresh triggered - clearing caches and refreshing decorations');
-            
-            // Track cache size before clearing for logging
-            const memoryCacheSize = this._decorationCache.size;
-            
-            // Clear both memory and advanced cache to force recalculation
-            this._decorationCache.clear();
-            if (this._advancedCache) {
-                try {
-                    this._advancedCache.clear();
-                } catch (error) {
-                    this._logger.debug(`Failed to clear advanced cache during periodic refresh: ${error.message}`);
-                }
+            if (this._incrementalRefreshInProgress) {
+                this._logger.debug('Periodic refresh skipped - incremental refresh already running');
+                return;
             }
-            
-            // Trigger refresh of all decorations
-            this._onDidChangeFileDecorations.fire(undefined);
-            
-            this._logger.debug(`Periodic refresh completed - cleared ${memoryCacheSize} cached items from memory`);
+            this._logger.debug('Periodic refresh triggered - scheduling incremental refresh');
+            this._scheduleIncrementalRefresh('periodic');
         }, this._refreshInterval);
         
         this._logger.info('Periodic refresh timer started');
+    }
+
+    _resolveUriFromCacheEntry(cacheKey, entry) {
+        if (entry?.uri) {
+            return entry.uri;
+        }
+        if (!cacheKey) {
+            return null;
+        }
+        try {
+            return vscode.Uri.file(cacheKey);
+        } catch (error) {
+            this._logger.debug(`Failed to rebuild URI from cache key: ${cacheKey}`, error);
+            return null;
+        }
+    }
+
+    _cancelIncrementalRefreshTimers() {
+        if (this._incrementalRefreshTimers?.size) {
+            for (const timer of this._incrementalRefreshTimers) {
+                clearTimeout(timer);
+            }
+            this._incrementalRefreshTimers.clear();
+        }
+        this._incrementalRefreshInProgress = false;
+    }
+
+    _scheduleIncrementalRefresh(reason = 'manual') {
+        // If a refresh is already pending, skip duplicate requests
+        // This prevents memory churn from rapid successive refresh calls
+        if (this._scheduledRefreshPending) {
+            this._logger.debug(`Incremental refresh (${reason}) skipped - refresh already pending`);
+            return;
+        }
+
+        if (this._incrementalRefreshInProgress) {
+            this._logger.debug(`Incremental refresh (${reason}) already in progress, cancelling pending timers and rescheduling`);
+            // Cancel any pending timers from previous schedule to prevent accumulation
+            this._cancelIncrementalRefreshTimers();
+        }
+
+        const entries = Array.from(this._decorationCache.entries());
+        if (entries.length === 0) {
+            this._logger.debug(`No cached decorations to refresh for ${reason}, falling back to global refresh`);
+            this._onDidChangeFileDecorations.fire(undefined);
+            return;
+        }
+
+        const targets = entries
+            .map(([cacheKey, entry]) => {
+                const uri = this._resolveUriFromCacheEntry(cacheKey, entry);
+                return uri ? { cacheKey, uri } : null;
+            })
+            .filter(Boolean);
+
+        if (targets.length === 0) {
+            this._logger.debug(`Failed to resolve URIs for ${reason} incremental refresh, firing global refresh`);
+            this._onDidChangeFileDecorations.fire(undefined);
+            return;
+        }
+
+        const chunkSize = 40;
+        const totalChunks = Math.ceil(targets.length / chunkSize);
+        const targetDuration = Math.min(4000, Math.max(750, Math.floor(this._refreshInterval * 0.25)));
+        const spacing = totalChunks > 1 ? Math.max(25, Math.floor(targetDuration / totalChunks)) : 0;
+
+        this._incrementalRefreshInProgress = true;
+        this._scheduledRefreshPending = true;
+        this._logger.debug(`Incremental refresh (${reason}) scheduled for ${targets.length} items in ${totalChunks} batches (spacing: ${spacing}ms)`);
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const chunk = targets.slice(chunkIndex * chunkSize, (chunkIndex + 1) * chunkSize);
+            const delay = chunkIndex === 0 ? 0 : spacing * chunkIndex;
+
+            const timer = setTimeout(() => {
+                try {
+                    chunk.forEach(({ cacheKey, uri }) => {
+                        this._markCacheEntryForRefresh(cacheKey);
+                        this._onDidChangeFileDecorations.fire(uri);
+                    });
+                } finally {
+                    this._incrementalRefreshTimers.delete(timer);
+                    if (this._incrementalRefreshTimers.size === 0) {
+                        this._incrementalRefreshInProgress = false;
+                        this._scheduledRefreshPending = false;
+                        this._logger.debug(`Incremental refresh (${reason}) completed`);
+                    }
+                }
+            }, delay);
+
+            this._incrementalRefreshTimers.add(timer);
+        }
+    }
+
+    _markCacheEntryForRefresh(cacheKey) {
+        if (!cacheKey) {
+            return;
+        }
+
+        const entry = this._decorationCache.get(cacheKey);
+        if (entry) {
+            // Only force refresh if entry is actually stale (more than 75% through TTL)
+            const ageMs = Date.now() - entry.timestamp;
+            const isStale = ageMs > (this._cacheTimeout * 0.75);
+            
+            if (isStale) {
+                entry.forceRefresh = true;
+                this._logger.debug(`Marked stale entry for refresh: ${cacheKey} (age: ${Math.round(ageMs / 1000)}s)`);
+            } else {
+                this._logger.debug(`Skipped refresh for fresh entry: ${cacheKey} (age: ${Math.round(ageMs / 1000)}s, threshold: ${Math.round(this._cacheTimeout * 0.75 / 1000)}s)`);
+            }
+        }
+
+        if (this._advancedCache) {
+            try {
+                const escapedKey = cacheKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                this._advancedCache.invalidateByPattern(escapedKey);
+            } catch (error) {
+                this._logger.debug(`Could not invalidate advanced cache for ${cacheKey}: ${error.message}`);
+            }
+        }
     }
 
     /**
@@ -581,9 +744,11 @@ class FileDateDecorationProvider {
      * Clear all caches (memory and advanced cache)
      */
     clearAllCaches() {
+        this._cancelIncrementalRefreshTimers();
         // Clear memory cache
         const memorySize = this._decorationCache.size;
         this._decorationCache.clear();
+        this._clearDecorationPool('clearAllCaches');
         this._logger.info(`Cleared memory cache (was ${memorySize} items)`);
         
         // Clear advanced cache if available
@@ -603,7 +768,9 @@ class FileDateDecorationProvider {
      * Refresh all decorations
      */
     refreshAll() {
+        this._cancelIncrementalRefreshTimers();
         this._decorationCache.clear();
+        this._clearDecorationPool('refreshAll');
         this._gitCache.clear();
         // Clear advanced cache if available
         if (this._advancedCache) {
@@ -778,12 +945,15 @@ class FileDateDecorationProvider {
         }
 
         const totalLookups = this._metrics.cacheHits + this._metrics.cacheMisses;
-        if (totalLookups < 200 || this._cacheTimeout >= this._maxDesktopCacheTimeout) {
+        if (totalLookups < 200) {
             return;
         }
 
         const hitRate = this._metrics.cacheHits / totalLookups;
-        if (hitRate < 0.85) {
+        
+        // Only extend to 8 minutes maximum if sustained high hit rate is confirmed
+        // This prevents unbounded timeout extension during usage transitions
+        if (hitRate < 0.90 || this._cacheTimeout >= this._maxDesktopCacheTimeout) {
             return;
         }
 
@@ -791,11 +961,17 @@ class FileDateDecorationProvider {
             return;
         }
 
+        // Require sustained hit rate (100+ lookups) before extending
+        const lookupsSinceLastBoost = totalLookups - this._lastCacheTimeoutBoostLookups;
+        if (lookupsSinceLastBoost < 100) {
+            return;
+        }
+
         const previousTimeout = this._cacheTimeout;
         this._cacheTimeout = Math.min(this._cacheTimeout + DEFAULT_CACHE_TIMEOUT, this._maxDesktopCacheTimeout);
         this._lastCacheTimeoutBoostLookups = totalLookups;
 
-        this._logger.info('⚙️ Cache timeout auto-extended', {
+        this._logger.info('⚙️ Cache timeout extended (max 8min)', {
             previousTimeout,
             newTimeout: this._cacheTimeout,
             hitRate: Number(hitRate.toFixed(2)),
@@ -804,6 +980,11 @@ class FileDateDecorationProvider {
     }
 
     async _getCachedDecoration(cacheKey, fileLabel) {
+        if (this._forceCacheBypass) {
+            this._logger.debug(`⚠️ Cache bypass enabled - recalculating decoration for: ${fileLabel}`);
+            return null;
+        }
+
         if (this._advancedCache) {
             try {
                 const cached = await this._advancedCache.get(cacheKey);
@@ -818,21 +999,34 @@ class FileDateDecorationProvider {
         }
 
         const memoryEntry = this._decorationCache.get(cacheKey);
-        if (memoryEntry && (Date.now() - memoryEntry.timestamp) < this._cacheTimeout) {
-            this._metrics.cacheHits++;
-            this._logger.debug(`💾 Memory cache hit for: ${fileLabel}`);
-            return memoryEntry.decoration;
+        if (memoryEntry) {
+            if (memoryEntry.forceRefresh) {
+                this._decorationCache.delete(cacheKey);
+                this._logger.debug(`🚫 Memory cache bypassed (forced refresh) for: ${fileLabel}`);
+            } else if ((Date.now() - memoryEntry.timestamp) < this._cacheTimeout) {
+                this._metrics.cacheHits++;
+                this._logger.debug(`💾 Memory cache hit for: ${fileLabel}`);
+                return memoryEntry.decoration;
+            }
         }
 
         return null;
     }
 
-    async _storeDecorationInCache(cacheKey, decoration, fileLabel) {
+    async _storeDecorationInCache(cacheKey, decoration, fileLabel, resourceUri) {
+        if (this._forceCacheBypass) {
+            return;
+        }
+
         this._manageCacheSize();
-        this._decorationCache.set(cacheKey, {
+        const cacheEntry = {
             decoration,
             timestamp: Date.now()
-        });
+        };
+        if (resourceUri) {
+            cacheEntry.uri = resourceUri;
+        }
+        this._decorationCache.set(cacheKey, cacheEntry);
 
         if (this._advancedCache) {
             try {
@@ -846,6 +1040,203 @@ class FileDateDecorationProvider {
         this._maybeExtendCacheTimeout();
     }
 
+    _getFlyweightValue(cache, order, limit, key, factory, statsTracker) {
+        if (!this._enableFlyweights) {
+            if (statsTracker) {
+                statsTracker.misses++;
+            }
+            return factory();
+        }
+
+        if (!key) {
+            if (statsTracker) {
+                statsTracker.misses++;
+            }
+            return factory();
+        }
+
+        if (cache.has(key)) {
+            if (statsTracker) {
+                statsTracker.hits++;
+            }
+            return cache.get(key);
+        }
+
+        if (statsTracker) {
+            statsTracker.misses++;
+        }
+
+        const value = factory();
+        cache.set(key, value);
+        order.push(key);
+
+        if (order.length > limit) {
+            const oldestKey = order.shift();
+            if (oldestKey) {
+                cache.delete(oldestKey);
+            }
+        }
+
+        return value;
+    }
+
+    _safeHeapUsedMB() {
+        try {
+            const heapUsed = process?.memoryUsage ? process.memoryUsage().heapUsed : 0;
+            return Number((heapUsed / 1024 / 1024).toFixed(2));
+        } catch {
+            return 0;
+        }
+    }
+
+    _maybeShedWorkload() {
+        if (!this._memorySheddingEnabled || this._memorySheddingActive) {
+            return;
+        }
+        const current = this._safeHeapUsedMB();
+        if (!current) {
+            return;
+        }
+        if (!this._memoryBaselineMB) {
+            this._memoryBaselineMB = current;
+            return;
+        }
+        const delta = current - this._memoryBaselineMB;
+        if (delta >= this._memorySheddingThresholdMB) {
+            this._memorySheddingActive = true;
+            this._maxCacheSize = Math.min(this._maxCacheSize, this._memoryShedCacheLimit);
+            this._refreshIntervalOverride = Math.max(
+                this._refreshIntervalOverride || this._refreshInterval || this._memoryShedRefreshIntervalMs,
+                this._memoryShedRefreshIntervalMs
+            );
+            this._logger.warn(`Memory shedding activated (delta ${delta.toFixed(2)} MB >= ${this._memorySheddingThresholdMB} MB); cache size capped at ${this._maxCacheSize} and refresh interval stretched to ${this._refreshIntervalOverride}ms`);
+            this._setupPeriodicRefresh();
+        }
+    }
+
+    _acquireDecorationFromPool({ badge, tooltip, color }) {
+        if (!this._enableDecorationPool) {
+            this._decorationPoolStats.misses++;
+            const decoration = new vscode.FileDecoration(badge || '??');
+            if (tooltip) decoration.tooltip = tooltip;
+            if (color) decoration.color = color;
+            decoration.propagate = false;
+            return decoration;
+        }
+
+        if (!badge) {
+            return new vscode.FileDecoration('??');
+        }
+
+        const key = this._buildDecorationPoolKey(badge, tooltip, color);
+        if (key && this._decorationPool.has(key)) {
+            this._decorationPoolStats.hits++;
+            return this._decorationPool.get(key);
+        }
+
+        const decoration = new vscode.FileDecoration(badge);
+        if (tooltip) {
+            decoration.tooltip = tooltip;
+        }
+        if (color) {
+            decoration.color = color;
+        }
+        decoration.propagate = false;
+
+        if (key) {
+            this._decorationPool.set(key, decoration);
+            this._decorationPoolOrder.push(key);
+            if (this._decorationPoolOrder.length > this._maxDecorationPoolSize) {
+                const oldestKey = this._decorationPoolOrder.shift();
+                if (oldestKey && oldestKey !== key) {
+                    this._decorationPool.delete(oldestKey);
+                }
+            }
+        }
+        this._decorationPoolStats.misses++;
+
+        return decoration;
+    }
+
+    _buildDecorationPoolKey(badge, tooltip, color) {
+        const normalizedBadge = badge || '';
+        const normalizedTooltip = tooltip || '';
+        const colorKey = this._getColorIdentifier(color);
+        return `${normalizedBadge}::${colorKey}::${normalizedTooltip}`;
+    }
+
+    _getColorIdentifier(color) {
+        if (!color) {
+            return 'none';
+        }
+        if (typeof color === 'string') {
+            return color;
+        }
+        if (color.id) {
+            return color.id;
+        }
+        try {
+            return JSON.stringify(color);
+        } catch {
+            return String(color);
+        }
+    }
+
+    _clearDecorationPool(reason = 'unspecified') {
+        if (this._decorationPool.size === 0) {
+            return;
+        }
+        this._decorationPool.clear();
+        this._decorationPoolOrder.length = 0;
+        this._logger.debug(`🧼 Cleared decoration pool (${reason})`);
+    }
+
+    _buildBadgeDescriptor({ formatType, diffMinutes, diffHours, diffDays, diffWeeks, diffMonths, date }) {
+        const build = (value, keySuffix = null) => ({
+            value,
+            key: keySuffix ? `badge:${formatType || 'default'}:${keySuffix}` : null
+        });
+
+        switch (formatType) {
+            case 'relative-short':
+            case 'relative-long':
+                if (diffMinutes < 1) return build('●●', 'just');
+                if (diffMinutes < 60) return build(`${Math.min(diffMinutes, 99)}m`, `m:${Math.min(diffMinutes, 99)}`);
+                if (diffHours < 24) return build(`${Math.min(diffHours, 23)}h`, `h:${Math.min(diffHours, 23)}`);
+                if (diffDays < 7) return build(`${diffDays}d`, `d:${diffDays}`);
+                if (diffWeeks < 4) return build(`${diffWeeks}w`, `w:${diffWeeks}`);
+                if (diffMonths < 12) return build(`${diffMonths}M`, `M:${diffMonths}`);
+                return build('1y', 'y:1');
+
+            case 'absolute-short':
+            case 'absolute-long': {
+                const day = date.getDate();
+                const badge = `${MONTH_ABBREVIATIONS[date.getMonth()]}${day < 10 ? '0' + day : day}`;
+                const keyParts = [date.getMonth(), day];
+                if (formatType === 'absolute-long') {
+                    keyParts.push(date.getFullYear());
+                }
+                return build(badge, `abs:${keyParts.join('-')}`);
+            }
+
+            case 'technical':
+                if (diffMinutes < 60) return build(`${diffMinutes}m`, `tech:m:${diffMinutes}`);
+                if (diffHours < 24) return build(`${diffHours}h`, `tech:h:${diffHours}`);
+                return build(`${diffDays}d`, `tech:d:${diffDays}`);
+
+            case 'minimal':
+                if (diffHours < 1) return build('••', 'min:now');
+                if (diffHours < 24) return build('○○', 'min:hours');
+                return build('──', 'min:days');
+
+            default: {
+                if (diffMinutes < 60) return build(`${diffMinutes}m`, `smart:m:${diffMinutes}`);
+                if (diffHours < 24) return build(`${diffHours}h`, `smart:h:${diffHours}`);
+                return build(`${diffDays}d`, `smart:d:${diffDays}`);
+            }
+        }
+    }
+
     /**
      * Format date badge - VS Code compliant 2-character indicators
      * Based on user experience that VS Code supports at least 2 characters
@@ -854,56 +1245,35 @@ class FileDateDecorationProvider {
         const now = new Date();
         const diffMs = precalcDiffMs !== null ? precalcDiffMs : (now.getTime() - date.getTime());
         
-        // Handle future-dated files (negative diffMs due to clock skew, timezone issues, etc.)
-        // Treat them as "just modified" to avoid displaying negative values
         if (diffMs < 0) {
             this._logger.debug(`File has future modification time (diffMs: ${diffMs}), treating as just modified`);
             return '●●';
         }
         
-        // Using 2-character indicators for better readability
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         const diffWeeks = Math.floor(diffDays / 7);
         const diffMonths = Math.floor(diffDays / 30);
-        
-        switch (formatType) {
-            case 'relative-short':
-            case 'relative-long':
-                // 2-character time indicators
-                if (diffMinutes < 1) return '●●';                    // Just modified
-                if (diffMinutes < 60) return `${Math.min(diffMinutes, 99)}m`;  // 1m-59m
-                if (diffHours < 24) return `${Math.min(diffHours, 23)}h`;      // 1h-23h
-                if (diffDays < 7) return `${diffDays}d`;             // 1d-6d
-                if (diffWeeks < 4) return `${diffWeeks}w`;           // 1w-3w
-                if (diffMonths < 12) return `${diffMonths}M`;        // 1M-11M
-                return '1y';                                         // 1+ year
-                
-            case 'absolute-short':
-            case 'absolute-long': {
-                const day = date.getDate();
-                return `${MONTH_ABBREVIATIONS[date.getMonth()]}${day < 10 ? '0' + day : day}`;
-            }
-                
-            case 'technical':
-                // Technical format with more precision
-                if (diffMinutes < 60) return `${diffMinutes}m`;
-                if (diffHours < 24) return `${diffHours}h`;
-                return `${diffDays}d`;
-                
-            case 'minimal': 
-                // Minimal with basic time indicator
-                if (diffHours < 1) return '••';
-                if (diffHours < 24) return '○○';
-                return '──';
-                
-            default:
-                // Default to relative format
-                if (diffMinutes < 60) return `${diffMinutes}m`;
-                if (diffHours < 24) return `${diffHours}h`;
-                return `${diffDays}d`;
-        }
+
+        const descriptor = this._buildBadgeDescriptor({
+            formatType,
+            diffMinutes,
+            diffHours,
+            diffDays,
+            diffWeeks,
+            diffMonths,
+            date
+        });
+
+        return this._getFlyweightValue(
+            this._badgeFlyweightCache,
+            this._badgeFlyweightOrder,
+            this._badgeFlyweightLimit,
+            descriptor.key,
+            () => descriptor.value,
+            this._badgeFlyweightStats
+        );
     }
 
     /**
@@ -911,6 +1281,41 @@ class FileDateDecorationProvider {
      */
     _formatFileSize(bytes, format = 'auto') {
         return formatFileSize(bytes, format);
+    }
+
+    _buildReadableDescriptor(date, now, diffMins, diffHours, diffDays) {
+        const sameDay = date.toDateString() === now.toDateString();
+        if (diffMins < 1) {
+            return {
+                key: 'readable:just',
+                factory: () => this._l10n.getString('justNow')
+            };
+        }
+        if (diffMins < 60) {
+            return {
+                key: `readable:minutes:${diffMins}`,
+                factory: () => this._l10n.getString('minutesAgo', diffMins)
+            };
+        }
+        if (diffHours < 24 && sameDay) {
+            return {
+                key: `readable:hours:${diffHours}`,
+                factory: () => this._l10n.getString('hoursAgo', diffHours)
+            };
+        }
+        if (diffDays < 7) {
+            if (diffDays === 1) {
+                return {
+                    key: 'readable:yesterday',
+                    factory: () => this._l10n.getString('yesterday')
+                };
+            }
+            return {
+                key: `readable:days:${diffDays}`,
+                factory: () => this._l10n.getString('daysAgo', diffDays)
+            };
+        }
+        return null;
     }
 
     /**
@@ -1072,27 +1477,23 @@ class FileDateDecorationProvider {
         const diffMins = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const descriptor = this._buildReadableDescriptor(date, now, diffMins, diffHours, diffDays);
 
-        // Very recent files
-        if (diffMins < 1) return this._l10n.getString('justNow');
-        if (diffMins < 60) return this._l10n.getString('minutesAgo', diffMins);
-        
-        // Today
-        if (diffHours < 24 && date.toDateString() === now.toDateString()) {
-            return this._l10n.getString('hoursAgo', diffHours);
+        if (descriptor) {
+            return this._getFlyweightValue(
+                this._readableDateFlyweightCache,
+                this._readableDateFlyweightOrder,
+                this._readableDateFlyweightLimit,
+                descriptor.key,
+                descriptor.factory,
+                this._readableFlyweightStats
+            );
         }
-        
-        // This week
-        if (diffDays < 7) {
-            return diffDays === 1 ? this._l10n.getString('yesterday') : this._l10n.getString('daysAgo', diffDays);
-        }
-        
-        // This year
+
         if (date.getFullYear() === now.getFullYear()) {
             return this._l10n.formatDate(date, { month: 'short', day: 'numeric' });
         }
-        
-        // Older
+
         return this._l10n.formatDate(date, { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
@@ -1254,8 +1655,8 @@ class FileDateDecorationProvider {
 
             // Reduce verbose logging in performance mode
             if (!this._performanceMode) {
-                this._logger.info(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
-                this._logger.info(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+                this._logger.infoWithOptions(this._stressLogOptions, `🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
+                this._logger.infoWithOptions(this._stressLogOptions, `📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
             }
 
             const config = vscode.workspace.getConfiguration('explorerDates');
@@ -1269,19 +1670,19 @@ class FileDateDecorationProvider {
             };
 
             if (this._previewSettings) {
-                this._logger.info(`🎭 Processing ${fileLabel} in PREVIEW MODE with settings:`, this._previewSettings);
+                this._logger.infoWithOptions(this._stressLogOptions, `🎭 Processing ${fileLabel} in PREVIEW MODE with settings:`, () => this._previewSettings);
             }
 
             if (!_get('showDateDecorations', true)) {
                 if (!this._performanceMode) {
-                    this._logger.info(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
+                    this._logger.infoWithOptions(this._stressLogOptions, `❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
                 }
                 return undefined;
             }
 
             if (await this._isExcludedSimple(uri)) {
                 if (!this._performanceMode) {
-                    this._logger.info(`❌ File excluded: ${fileLabel}`);
+                    this._logger.infoWithOptions(this._stressLogOptions, `❌ File excluded: ${fileLabel}`);
                 }
                 return undefined;
             }
@@ -1339,15 +1740,23 @@ class FileDateDecorationProvider {
             const diffMs = Date.now() - modifiedAt.getTime();
 
             const dateFormat = _get('dateDecorationFormat', 'smart');
-            const colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
+            let colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
             const highContrastMode = _get('highContrastMode', false);
-            const showFileSize = this._performanceMode ? false : _get('showFileSize', false);
+            let showFileSize = this._performanceMode ? false : _get('showFileSize', false);
             const fileSizeFormat = _get('fileSizeFormat', 'auto');
-            const accessibilityMode = _get('accessibilityMode', false);
+            let accessibilityMode = _get('accessibilityMode', false);
             const fadeOldFiles = this._performanceMode ? false : _get('fadeOldFiles', false);
             const fadeThreshold = _get('fadeThreshold', 30);
-            const rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
+            let rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
             let badgePriority = this._performanceMode ? 'time' : _get('badgePriority', 'time');
+
+            if (this._lightweightMode) {
+                colorScheme = 'none';
+                showFileSize = false;
+                accessibilityMode = false;
+                rawShowGitInfo = 'none';
+                badgePriority = 'time';
+            }
 
             const gitFeaturesRequested = (rawShowGitInfo !== 'none') || (badgePriority === 'author');
             const gitFeaturesEnabled = gitFeaturesRequested && this._gitAvailable && !this._performanceMode;
@@ -1394,50 +1803,57 @@ class FileDateDecorationProvider {
             }
             this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
 
-            if (fadeOldFiles) {
-                const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                if (daysSinceModified > fadeThreshold) {
-                    color = new vscode.ThemeColor('editorGutter.commentRangeForeground');
-                }
-            }
-
             let finalBadge = trimBadge(badgeDetails.displayBadge) || trimBadge(badgeDetails.badge) || '??';
             if (this._accessibility?.shouldEnhanceAccessibility()) {
                 finalBadge = this._accessibility.getAccessibleBadge(finalBadge);
             }
 
             let decoration;
+            let decorationColor = color;
+            if (decorationColor) {
+                decorationColor = this._enhanceColorForSelection(decorationColor);
+                this._logger.debug(`🎨 Added enhanced color: ${decorationColor.id || decorationColor} (original: ${color?.id || color})`);
+            }
+
+            if (fadeOldFiles) {
+                const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                if (daysSinceModified > fadeThreshold) {
+                    decorationColor = new vscode.ThemeColor('editorGutter.commentRangeForeground');
+                }
+            }
+
+            if (highContrastMode) {
+                decorationColor = new vscode.ThemeColor('editorWarning.foreground');
+                this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
+            }
+
+            const safeTooltip = tooltip && tooltip.length < 500 ? tooltip : undefined;
+
             try {
-                decoration = new vscode.FileDecoration(finalBadge);
-                if (tooltip && tooltip.length < 500) {
-                    decoration.tooltip = tooltip;
-                    this._logger.debug(`📝 Added tooltip (${tooltip.length} chars)`);
+                decoration = this._acquireDecorationFromPool({
+                    badge: finalBadge,
+                    tooltip: safeTooltip,
+                    color: decorationColor
+                });
+                if (safeTooltip) {
+                    this._logger.debug(`📝 Added tooltip (${safeTooltip.length} chars)`);
                 }
-                if (color) {
-                    const enhancedColor = this._enhanceColorForSelection(color);
-                    decoration.color = enhancedColor;
-                    this._logger.debug(`🎨 Added enhanced color: ${enhancedColor.id || enhancedColor} (original: ${color.id || color})`);
-                }
-                decoration.propagate = false;
             } catch (decorationError) {
                 this._logger.error('❌ Failed to create decoration:', decorationError);
                 decoration = new vscode.FileDecoration('!!');
                 decoration.propagate = false;
             }
 
-            this._logger.debug(`🎨 Color/contrast check for ${fileLabel}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!color}, previewMode=${!!this._previewSettings}`);
-            if (highContrastMode) {
-                decoration.color = new vscode.ThemeColor('editorWarning.foreground');
-                this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
-            }
+            this._logger.debug(`🎨 Color/contrast check for ${fileLabel}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!decorationColor}, previewMode=${!!this._previewSettings}`);
 
             if (!this._previewSettings) {
-                await this._storeDecorationInCache(cacheKey, decoration, fileLabel);
+                await this._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
             } else {
                 this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${fileLabel}`);
             }
 
             this._metrics.totalDecorations++;
+            this._maybeShedWorkload();
 
             if (!decoration?.badge) {
                 this._logger.error(`❌ Decoration badge is invalid for: ${fileLabel}`);
@@ -1446,17 +1862,20 @@ class FileDateDecorationProvider {
 
             const processingTime = Date.now() - startTime;
             if (!this._performanceMode) {
-                this._logger.info(`✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
-                this._logger.info('🎯 RETURNING DECORATION TO VSCODE:', {
-                    file: fileLabel,
-                    badge: decoration.badge,
-                    hasTooltip: !!decoration.tooltip,
-                    hasColor: !!decoration.color,
-                    colorType: decoration.color?.constructor?.name,
-                    processingTimeMs: processingTime,
-                    decorationType: decoration.constructor.name
-                });
-                console.log(`🎯 DECORATION RETURNED: ${fileLabel} → "${decoration.badge}"`);
+                this._logger.infoWithOptions(this._stressLogOptions, `✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
+                this._logger.infoWithOptions(
+                    this._stressLogOptions,
+                    '🎯 RETURNING DECORATION TO VSCODE:',
+                    () => ({
+                        file: fileLabel,
+                        badge: decoration.badge,
+                        hasTooltip: !!decoration.tooltip,
+                        hasColor: !!decoration.color,
+                        colorType: decoration.color?.constructor?.name,
+                        processingTimeMs: processingTime,
+                        decorationType: decoration.constructor.name
+                    })
+                );
             }
 
             return decoration;
@@ -1495,8 +1914,21 @@ class FileDateDecorationProvider {
             cacheSize: this._decorationCache.size,
             cacheHitRate: this._metrics.cacheHits + this._metrics.cacheMisses > 0
                 ? ((this._metrics.cacheHits / (this._metrics.cacheHits + this._metrics.cacheMisses)) * 100).toFixed(2) + '%'
-                : '0.00%'
+                : '0.00%',
+            forceCacheBypass: this._forceCacheBypass,
+            decorationPoolEnabled: this._enableDecorationPool,
+            flyweightsEnabled: this._enableFlyweights,
+            lightweightMode: this._lightweightMode,
+            memorySheddingEnabled: this._memorySheddingEnabled,
+            memorySheddingActive: this._memorySheddingActive
         };
+        baseMetrics.decorationPool = {
+            size: this._decorationPool.size,
+            hits: this._decorationPoolStats.hits,
+            misses: this._decorationPoolStats.misses
+        };
+        baseMetrics.badgeFlyweight = { ...this._badgeFlyweightStats, cacheSize: this._badgeFlyweightCache.size };
+        baseMetrics.readableFlyweight = { ...this._readableFlyweightStats, cacheSize: this._readableDateFlyweightCache.size };
         
         // Include advanced system metrics if available
         if (this._advancedCache) {
@@ -1681,6 +2113,7 @@ class FileDateDecorationProvider {
             this._refreshTimer = null;
             this._logger.info('Cleared periodic refresh timer');
         }
+        this._cancelIncrementalRefreshTimers();
         
         // Dispose advanced systems
         if (this._advancedCache) {
@@ -1696,6 +2129,7 @@ class FileDateDecorationProvider {
         
         // Dispose basic systems
         this._decorationCache.clear();
+        this._clearDecorationPool('dispose');
         this._gitCache.clear();
         this._onDidChangeFileDecorations.dispose();
         if (this._fileWatcher) {

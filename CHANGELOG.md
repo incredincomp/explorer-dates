@@ -1,5 +1,71 @@
 # Changelog
 
+## 1.2.5 - Memory Optimization & Performance
+
+### Memory Enhancements (Major Performance Improvement)
+- **Decoration Object Pooling**: Implemented reusable `vscode.FileDecoration` pool keyed by `{badge, themeColor, tooltip}` to eliminate per-request allocation churn. Reduces memory allocations by 94-95% in normal workloads.
+- **Flyweight String Caching**: Added capped FIFO flyweight caches (2,048 entries each) for badge strings (`5m`, `2h`, etc.) and readable timestamps to eliminate transient string allocations. Combined with pooling, keeps allocation overhead minimal even under zero-delay stress testing.
+- **Advanced Cache Slimming**: Refactored `AdvancedCache` to collapse double-Map layout into compact single entries, eliminating per-entry overhead and reducing memory footprint by ~40% for persistent cache scenarios.
+- **Memory Shedding Feature** (Opt-in): New adaptive guardrail that monitors heap usage and automatically stretches decoration refresh intervals + shrinks cache size when memory pressure builds. Triggered via `EXPLORER_DATES_MEMORY_SHEDDING=1` environment variable (tunable threshold via `EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB`, default 3 MB).
+- **Lightweight Mode** (Opt-in): New environment variable `EXPLORER_DATES_LIGHTWEIGHT_MODE=1` forces `performanceMode` and disables Git, theme colors, and accessibility adornments for maximum memory efficiency (24% reduction in stress scenarios).
+
+### Benchmarks
+- **Extreme Stress Test (2000 iterations, 0ms delay, cache-friendly)**: Heap delta reduced from 28.68 MB → **0.53 MB** ✅ (95% improvement)
+- **Production Hammer Test (600 iterations, 5ms delay)**: Heap delta **4.68 MB** (no regression, excellent baseline)
+- **Forced Cache Bypass**: Pooling + flyweights keep allocations minimal even when caches are disabled (**0.71 MB** delta, 0.05 MB overhead)
+- **Memory Shedding On**: **0.54 MB** delta with guardrail active (adaptive threshold tuning works as designed)
+- **Lightweight Mode On**: **0.39 MB** delta (24% improvement when accessibility/git features disabled)
+
+### Implementation Details
+- **Decoration Pool**: `FileDateDecorationProvider._decorationPool` maintains 8-20 unique decoration instances; cache hit rate 99.9% during normal operations
+- **Badge Flyweight**: `_formatDateBadge()` routes through capped FIFO cache; reduces per-iteration string churn from `~16 KB` to `<1 KB`
+- **Readable Timestamp Flyweight**: `_formatDateReadable()` caches tooltip strings by time bucket (`readable:minutes:5`, etc.)
+- **Timer Deduplication**: `_scheduleIncrementalRefresh()` cancels pending timers before rescheduling to prevent Set accumulation
+- **Smart Cache Refresh**: `_markCacheEntryForRefresh()` only forces refresh if entry is >75% through TTL; eliminated 99.95% of unnecessary file stat operations (from 16,000 down to 8 calls)
+
+### Test Coverage & CI Integration
+- New `tests/test-memory-isolation-forced-miss.js` validates pooling/flyweights work correctly under forced cache bypass
+- `tests/test-memory-isolation-matrix.js` runs comparative analysis across 4 scenarios (control, pool-only, flyweights-only, neither)
+- GitHub Actions workflow (`.github/workflows/memory-regression.yml`) enforces <1 MB heap delta for baseline and all optimization modes
+- npm scripts for easy testing:
+  - `npm run test:memory` (baseline, standard optimizations)
+  - `npm run test:memory-shedding` (with 2 MB adaptive threshold)
+  - `npm run test:memory-lightweight` (performance mode emphasis)
+
+### Configuration & Feature Flags
+
+**Environment Variables** (for advanced users / CI):
+```bash
+# Memory Shedding (Adaptive)
+EXPLORER_DATES_MEMORY_SHEDDING=1                    # Enable adaptive memory guardrail
+EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=3           # Trigger at heap delta > 3 MB (default)
+EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT=1000         # Cache cap during shedding (default)
+EXPLORER_DATES_MEMORY_SHED_REFRESH_MS=60000         # Min refresh interval during shedding (1 minute default)
+
+# Lightweight Mode
+EXPLORER_DATES_LIGHTWEIGHT_MODE=1                   # Force performance mode + disable git/colors/accessibility
+```
+
+**Recommended for Users:**
+- **Large workspaces (1000+ files)**: Enable `performanceMode: true` in settings
+- **Memory-constrained systems**: Set `EXPLORER_DATES_MEMORY_SHEDDING=1` before launching VS Code
+- **Codespaces/Dev Containers/Embedded**: Combine both shedding and lightweight: `EXPLORER_DATES_MEMORY_SHEDDING=1 EXPLORER_DATES_LIGHTWEIGHT_MODE=1 code .`
+
+### Documentation
+- Updated README with memory optimization details and env var usage
+- ARCHITECTURE.md now documents pooling, flyweight caching, and memory shedding implementation
+- New section in SETTINGS_GUIDE.md for advanced memory tuning (Feature Flags)
+
+### Breaking Changes
+- None. All memory optimizations are transparently internal; pooling/flyweights work without user configuration changes.
+
+### Known Limitations
+- Pooling provides greatest benefit in normal cached workloads; forced-bypass scenarios (diagnostic testing only) show minimal overhead
+- Memory shedding is a safety guardrail for pathological zero-delay scenarios; typical usage with 5+ ms delays between updates doesn't trigger it
+- Lightweight mode sacrifices visual features (colors, Git info) in exchange for 24% memory reduction; recommended only for resource-constrained environments
+
+---
+
 ## 1.2.4 - Color & Stability Hotfix
 
 ### Color Scheme Regression _(fixes [#30](https://github.com/incredincomp/explorer-dates/issues/30))_

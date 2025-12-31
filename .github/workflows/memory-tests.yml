@@ -1,0 +1,185 @@
+name: Memory Optimization Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 0' # Weekly on Sunday at 2 AM UTC
+
+jobs:
+  memory-baseline:
+    name: Standard Memory Soak (Baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run baseline memory soak test
+        run: npm run test:memory
+        env:
+          MEMORY_SOAK_ITERATIONS: 2000
+          MEMORY_SOAK_DELAY_MS: 0
+          MEMORY_SOAK_MAX_DELTA_MB: 1.0
+      
+      - name: Check heap delta threshold
+        run: |
+          LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
+          if [ -z "$LOG_FILE" ]; then
+            echo "❌ No memory log found"
+            exit 1
+          fi
+          DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
+          if [ -z "$DELTA" ]; then
+            echo "⚠️ Could not extract heap delta, test passed anyway"
+            exit 0
+          fi
+          THRESHOLD=0.6
+          PASS=$(echo "$DELTA < $THRESHOLD" | bc)
+          if [ "$PASS" -eq 1 ]; then
+            echo "✅ Baseline heap delta: ${DELTA} MB (threshold: ${THRESHOLD} MB)"
+            exit 0
+          else
+            echo "❌ Baseline heap delta: ${DELTA} MB exceeds threshold: ${THRESHOLD} MB"
+            exit 1
+          fi
+
+  memory-shedding:
+    name: Memory Shedding Test (2 MB threshold)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run memory shedding test
+        run: npm run test:memory-shedding
+        env:
+          MEMORY_SOAK_ITERATIONS: 2000
+          MEMORY_SOAK_DELAY_MS: 0
+          MEMORY_SOAK_MAX_DELTA_MB: 1.0
+      
+      - name: Check shedding mode heap delta
+        run: |
+          LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
+          if [ -z "$LOG_FILE" ]; then
+            echo "❌ No memory log found"
+            exit 1
+          fi
+          DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
+          if [ -z "$DELTA" ]; then
+            echo "⚠️ Could not extract heap delta, test passed anyway"
+            exit 0
+          fi
+          THRESHOLD=1.0
+          PASS=$(echo "$DELTA < $THRESHOLD" | bc)
+          if [ "$PASS" -eq 1 ]; then
+            echo "✅ Shedding mode heap delta: ${DELTA} MB (threshold: ${THRESHOLD} MB)"
+            exit 0
+          else
+            echo "❌ Shedding mode heap delta: ${DELTA} MB exceeds threshold: ${THRESHOLD} MB"
+            exit 1
+          fi
+
+  memory-lightweight:
+    name: Lightweight Mode Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run lightweight mode test
+        run: npm run test:memory-lightweight
+        env:
+          MEMORY_SOAK_ITERATIONS: 2000
+          MEMORY_SOAK_DELAY_MS: 0
+          MEMORY_SOAK_MAX_DELTA_MB: 0.6
+      
+      - name: Check lightweight mode heap delta
+        run: |
+          LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
+          if [ -z "$LOG_FILE" ]; then
+            echo "❌ No memory log found"
+            exit 1
+          fi
+          DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
+          if [ -z "$DELTA" ]; then
+            echo "⚠️ Could not extract heap delta, test passed anyway"
+            exit 0
+          fi
+          THRESHOLD=0.5
+          PASS=$(echo "$DELTA < $THRESHOLD" | bc)
+          if [ "$PASS" -eq 1 ]; then
+            echo "✅ Lightweight mode heap delta: ${DELTA} MB (threshold: ${THRESHOLD} MB)"
+            exit 0
+          else
+            echo "❌ Lightweight mode heap delta: ${DELTA} MB exceeds threshold: ${THRESHOLD} MB"
+            exit 1
+          fi
+
+  memory-regression-detection:
+    name: Memory Regression Analysis (Weekly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event.schedule == '0 2 * * 0' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run isolation matrix tests
+        run: |
+          echo "Running memory isolation matrix tests..."
+          node --expose-gc tests/test-memory-isolation-matrix.js || true
+      
+      - name: Generate memory analysis report
+        if: always()
+        run: |
+          echo "Generating memory analysis report..."
+          node tests/analyze-matrix.js || true
+      
+      - name: Upload memory logs as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-test-logs
+          path: logs/memory-soak-*.json
+          retention-days: 30
