@@ -2,7 +2,7 @@
 
 ## 1.2.3 - Performance Mode
 
-### Minimal Resource Mode
+### Minimal Resource Mode _(fixes [#21](https://github.com/incredincomp/explorer-dates/issues/21))_
 - Added `performanceMode` setting to reduce CPU and memory usage for large projects or low-resource systems
 - When enabled, disables resource-intensive features:
   - File system watching for automatic updates (manual refresh still available)
@@ -15,6 +15,20 @@
   - Verbose logging (reduces console output)
 - Full date/time information remains available in tooltips on hover
 - Recommended for users experiencing high CPU usage, laptop fan noise, or working with very large workspaces
+
+### Badge Freshness & Accuracy _(fixes [#20](https://github.com/incredincomp/explorer-dates/issues/20) & [#19](https://github.com/incredincomp/explorer-dates/issues/19))_
+- Added a configurable `badgeRefreshInterval` that periodically clears caches and forces VS Code to re-request decorations so badge text stays current even during long sessions.
+- Introduced `tests/test-periodic-refresh.js` to simulate the timer, verify cache clears, and ensure timers dispose correctly.
+- Hardened badge formatting to treat future-dated filesystem timestamps as “just updated,” eliminating the `-1` regression on skewed clocks.
+
+### Custom Color Workflow _(fixes [#17](https://github.com/incredincomp/explorer-dates/issues/17))_
+- Registered `explorerDates.customColor.*` theme color IDs so VS Code can apply user-defined colors when `colorScheme: "custom"` is selected.
+- Added the `Explorer Dates: Apply Custom Colors` helper that copies the correct `workbench.colorCustomizations` snippet or opens Settings directly.
+- Updated README and SETTINGS_GUIDE with a dedicated “Custom Colors Configuration” walkthrough.
+
+### Keyboard Shortcut Safety _(fixes [#18](https://github.com/incredincomp/explorer-dates/issues/18))_
+- Moved the `Debug Cache Performance` shortcut to `Ctrl+Shift+M` / `Cmd+Shift+M` so we no longer conflict with VS Code’s build command (`Ctrl+Shift+B`).
+- Updated docs and troubleshooting guides with the new binding.
 
 ### User Experience
 - Performance mode can be toggled at runtime without restarting VS Code
