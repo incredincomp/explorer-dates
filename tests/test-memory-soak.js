@@ -108,6 +108,7 @@ function captureHeapSnapshot(label) {
 }
 
 const snapshots = [];
+let snapshotLog = [];
 const perfSnapshots = [];
 let perfWarningLogged = false;
 
@@ -251,6 +252,8 @@ function persistSoakLog(payload) {
 
         // Allow any staged incremental timers to complete before final measurement
         await delay(Math.min(provider._refreshInterval || 1000, 1500));
+        snapshotLog = snapshots.slice();
+        snapshots.length = 0;
         global.gc();
 
         finalHeap = heapUsedMB();
@@ -265,9 +268,9 @@ function persistSoakLog(payload) {
         console.log(`   Delta:         ${delta} MB`);
         
         // Output heap snapshot timeline
-        if (snapshots.length > 0) {
+        if (snapshotLog.length > 0) {
             console.log('\n📊 Heap snapshot timeline:');
-            snapshots.forEach(snap => {
+            snapshotLog.forEach(snap => {
                 console.log(`   ${snap.label}: ${snap.heapUsedMB} MB (RSS: ${snap.rss} MB)`);
             });
         }
@@ -295,7 +298,7 @@ function persistSoakLog(payload) {
                 finalMB: finalHeap,
                 deltaMB: delta
             },
-            snapshots,
+            snapshots: snapshotLog,
             perfSnapshots,
             providerMetrics
         });
