@@ -97,12 +97,43 @@ To use custom colors with Explorer Dates, you need to:
 - `author` shows initials in tooltip and optionally in the visual badge when `badgePriority` is set to `author`.
 
 ### Performance Settings
+- `explorerDates.performanceMode`
+- `explorerDates.badgeRefreshInterval`
 - `explorerDates.excludedFolders`
 - `explorerDates.excludedPatterns`
 - `explorerDates.cacheTimeout`
 - `explorerDates.maxCacheSize`
 
 (See in-file examples and recommended profiles at the bottom of this doc.)
+
+#### Performance Mode
+
+- Setting: `explorerDates.performanceMode`
+- Default: `false`
+- Purpose: Disable every optional subsystem (file watching, Git blame, status bar, progressive loading, advanced cache, color schemes, file size calculations, verbose logging) while keeping basic hover tooltips.
+- Ideal for: Large monorepos, Codespaces/remote setups, battery-sensitive devices, or anyone who only needs quick hover info.
+- Behavior: Can be toggled live. When turning **on**, file watchers and periodic refresh timers are disposed; when turning **off**, they are reinstated immediately.
+
+Recommended snippet for resource-constrained workspaces:
+
+```json
+{
+  "explorerDates.performanceMode": true,
+  "explorerDates.showGitInfo": "none",
+  "explorerDates.showFileSize": false
+}
+```
+
+#### Badge Refresh Interval
+
+- Setting: `explorerDates.badgeRefreshInterval`
+- Default: `60000` (1 minute)
+- Range: `10000` – `600000` milliseconds
+- Purpose: Controls how often Explorer Dates clears caches and re-requests decorations to keep relative badges (`5m`, `2h`, etc.) accurate while VS Code stays open.
+- Guidance:
+  - Lower values (10s–30s) keep badges hyper-fresh but require more decoration recomputation.
+  - Higher values (2–10 min) are lighter on CPU but may show older relative timestamps until the next refresh.
+- When `performanceMode` is `true`, the periodic timer is paused entirely.
 
 ## Diagnostic: Verify Badge Acceptance (Optional)
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.1.0.
+Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.3.
 
 ## Core Components
 
@@ -12,21 +12,24 @@ The main provider class that implements VS Code's `FileDecorationProvider` API.
 
 **Key Responsibilities:**
 - Provides date decorations for files in the Explorer
-- Manages caching to optimize performance
-- Handles file system watching for automatic updates
+- Manages layered caching (memory + persistent advanced cache) to minimize file system operations
+- Handles file system watching and a configurable periodic refresh loop so badges stay accurate during long sessions
 - Applies exclusion rules to avoid decorating unwanted files
-- Enforces VS Code's 2-character badge limit with automatic truncation
+- Enforces VS Code's 2-character badge limit with automatic truncation and defensive handling of skewed filesystem timestamps
 
 **Performance Features:**
 - Intelligent cache with configurable timeout and size limits
-- Automatic cache cleanup when exceeding size limits
-- Performance metrics tracking (cache hits/misses, total decorations, errors)
-- Batch processing support through VS Code's decoration API
+- Optional persistent cache layer (AdvancedCache) that can be disabled automatically via `performanceMode`
+- Configurable periodic refresh (`badgeRefreshInterval`) that clears caches on a timer and re-requests decorations
+- Performance metrics tracking (cache hits/misses, git/file stat timings, total decorations, errors)
+- Batch processing support through VS Code's decoration API and progressive loading warm-up jobs
+- `performanceMode` switch that suspends file watchers, git blame, advanced caches, progressive loading, and visual embellishments for low-resource environments
 
 **Configuration Integration:**
-- Reads user settings for exclusion patterns
-- Supports high-contrast mode
+- Reads user settings for exclusion patterns, color schemes, and accessibility options
+- Supports high-contrast mode and custom color IDs (`explorerDates.customColor.*`) supplied via `workbench.colorCustomizations`
 - Respects locale settings for date formatting
+- Responds to runtime configuration changes (toggle performance mode, change refresh intervals, swap badge formats) without requiring a VS Code reload
 
 ### 2. Logger (`src/logger.js`)
 
@@ -91,6 +94,8 @@ Manages the extension lifecycle and command registration.
 All settings are prefixed with `explorerDates.` and defined in `package.json`:
 
 ### Performance Settings
+- `performanceMode`: Minimal mode that keeps tooltip data but disables heavy subsystems
+- `badgeRefreshInterval`: Interval (10s–10m) for clearing caches and forcing a refresh
 - `excludedFolders`: Array of folder names to skip
 - `excludedPatterns`: Glob patterns for file exclusion
 - `cacheTimeout`: Cache entry lifetime (5-300 seconds)
@@ -99,7 +104,10 @@ All settings are prefixed with `explorerDates.` and defined in `package.json`:
 ### Appearance Settings
 - `showDateDecorations`: Master enable/disable switch
 - `dateDecorationFormat`: smart/relative/absolute
+- `colorScheme`: none/recency/file-type/subtle/vibrant/custom
 - `highContrastMode`: Enhanced visibility for accessibility
+- `showFileSize`: Adds compact size indicators, optionally prioritized via `badgePriority`
+- `workbench.colorCustomizations`: VS Code setting that supplies actual hex values for `explorerDates.customColor.*`
 
 ### Localization
 - `locale`: Language selection (auto/en/es/fr/de/ja/zh)
@@ -110,11 +118,12 @@ All settings are prefixed with `explorerDates.` and defined in `package.json`:
 ## Performance Considerations
 
 ### Caching Strategy
-1. Cache lookup on every decoration request
+1. Cache lookup on every decoration request (memory cache, optional persistent cache)
 2. Return cached value if within timeout period
 3. Fetch fresh data from file system if cache miss or expired
-4. Store in cache with timestamp
+4. Store in cache with timestamp (and persist if AdvancedCache is enabled)
 5. Periodic cleanup when cache exceeds size limit
+6. Optional periodic refresh timer clears caches on an interval so decoration requests restart with fresh data
 
 ### File Exclusions
 Two-level exclusion system:
@@ -126,6 +135,9 @@ Two-level exclusion system:
 - Cancellation token support for long-running operations
 - Only decorate files, not directories
 - Batch refresh on configuration changes
+- Configurable periodic refresh loop (`badgeRefreshInterval`) proactively refreshes caches
+- Progressive loading queue warms Explorer decorations without blocking startup
+- Performance mode disables heavy systems entirely when users only need hover tooltips
 
 ## Accessibility Features
 
@@ -190,11 +202,10 @@ Access logs via Command Palette → "Open Logs"
 ## Future Enhancements
 
 Potential areas for improvement:
-1. Additional locales
-2. Custom date format strings
-3. Color customization per time range
-4. Integration with Git (show commit dates)
-5. Workspace-specific exclusion rules
+1. Additional locales and localized docs
+2. Custom date format tokens once VS Code lifts the 2-character badge constraint
+3. Richer reporting/visualizations surfaced directly in VS Code webviews
+4. Auto-detected performance presets per workspace (based on size, hardware, or remote host)
 
 ## Dependencies
 
@@ -237,6 +248,7 @@ When adding new features:
 
 ## Version History
 
+- **1.2.3**: Performance mode, periodic badge refresh, custom color IDs, keyboard shortcut updates
 - **1.1.0**: Performance, accessibility, localization, and debugging features
 - **1.0.2**: Changelog cleanup
 - **1.0.1**: ESLint update

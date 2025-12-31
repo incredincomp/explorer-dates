@@ -14,10 +14,12 @@
 - **Smart Formatting**: Multiple format options from concise relative time to full absolute dates
 - **File Size Display**: Optional file size alongside dates (e.g., "5m • 1.2KB")
 - **Color Schemes**: Choose from none, recency-based, subtle, or vibrant color coding
+- **Automatic Refresh**: Configurable periodic badge refresh keeps timestamps accurate during long editor sessions
 - **Context Menu Integration**: Right-click to copy file dates or show detailed file information
 
 ### User Experience
 - **Keyboard Shortcuts**: Quick toggle decorations with Ctrl+Shift+D (Cmd+Shift+D on Mac)
+- **Cache Diagnostics**: Inspect cache health instantly with `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M` / `Cmd+Shift+M`)
 - **Non-intrusive**: Subtle decorations that don't clutter your workspace
 - **Accessibility**: High-contrast mode and screen reader compatible
 - **Localization**: Support for 6 languages (EN, ES, FR, DE, JA, ZH) with auto-detection
