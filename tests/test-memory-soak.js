@@ -84,6 +84,8 @@ if (sampleFiles.length === 0) {
     process.exit(1);
 }
 
+const CAPTURE_SNAPSHOTS = process.env.MEMORY_SOAK_CAPTURE_SNAPSHOTS === '1';
+
 function heapUsedMB() {
     return Number((process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2));
 }
@@ -99,18 +101,17 @@ function captureHeapSnapshot(label) {
         timestamp: new Date().toISOString()
     };
     
-    // Count timer IDs and cache entries if provider is available
-    if (typeof snapshots !== 'undefined') {
+    if (CAPTURE_SNAPSHOTS && snapshots) {
         snapshots.push(snapshot);
     }
     
     return snapshot;
 }
 
-const snapshots = [];
-let snapshotLog = [];
+const snapshots = CAPTURE_SNAPSHOTS ? [] : null;
 const perfSnapshots = [];
 let perfWarningLogged = false;
+let snapshotTimeline = null;
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -252,8 +253,10 @@ function persistSoakLog(payload) {
 
         // Allow any staged incremental timers to complete before final measurement
         await delay(Math.min(provider._refreshInterval || 1000, 1500));
-        snapshotLog = snapshots.slice();
-        snapshots.length = 0;
+        snapshotTimeline = CAPTURE_SNAPSHOTS && snapshots ? snapshots.slice() : null;
+        if (CAPTURE_SNAPSHOTS && snapshots) {
+            snapshots.length = 0;
+        }
         global.gc();
 
         finalHeap = heapUsedMB();
@@ -267,10 +270,10 @@ function persistSoakLog(payload) {
         console.log(`   Final heap:    ${finalHeap} MB`);
         console.log(`   Delta:         ${delta} MB`);
         
-        // Output heap snapshot timeline
-        if (snapshotLog.length > 0) {
+        // Output heap snapshot timeline (optional, for debugging)
+        if (snapshotTimeline && snapshotTimeline.length > 0) {
             console.log('\n📊 Heap snapshot timeline:');
-            snapshotLog.forEach(snap => {
+            snapshotTimeline.forEach(snap => {
                 console.log(`   ${snap.label}: ${snap.heapUsedMB} MB (RSS: ${snap.rss} MB)`);
             });
         }
@@ -298,7 +301,7 @@ function persistSoakLog(payload) {
                 finalMB: finalHeap,
                 deltaMB: delta
             },
-            snapshots: snapshotLog,
+            snapshots: snapshotTimeline || [],
             perfSnapshots,
             providerMetrics
         });
