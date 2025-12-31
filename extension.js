@@ -634,6 +634,7 @@ async function activate(context) {
         // Initialize logger and localization
         logger = getLogger();
         l10n = getLocalization();
+        context.subscriptions.push(l10n);
         
         logger.info('Explorer Dates: Extension activated');
 
@@ -685,6 +686,7 @@ async function activate(context) {
             if (!extensionApiManager) {
                 const { ExtensionApiManager } = require('./src/extensionApi');
                 extensionApiManager = new ExtensionApiManager();
+                context.subscriptions.push(extensionApiManager);
             }
             return extensionApiManager;
         };
@@ -696,6 +698,7 @@ async function activate(context) {
             if (!exportReportingManager) {
                 const { ExportReportingManager } = require('./src/exportReporting');
                 exportReportingManager = new ExportReportingManager();
+                context.subscriptions.push(exportReportingManager);
             }
             return exportReportingManager;
         };
@@ -818,25 +821,32 @@ async function activate(context) {
 
 
 
-        // Initialize status bar integration
+        // Initialize status bar integration (disabled in performance mode)
         let statusBarItem;
         const config = vscode.workspace.getConfiguration('explorerDates');
-        if (config.get('showStatusBar', false)) {
+        const performanceMode = config.get('performanceMode', false);
+        const showStatusBar = config.get('showStatusBar', false);
+        if (showStatusBar && !performanceMode) {
             statusBarItem = initializeStatusBar(context);
         }
         
         // Watch for status bar setting changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('explorerDates.showStatusBar')) {
-                const newValue = vscode.workspace.getConfiguration('explorerDates').get('showStatusBar', false);
-                if (newValue && !statusBarItem) {
+        const statusBarConfigWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('explorerDates.showStatusBar') || e.affectsConfiguration('explorerDates.performanceMode')) {
+                const newConfig = vscode.workspace.getConfiguration('explorerDates');
+                const newValue = newConfig.get('showStatusBar', false);
+                const newPerformanceMode = newConfig.get('performanceMode', false);
+                const shouldShowStatusBar = newValue && !newPerformanceMode;
+                
+                if (shouldShowStatusBar && !statusBarItem) {
                     statusBarItem = initializeStatusBar(context);
-                } else if (!newValue && statusBarItem) {
+                } else if (!shouldShowStatusBar && statusBarItem) {
                     statusBarItem.dispose();
                     statusBarItem = null;
                 }
             }
         });
+        context.subscriptions.push(statusBarConfigWatcher);
         
         logger.info('Explorer Dates: Date decorations ready');
         

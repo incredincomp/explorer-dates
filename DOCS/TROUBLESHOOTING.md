@@ -57,7 +57,7 @@ If the above doesn't work:
    - Current File: "Is Excluded" should be "No" or "false"
    - Configuration issues
 
-3. **Try the debug cache command:** `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+B`)
+3. **Try the debug cache command:** `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M`)
 
 ### **Platform-Specific Issues** 💻
 
@@ -102,6 +102,78 @@ Copy this into your VS Code `settings.json` for image-friendly configuration:
 2. **Disable other file explorer extensions temporarily**
 3. **Run:** `Developer: Reload Window` from Command Palette
 4. **Open GitHub issue** with your diagnostic report: https://github.com/incredincomp/explorer-dates/issues
+
+---
+
+## 🔥 **Performance Issues (High CPU, Fan Noise, Slow Response)**
+
+If Explorer Dates is using too many resources (CPU spikes, laptop fan running loud, VS Code feeling sluggish), follow these steps:
+
+### **Quick Fix - Enable Performance Mode** ⚡
+
+1. **Open Settings** (`Ctrl+,` or `Cmd+,`)
+2. **Search for:** `explorerDates.performanceMode`
+3. **Enable it** by checking the box ✓
+4. **Changes apply immediately** - no restart needed!
+
+**What Performance Mode Does:**
+- ✅ Keeps basic date/time tooltips on hover
+- ❌ Disables Git author information (no blame operations)
+- ❌ Disables automatic file watching (use manual refresh)
+- ❌ Disables status bar integration
+- ❌ Disables progressive loading and background processing
+- ❌ Disables color schemes and visual enhancements
+- ❌ Reduces logging overhead
+
+### **Alternative: Optimize Without Performance Mode**
+
+If you want to keep some features but reduce resource usage:
+
+```json
+{
+  "explorerDates.showGitInfo": "none",
+  "explorerDates.progressiveLoading": false,
+  "explorerDates.showStatusBar": false,
+  "explorerDates.colorScheme": "none",
+  "explorerDates.excludedFolders": [
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "out",
+    ".vscode-test",
+    "vendor",
+    "target",
+    ".next",
+    ".nuxt"
+  ]
+}
+```
+
+### **Symptoms of Resource Issues**
+
+- 🔥 Laptop fan running constantly
+- 🐌 VS Code feels sluggish when browsing files
+- 💻 High CPU usage in Task Manager/Activity Monitor
+- 📊 "Extension Host" process using lots of resources
+- 🔋 Battery draining faster than usual
+
+### **When to Use Performance Mode**
+
+- Large projects (thousands of files)
+- Monorepos with multiple workspaces
+- Projects with many dependencies (large node_modules)
+- Low-resource systems (older laptops, limited RAM)
+- Remote development over slow connections
+- When you only need basic date/time information
+
+### **Commands Still Available in Performance Mode**
+
+- ✅ Manual refresh decorations (`Ctrl+Shift+R`)
+- ✅ Show file details
+- ✅ Copy file date
+- ✅ Toggle decorations on/off
+- ✅ All diagnostic and troubleshooting commands
 
 ---
 

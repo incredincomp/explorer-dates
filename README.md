@@ -54,7 +54,8 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 4. **Try shortcuts**: Ctrl+Shift+D to toggle, right-click files for options
 
 ### First-Time Setup Recommendations
-- **Large projects**: Enable performance exclusions for `node_modules`, `dist`, etc.
+- **Large projects / Low resource systems**: Enable `performanceMode: true` to disable all features except basic date/time tooltips
+- **Large projects (without performance mode)**: Enable performance exclusions for `node_modules`, `dist`, etc.
 - **Visual preference**: Try `colorScheme: "recency"` and `showFileSize: true`
 - **Minimal look**: Use `dateDecorationFormat: "smart"` (default)
 - **Accessibility**: Enable `highContrastMode` if needed
@@ -86,6 +87,28 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 
 **Quick Setup**: Most users only need to configure the first 2-3 settings below. See [SETTINGS_GUIDE.md](./DOCS/SETTINGS_GUIDE.md) for detailed configuration examples.
 
+### Performance Settings
+
+| Setting | Options | Default | Description |
+|---------|---------|---------|-------------|
+| `performanceMode` | `true`/`false` | `false` | **Minimal performance mode**: disables all features except basic date/time tooltips on files. Disables Git info, auto-updates, status bar, progressive loading, and advanced caching. Recommended for large projects or low-resource systems. |
+
+**When to use Performance Mode:**
+- Large projects with thousands of files
+- Systems with limited CPU or memory
+- When you only need basic date/time information on hover
+- When experiencing high resource usage (laptop fan noise, CPU spikes)
+
+**What gets disabled in Performance Mode:**
+- Git blame operations (no author information)
+- File system watching for auto-updates (manual refresh still available)
+- Status bar integration
+- Progressive loading and background processing
+- Advanced caching layers
+- Color schemes and visual enhancements
+- File size display
+- Reduced logging overhead
+
 ### Essential Settings
 
 | Setting | Options | Default | Description |
@@ -116,6 +139,39 @@ Notes:
 - VS Code enforces a practical 2-character limit for Explorer badges; the extension truncates visual badges to 2 characters to remain compatible with different platforms and icon fonts.
 - Git author initials and compact size indicators are shown only when requested via `badgePriority`. Otherwise Git/size information is surfaced in the tooltip and the accessibility text.
 - Compact size examples: `5K`, `2M`, or `12` (two-digit fallback).
+
+### Custom Colors Configuration
+
+To use custom colors for file decorations:
+
+1. **Set the color scheme**:
+   ```json
+   "explorerDates.colorScheme": "custom"
+   ```
+
+2. **Apply your custom colors** using one of these methods:
+
+   **Method 1: Use the command** (Recommended)
+   - Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+   - Run `Explorer Dates: Apply Custom Colors`
+   - Choose "Copy to Clipboard" or "Open Settings"
+
+   **Method 2: Manual configuration**
+   - Add to your `settings.json`:
+   ```json
+   "workbench.colorCustomizations": {
+     "explorerDates.customColor.veryRecent": "#FF6095",
+     "explorerDates.customColor.recent": "#E72969",
+     "explorerDates.customColor.old": "#CCCCCC"
+   }
+   ```
+
+3. **Color categories**:
+   - `veryRecent`: Files modified within 1 hour
+   - `recent`: Files modified within 1 day
+   - `old`: Files modified more than 1 day ago
+
+**Note**: The `explorerDates.customColors` setting in the extension configuration is deprecated. Use `workbench.colorCustomizations` instead for proper theme integration and color support.
 
 ## Debugging & Diagnostics
 
