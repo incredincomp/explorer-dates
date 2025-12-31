@@ -32,6 +32,7 @@ jobs:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
           MEMORY_SOAK_MAX_DELTA_MB: 1.0
+          MEMORY_SOAK_CAPTURE_SNAPSHOTS: 0
       
       - name: Check heap delta threshold
         run: |
@@ -78,6 +79,7 @@ jobs:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
           MEMORY_SOAK_MAX_DELTA_MB: 1.0
+          MEMORY_SOAK_CAPTURE_SNAPSHOTS: 0
       
       - name: Check shedding mode heap delta
         run: |
@@ -124,6 +126,7 @@ jobs:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
           MEMORY_SOAK_MAX_DELTA_MB: 0.6
+          MEMORY_SOAK_CAPTURE_SNAPSHOTS: 0
       
       - name: Check lightweight mode heap delta
         run: |
