@@ -1215,6 +1215,19 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Determine if an error represents a missing file/directory
+     */
+    _isFileNotFoundError(error) {
+        if (!error) {
+            return false;
+        }
+        if (error.code === 'ENOENT') {
+            return true;
+        }
+        return typeof error.message === 'string' && error.message.includes('ENOENT');
+    }
+
+    /**
      * Get file decoration with enhanced caching
      */
     async provideFileDecoration(uri, token) {
@@ -1232,6 +1245,12 @@ class FileDateDecorationProvider {
                 return undefined;
             }
             const fileLabel = describeFile(filePath);
+            const scheme = uri.scheme || 'file';
+
+            if (scheme !== 'file') {
+                this._logger.debug(`⏭️ Skipping decoration for ${fileLabel} (unsupported scheme: ${scheme})`);
+                return undefined;
+            }
 
             // Reduce verbose logging in performance mode
             if (!this._performanceMode) {
@@ -1288,7 +1307,20 @@ class FileDateDecorationProvider {
             }
 
             const fileStatStartTime = Date.now();
-            const stat = await this._fileSystem.stat(uri);
+            let stat;
+            try {
+                stat = await this._fileSystem.stat(uri);
+            } catch (statError) {
+                this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
+                this._metrics.fileStatCalls++;
+
+                if (this._isFileNotFoundError(statError)) {
+                    this._logger.debug(`⏭️ Skipping decoration for ${fileLabel}: file not found (${statError.message || statError})`);
+                    return undefined;
+                }
+
+                throw statError;
+            }
             this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
             this._metrics.fileStatCalls++;
             

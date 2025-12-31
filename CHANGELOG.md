@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.4 - Color & Stability Hotfix
+
+### Color Scheme Regression _(fixes [#30](https://github.com/incredincomp/explorer-dates/issues/30))_
+- Restored the custom color scheme so the theme integration’s adaptive pipeline respects user-defined `explorerDates.customColor.*` entries again instead of falling back to grayscale decorations.
+- Ensured cache refreshes no longer temporarily drop colors when the Explorer repaint coincides with the theme-aware color resolver.
+
+### Virtual Resource Safety _(fixes [#31](https://github.com/incredincomp/explorer-dates/issues/31))_
+- Ignore VS Code’s virtual URIs (webviews, settings editor, PR lists, etc.) instead of trying to `stat` them, eliminating ENOENT spam and avoiding decoration crashes when the explorer hosts non-file entries.
+- Treat missing files as a benign cache miss so background refreshes or recently deleted files no longer emit critical error logs.
+
 ## 1.2.3 - Performance Mode
 
 ### Minimal Resource Mode _(fixes [#21](https://github.com/incredincomp/explorer-dates/issues/21))_

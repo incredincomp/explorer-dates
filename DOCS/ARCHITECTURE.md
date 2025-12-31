@@ -2,7 +2,7 @@
 
 ## Overview
 
-Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.3.
+Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.4.
 
 ## Core Components
 
@@ -245,9 +245,9 @@ When adding new features:
 5. Add performance metrics if applicable
 6. Run eslint before committing
 7. Test with large projects to verify performance
-
 ## Version History
 
+- **1.2.4**: Custom color scheme regression fix, virtual/webview resource guards
 - **1.2.3**: Performance mode, periodic badge refresh, custom color IDs, keyboard shortcut updates
 - **1.1.0**: Performance, accessibility, localization, and debugging features
 - **1.0.2**: Changelog cleanup

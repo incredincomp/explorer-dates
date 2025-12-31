@@ -242,6 +242,16 @@ class ThemeIntegrationManager {
             case 'vibrant':
                 // Use selection-aware colors for vibrant display
                 return this._getVibrantSelectionAwareColor(fileAge);
+
+            case 'custom':
+                // Respect user-defined custom colors via workbench.colorCustomizations
+                if (fileAge < 3600000) {
+                    return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
+                }
+                if (fileAge < 86400000) {
+                    return new vscode.ThemeColor('explorerDates.customColor.recent');
+                }
+                return new vscode.ThemeColor('explorerDates.customColor.old');
                 
             default:
                 return undefined;
