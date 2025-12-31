@@ -7,4 +7,3 @@ tests/artifacts/
 logs/
 DOCS/testing/
 MEMORY_FIX_REPORT.md
-*.vsix
