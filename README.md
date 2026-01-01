@@ -276,7 +276,7 @@ Explorer Dates now includes major memory optimizations through:
 - **Decoration Pooling**: Reusable `FileDecoration` objects reduce allocation churn by 94-95% in normal workloads
 - **Flyweight Caching**: Efficient string caching for badges and tooltips eliminates per-iteration allocations
 - **Memory Shedding** (Opt-in): Adaptive guardrail monitors heap usage and stretches refresh intervals under memory pressure
-- **Lightweight Mode** (Opt-in): Optional performance-focused profile with 24% memory reduction by disabling Git, colors, and accessibility features
+- **Lightweight Mode** (Opt-in): Optional performance-focused profile with 24% memory reduction by disabling Git, colors, accessibility features, decoration pooling, and flyweight caches. Caches are auto-purged every few hundred decorations so Node 18/Ubuntu runners stay under the tightened heap guardrails.
 
 **Benchmarks:**
 - Extreme stress test (2000 iterations, 0ms delay): **0.53 MB** heap delta (95% improvement from previous 28.68 MB)

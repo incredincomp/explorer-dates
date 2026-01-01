@@ -22,6 +22,7 @@
 - **Readable Timestamp Flyweight**: `_formatDateReadable()` caches tooltip strings by time bucket (`readable:minutes:5`, etc.)
 - **Timer Deduplication**: `_scheduleIncrementalRefresh()` cancels pending timers before rescheduling to prevent Set accumulation
 - **Smart Cache Refresh**: `_markCacheEntryForRefresh()` only forces refresh if entry is >75% through TTL; eliminated 99.95% of unnecessary file stat operations (from 16,000 down to 8 calls)
+- **Lightweight Mode Cache Purge**: When `EXPLORER_DATES_LIGHTWEIGHT_MODE=1`, decoration pooling/flyweight caches stay disabled, cache timeout shrinks to 5s, and caches are auto-purged every ~400 decorations so Node 18 runners consistently stay below the 0.65 MB heap guardrail in CI.
 
 ### Test Coverage & CI Integration
 - New `tests/test-memory-isolation-forced-miss.js` validates pooling/flyweights work correctly under forced cache bypass

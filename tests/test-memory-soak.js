@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
 const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const inspector = require('inspector');
 
 if (typeof global.gc !== 'function') {
     console.error('❌ Memory soak test requires Node to run with "--expose-gc".');
@@ -85,9 +86,19 @@ if (sampleFiles.length === 0) {
 }
 
 const CAPTURE_SNAPSHOTS = process.env.MEMORY_SOAK_CAPTURE_SNAPSHOTS === '1';
+const CAPTURE_HEAP_FILES = process.env.MEMORY_SOAK_CAPTURE_HEAP === '1';
 
 function heapUsedMB() {
     return Number((process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2));
+}
+
+function forceGcCycles(count = 3) {
+    if (typeof global.gc !== 'function') {
+        return;
+    }
+    for (let i = 0; i < count; i++) {
+        global.gc();
+    }
 }
 
 function captureHeapSnapshot(label) {
@@ -112,6 +123,39 @@ const snapshots = CAPTURE_SNAPSHOTS ? [] : null;
 const perfSnapshots = [];
 let perfWarningLogged = false;
 let snapshotTimeline = null;
+let heapSnapshotFiles = { baseline: null, final: null };
+
+async function captureHeapSnapshotFile(label) {
+    if (!CAPTURE_HEAP_FILES) {
+        return null;
+    }
+    const session = new inspector.Session();
+    session.connect();
+
+    await fs.promises.mkdir(logDir, { recursive: true });
+    const snapshotPath = path.join(logDir, `heap-${runTimestamp}-${label}.heapsnapshot`);
+    const writeStream = fs.createWriteStream(snapshotPath);
+
+    return new Promise((resolve, reject) => {
+        session.on('HeapProfiler.addHeapSnapshotChunk', (message) => {
+            writeStream.write(message.params.chunk);
+        });
+
+        session.post('HeapProfiler.takeHeapSnapshot', null, (err) => {
+            if (err) {
+                writeStream.end(() => {
+                    session.disconnect();
+                    reject(err);
+                });
+                return;
+            }
+            writeStream.end(() => {
+                session.disconnect();
+                resolve(snapshotPath);
+            });
+        });
+    });
+}
 
 function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -170,9 +214,17 @@ function persistSoakLog(payload) {
 
     try {
         provider = new FileDateDecorationProvider();
-        global.gc();
+        forceGcCycles();
 
         baseline = heapUsedMB();
+        if (CAPTURE_HEAP_FILES) {
+            try {
+                heapSnapshotFiles.baseline = await captureHeapSnapshotFile('baseline');
+                console.log(`🧾 Baseline heap snapshot written to ${heapSnapshotFiles.baseline}`);
+            } catch (snapshotError) {
+                console.warn(`⚠️ Failed to capture baseline heap snapshot: ${snapshotError.message}`);
+            }
+        }
         peak = baseline;
         await capturePerformanceMemory(`pre-run (${ACTIVE_LOG_PROFILE})`);
 
@@ -257,9 +309,17 @@ function persistSoakLog(payload) {
         if (CAPTURE_SNAPSHOTS && snapshots) {
             snapshots.length = 0;
         }
-        global.gc();
+        forceGcCycles();
 
         finalHeap = heapUsedMB();
+        if (CAPTURE_HEAP_FILES) {
+            try {
+                heapSnapshotFiles.final = await captureHeapSnapshotFile('final');
+                console.log(`🧾 Final heap snapshot written to ${heapSnapshotFiles.final}`);
+            } catch (snapshotError) {
+                console.warn(`⚠️ Failed to capture final heap snapshot: ${snapshotError.message}`);
+            }
+        }
         delta = Number((finalHeap - baseline).toFixed(2));
         providerMetrics = typeof provider.getMetrics === 'function' ? provider.getMetrics() : null;
         await capturePerformanceMemory('post-run');
@@ -301,6 +361,7 @@ function persistSoakLog(payload) {
                 finalMB: finalHeap,
                 deltaMB: delta
             },
+            heapSnapshots: heapSnapshotFiles,
             snapshots: snapshotTimeline || [],
             perfSnapshots,
             providerMetrics

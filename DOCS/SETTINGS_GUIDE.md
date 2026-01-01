@@ -211,6 +211,7 @@ code .
 - Theme color customizations
 - Accessibility adornments
 - File size calculations
+- Decoration pooling/flyweight caches (auto-purged every few hundred decorations to keep Node 18 heaps below CI thresholds)
 
 **What remains:**
 - Basic date/time tooltips

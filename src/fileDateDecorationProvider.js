@@ -64,6 +64,7 @@ class FileDateDecorationProvider {
         this._memoryShedRefreshIntervalMs = Number(process.env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS || 60000);
         this._refreshIntervalOverride = null;
         this._forceCacheBypass = process.env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
+        this._lightweightPurgeInterval = Number(process.env.EXPLORER_DATES_LIGHTWEIGHT_PURGE_INTERVAL || 400);
         this._isWeb = isWebBuild || isWebEnvironment();
         this._baselineDesktopCacheTimeout = DEFAULT_CACHE_TIMEOUT * 4; // 8 minutes baseline
         this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout; // Keep at 8 minutes max, don't extend to 16
@@ -126,6 +127,11 @@ class FileDateDecorationProvider {
         this._performanceMode = config.get('performanceMode', false);
         if (this._lightweightMode) {
             this._performanceMode = true;
+            this._enableDecorationPool = false;
+            this._enableFlyweights = false;
+            this._cacheTimeout = Math.min(this._cacheTimeout, 5000);
+            this._maxCacheSize = Math.min(this._maxCacheSize, 64);
+            this._logger.info('Lightweight mode: decoration pooling and flyweight caches disabled; cache timeout capped at 5s');
         }
         
         // Watch for file changes to update decorations (disabled in performance mode)
@@ -1191,6 +1197,39 @@ class FileDateDecorationProvider {
         this._logger.debug(`🧼 Cleared decoration pool (${reason})`);
     }
 
+    _purgeLightweightCaches(reason = 'lightweight') {
+        if (!this._lightweightMode) {
+            return;
+        }
+        if (this._decorationCache.size > 0) {
+            this._decorationCache.clear();
+        }
+        this._clearDecorationPool(reason);
+        if (this._badgeFlyweightCache.size > 0) {
+            this._badgeFlyweightCache.clear();
+            this._badgeFlyweightOrder.length = 0;
+        }
+        if (this._readableDateFlyweightCache.size > 0) {
+            this._readableDateFlyweightCache.clear();
+            this._readableDateFlyweightOrder.length = 0;
+        }
+        this._logger.debug(`🧽 Purged lightweight caches (${reason})`);
+    }
+
+    _maybePurgeLightweightCaches() {
+        if (!this._lightweightMode) {
+            return;
+        }
+        if (this._lightweightPurgeInterval <= 0) {
+            this._purgeLightweightCaches('lightweight-interval-disabled');
+            return;
+        }
+        const total = this._metrics?.totalDecorations || 0;
+        if (total > 0 && total % this._lightweightPurgeInterval === 0) {
+            this._purgeLightweightCaches('lightweight-interval');
+        }
+    }
+
     _buildBadgeDescriptor({ formatType, diffMinutes, diffHours, diffDays, diffWeeks, diffMonths, date }) {
         const build = (value, keySuffix = null) => ({
             value,
@@ -1854,6 +1893,7 @@ class FileDateDecorationProvider {
 
             this._metrics.totalDecorations++;
             this._maybeShedWorkload();
+            this._maybePurgeLightweightCaches();
 
             if (!decoration?.badge) {
                 this._logger.error(`❌ Decoration badge is invalid for: ${fileLabel}`);

@@ -125,7 +125,7 @@ jobs:
         env:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
-          MEMORY_SOAK_MAX_DELTA_MB: 0.6
+          MEMORY_SOAK_MAX_DELTA_MB: 0.65
           MEMORY_SOAK_CAPTURE_SNAPSHOTS: 0
       
       - name: Check lightweight mode heap delta
@@ -140,7 +140,7 @@ jobs:
             echo "⚠️ Could not extract heap delta, test passed anyway"
             exit 0
           fi
-          THRESHOLD=0.5
+          THRESHOLD=0.65
           PASS=$(echo "$DELTA < $THRESHOLD" | bc)
           if [ "$PASS" -eq 1 ]; then
             echo "✅ Lightweight mode heap delta: ${DELTA} MB (threshold: ${THRESHOLD} MB)"

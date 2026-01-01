@@ -6,6 +6,7 @@ const Module = require('module');
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const defaultWorkspace = path.join(workspaceRoot, 'src');
 const pkg = require(path.join(workspaceRoot, 'package.json'));
+const MAX_LOG_ENTRIES = Number(process.env.MOCK_VSCODE_MAX_LOG_ENTRIES || 200);
 
 const configurationProperties = pkg?.contributes?.configuration?.properties || {};
 
@@ -191,11 +192,18 @@ function createMockVscode(options = {}) {
     const configValues = createDefaultConfig(options.config || {});
     const sampleWorkspace = options.sampleWorkspace || defaultWorkspace;
 
+    const pushLog = (entry) => {
+        infoLog.push(entry);
+        if (infoLog.length > MAX_LOG_ENTRIES) {
+            infoLog.shift();
+        }
+    };
+
     const clipboard = {
         value: '',
         async writeText(text) {
             this.value = text;
-            infoLog.push(`clipboard.writeText:${text}`);
+            pushLog(`clipboard.writeText:${text}`);
         },
         async readText() {
             return this.value;
@@ -274,14 +282,14 @@ function createMockVscode(options = {}) {
             }
         },
         Uri: VSCodeUri,
-        env: {
-            language: 'en',
-            clipboard,
-            uiKind: options.uiKind || 1,
-            async openExternal(uri) {
-                infoLog.push(`openExternal:${uri.toString()}`);
-            }
-        },
+            env: {
+                language: 'en',
+                clipboard,
+                uiKind: options.uiKind || 1,
+                async openExternal(uri) {
+                    pushLog(`openExternal:${uri.toString()}`);
+                }
+            },
         extensions: {
             all: [],
             getExtension() {
@@ -309,7 +317,7 @@ function createMockVscode(options = {}) {
             createOutputChannel() {
                 return {
                     appendLine(message) {
-                        infoLog.push(message);
+                        pushLog(message);
                     },
                     show() {},
                     clear() {},
@@ -351,12 +359,12 @@ function createMockVscode(options = {}) {
                 };
             },
             async showInformationMessage(message) {
-                infoLog.push(message);
+                pushLog(message);
                 const options = Array.from(arguments).slice(1);
                 return options.find((option) => typeof option === 'string') || message;
             },
             async showWarningMessage(message) {
-                infoLog.push(message);
+                pushLog(message);
                 return message;
             },
             async showErrorMessage(message) {
@@ -373,10 +381,10 @@ function createMockVscode(options = {}) {
                 }
                 const choice = resolved[0];
                 if (typeof choice === 'string') {
-                    infoLog.push(`showQuickPick:${choice}`);
+                    pushLog(`showQuickPick:${choice}`);
                     return choice;
                 }
-                infoLog.push(`showQuickPick:${choice?.label || 'object-choice'}`);
+                pushLog(`showQuickPick:${choice?.label || 'object-choice'}`);
                 return choice;
             },
             async showSaveDialog(options = {}) {
@@ -408,7 +416,7 @@ function createMockVscode(options = {}) {
                 if (handler) {
                     return handler(...args);
                 }
-                infoLog.push(`executeCommand:${commandId}:missing`);
+                pushLog(`executeCommand:${commandId}:missing`);
                 return undefined;
             }
         },
