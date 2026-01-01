@@ -559,6 +559,10 @@ function generatePerformanceAnalyticsHTML(metrics) {
                     <div class="metric-label">Average Batch Time</div>
                     <div class="metric-value">${metrics.batchProcessor.isProcessing ? 'Active' : 'Idle'}</div>
                     <div class="metric-label">Current Status</div>
+                    <div class="metric-value">${metrics.batchProcessor.queueLength || 0}</div>
+                    <div class="metric-label">Queued Items</div>
+                    <div class="metric-value">${metrics.batchProcessor.currentProgress ? (metrics.batchProcessor.currentProgress * 100).toFixed(0) + '%' : '0%'}</div>
+                    <div class="metric-label">Progress</div>
                 </div>
                 ` : ''}
                 
@@ -571,6 +575,20 @@ function generatePerformanceAnalyticsHTML(metrics) {
                     <div class="metric-value">${metrics.errors || 0}</div>
                     <div class="metric-label">Errors</div>
                 </div>
+
+                ${metrics.performanceTiming ? `
+                <div class="metric-card">
+                    <div class="metric-title">🕒 I/O Latency</div>
+                    <div class="metric-value">${metrics.performanceTiming.avgGitBlameMs}ms</div>
+                    <div class="metric-label">Avg Git Blame (${metrics.performanceTiming.gitBlameCalls} calls)</div>
+                    <div class="metric-value">${metrics.performanceTiming.avgFileStatMs}ms</div>
+                    <div class="metric-label">Avg File Stat (${metrics.performanceTiming.fileStatCalls} calls)</div>
+                    <div class="metric-value">${metrics.performanceTiming.totalGitBlameTimeMs}ms</div>
+                    <div class="metric-label">Total Git Time</div>
+                    <div class="metric-value">${metrics.performanceTiming.totalFileStatTimeMs}ms</div>
+                    <div class="metric-label">Total File Stat Time</div>
+                </div>
+                ` : ''}
             </div>
         </body>
         </html>

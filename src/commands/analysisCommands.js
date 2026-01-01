@@ -91,6 +91,7 @@ function registerAnalysisCommands({
                         'Cache Timeout': `${metrics.cacheDebugging.cacheTimeout}ms`
                     },
                     'Advanced Cache': metrics.advancedCache || 'Not available',
+                    'Cache Namespace': metrics.cacheDebugging.cacheNamespace || 'default',
                     'Sample Cache Keys': metrics.cacheDebugging.memoryCacheKeys || []
                 };
 

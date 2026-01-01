@@ -40,6 +40,8 @@ class AdvancedCache {
         // Cache cleanup intervals
         this._cleanupInterval = null;
         this._saveInterval = null;
+        this._memoryDirty = false;
+        this._skipNextPersistentSave = false;
         
         this._logger.info('AdvancedCache initialized');
     }
@@ -174,7 +176,7 @@ class AdvancedCache {
         if (this._persistentCacheEnabled) {
             const persistentEntry = await this._getFromPersistentCache(key);
             if (persistentEntry) {
-                this._addToMemory(key, persistentEntry);
+                this._addToMemory(key, persistentEntry, { skipDirtyFlag: true });
                 this._metrics.diskHits++;
                 return persistentEntry.value;
             }
@@ -205,7 +207,8 @@ class AdvancedCache {
     /**
      * Add item to memory cache with eviction handling
      */
-    _addToMemory(key, entry) {
+    _addToMemory(key, entry, options = {}) {
+        const { skipDirtyFlag = false } = options;
         if (this._currentMemoryUsage + entry.size > this._maxMemoryUsage) {
             this._evictOldestItems(entry.size);
         }
@@ -216,6 +219,10 @@ class AdvancedCache {
         
         this._memoryCache.set(key, entry);
         this._currentMemoryUsage += entry.size;
+        if (!skipDirtyFlag) {
+            this._memoryDirty = true;
+            this._skipNextPersistentSave = false;
+        }
         
         this._logger.debug(`Added to cache: ${key} (${entry.size} bytes)`);
     }
@@ -230,6 +237,8 @@ class AdvancedCache {
         }
         this._memoryCache.delete(key);
         this._currentMemoryUsage -= entry.size;
+        this._memoryDirty = true;
+        this._skipNextPersistentSave = false;
     }
 
     /**
@@ -304,12 +313,13 @@ class AdvancedCache {
             for (const [key, item] of Object.entries(cache)) {
                 const entry = this._hydratePersistedEntry(item);
                 if (entry && this._isValid(entry)) {
-                    this._addToMemory(key, entry);
+                    this._addToMemory(key, entry, { skipDirtyFlag: true });
                     loadedCount++;
                     continue;
                 }
                 skippedCount++;
             }
+            this._memoryDirty = false;
 
             this._metrics.persistentLoads++;
             this._logger.info(`Loaded persistent cache: ${loadedCount} items (${skippedCount} expired)`);
@@ -326,6 +336,17 @@ class AdvancedCache {
             return;
         }
 
+        if (this._skipNextPersistentSave) {
+            this._logger.debug('Skipping persistent cache save (runtime reset requested)');
+            this._skipNextPersistentSave = false;
+            return;
+        }
+
+        if (!this._memoryDirty) {
+            this._logger.debug('Persistent cache unchanged - skipping save');
+            return;
+        }
+
         try {
             const cache = {};
 
@@ -337,6 +358,7 @@ class AdvancedCache {
 
             await this._storage.update(this._storageKey, cache);
             this._metrics.persistentSaves++;
+            this._memoryDirty = false;
             this._logger.debug(`Saved persistent cache: ${Object.keys(cache).length} items`);
         } catch (error) {
             this._logger.error('Failed to save persistent cache to globalState', error);
@@ -460,8 +482,20 @@ class AdvancedCache {
     clear() {
         this._memoryCache.clear();
         this._currentMemoryUsage = 0;
+        this._memoryDirty = true;
         
         this._logger.info('Cache cleared');
+    }
+
+    /**
+     * Clear runtime cache but preserve persistent snapshot
+     */
+    resetRuntimeOnly() {
+        this._memoryCache.clear();
+        this._currentMemoryUsage = 0;
+        this._memoryDirty = false;
+        this._skipNextPersistentSave = true;
+        this._logger.info('Runtime cache cleared (persistent snapshot preserved)');
     }
 
     /**

@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.6 - Cache Preservation & Diagnostics
+
+### Warm Resets Without Data Loss
+- Introduced a hashed cache namespace that automatically rotates when decoration-affecting settings change, avoiding stale entries without nuking the persistent cache.
+- `refreshAll()` now accepts a `preservePersistentCache` option so configuration/UI toggles only clear runtime state; disk snapshots survive and rehydrate immediately after the refresh.
+- Advanced cache gains dirty-tracking plus a `resetRuntimeOnly()` helper, preventing empty snapshots from being written to `globalState` during routine refreshes or preview toggles.
+
+### Mono-Repo Observability
+- Cache debug output now includes the namespace and sample keys are stripped of their prefix so Explorer paths stay readable when diagnosing large workspaces.
+- Performance analytics webview surfaces batch processor queue depth/progress and Git/file-stat latency (avg + totals) pulled straight from provider metrics.
+- `Explorer Dates: Debug Cache` dialog highlights memory vs disk hit rates and the namespace, making it easy to compare runs between different tuning sessions.
+
+### Log Hygiene & Packaging
+- Decoration requests now log at `debug`, keeping standard logs concise even during stress tests (still available when `explorerDates.enableLogging` is on).
+- Added `MEMORY_FIX_REPORT.md` to `.vscodeignore` so internal tuning docs never ship inside the VSIX bundle.
+
+### Reliability
+- Advanced cache flushes only when data actually changed; redundant saves are skipped, and runtime mutations clear the “skip” guard so follow-up writes capture the latest entries.
+- Namespace-aware cache keys ensure toggling things like color scheme, Git info, or badge format immediately invalidates the correct records while leaving unrelated data untouched.
+
+---
+
+# Changelog
+
 ## 1.2.5 - Memory Optimization & Performance
 
 ### Memory Enhancements (Major Performance Improvement)

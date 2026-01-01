@@ -12,6 +12,7 @@ const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, ge
 const { DEFAULT_CACHE_TIMEOUT, DEFAULT_MAX_CACHE_SIZE, MONTH_ABBREVIATIONS, GLOBAL_STATE_KEYS } = require('./constants');
 const { isWebEnvironment } = require('./utils/env');
 const CONFIG_DEFAULT_CACHE_TIMEOUT = 30000;
+const CACHE_NAMESPACE_SEPARATOR = '::';
 
 const describeFile = (input = '') => {
     const pathValue = typeof input === 'string' ? input : getUriPath(input);
@@ -75,6 +76,7 @@ class FileDateDecorationProvider {
         this._gitWarningShown = false;
         
         // Cache performance tracking
+        this._cacheNamespace = null;
         this._cacheKeyStats = new Map(); // Track cache key usage patterns
         
         // Get logger and localization instances
@@ -125,6 +127,7 @@ class FileDateDecorationProvider {
         this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
         this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
         this._performanceMode = config.get('performanceMode', false);
+        this._updateCacheNamespace(config);
         if (this._lightweightMode) {
             this._performanceMode = true;
             this._enableDecorationPool = false;
@@ -488,6 +491,7 @@ class FileDateDecorationProvider {
                 this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
                 this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
                 this._maxCacheSize = config.get('maxCacheSize', 10000);
+                const namespaceChanged = this._updateCacheNamespace(config);
                 
                 // Handle performance mode changes
                 if (e.affectsConfiguration('explorerDates.performanceMode')) {
@@ -517,7 +521,7 @@ class FileDateDecorationProvider {
                         }
                         
                         // Clear caches and refresh when switching modes
-                        this.refreshAll();
+                        this.refreshAll({ reason: 'performance-mode-change' });
                     }
                 }
                 
@@ -530,8 +534,8 @@ class FileDateDecorationProvider {
                     }
                 }
                 
-                // Refresh all decorations if relevant settings changed
-                if (e.affectsConfiguration('explorerDates.showDateDecorations') ||
+                const decorationSettingsChanged =
+                    e.affectsConfiguration('explorerDates.showDateDecorations') ||
                     e.affectsConfiguration('explorerDates.dateDecorationFormat') ||
                     e.affectsConfiguration('explorerDates.excludedFolders') ||
                     e.affectsConfiguration('explorerDates.excludedPatterns') ||
@@ -542,8 +546,13 @@ class FileDateDecorationProvider {
                     e.affectsConfiguration('explorerDates.showGitInfo') ||
                     e.affectsConfiguration('explorerDates.customColors') ||
                     e.affectsConfiguration('explorerDates.showFileSize') ||
-                    e.affectsConfiguration('explorerDates.fileSizeFormat')) {
-                    this.refreshAll();
+                    e.affectsConfiguration('explorerDates.fileSizeFormat');
+
+                if (decorationSettingsChanged || namespaceChanged) {
+                    this.refreshAll({
+                        preservePersistentCache: true,
+                        reason: decorationSettingsChanged ? 'configuration-change' : 'namespace-change'
+                    });
                 }
                 if (e.affectsConfiguration('explorerDates.progressiveLoading')) {
                     this._applyProgressiveLoadingSetting().catch((error) => {
@@ -773,17 +782,26 @@ class FileDateDecorationProvider {
     /**
      * Refresh all decorations
      */
-    refreshAll() {
+    refreshAll(options = {}) {
+        const {
+            preservePersistentCache = false,
+            reason = 'manual-refresh'
+        } = options;
         this._cancelIncrementalRefreshTimers();
         this._decorationCache.clear();
         this._clearDecorationPool('refreshAll');
         this._gitCache.clear();
         // Clear advanced cache if available
         if (this._advancedCache) {
-            this._advancedCache.clear();
+            if (preservePersistentCache && typeof this._advancedCache.resetRuntimeOnly === 'function') {
+                this._advancedCache.resetRuntimeOnly();
+            } else {
+                this._advancedCache.clear();
+            }
         }
         this._onDidChangeFileDecorations.fire(undefined);
-        this._logger.info('All decorations refreshed with cache clear');
+        const persistenceNote = preservePersistentCache ? ' (persistent cache preserved)' : '';
+        this._logger.info(`All decorations refreshed (${reason})${persistenceNote}`);
     }
 
     /**
@@ -1651,7 +1669,69 @@ class FileDateDecorationProvider {
      * Normalize cache key to handle different URI representations
      */
     _getCacheKey(uri) {
-        return buildCacheKey(getUriPath(uri));
+        const rawKey = buildCacheKey(getUriPath(uri));
+        if (!this._cacheNamespace) {
+            return rawKey;
+        }
+        return `${this._cacheNamespace}${CACHE_NAMESPACE_SEPARATOR}${rawKey}`;
+    }
+
+    _stripNamespaceFromCacheKey(key) {
+        if (!key || typeof key !== 'string') {
+            return key;
+        }
+        const separatorIndex = key.indexOf(CACHE_NAMESPACE_SEPARATOR);
+        if (separatorIndex === -1) {
+            return key;
+        }
+        return key.slice(separatorIndex + CACHE_NAMESPACE_SEPARATOR.length);
+    }
+
+    _stableHash(payload) {
+        const input = typeof payload === 'string' ? payload : JSON.stringify(payload);
+        let hash = 0;
+        for (let i = 0; i < input.length; i++) {
+            hash = (hash << 5) - hash + input.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(16);
+    }
+
+    _buildCacheNamespace(config) {
+        try {
+            const resolvedConfig = config || vscode.workspace.getConfiguration('explorerDates');
+            const settings = {
+                dateDecorationFormat: resolvedConfig.get('dateDecorationFormat', 'smart'),
+                showGitInfo: resolvedConfig.get('showGitInfo', true),
+                showFileSize: resolvedConfig.get('showFileSize', false),
+                fileSizeFormat: resolvedConfig.get('fileSizeFormat', 'auto'),
+                colorScheme: resolvedConfig.get('colorScheme', 'recency'),
+                highContrastMode: resolvedConfig.get('highContrastMode', false),
+                fadeOldFiles: resolvedConfig.get('fadeOldFiles', false),
+                fadeThreshold: resolvedConfig.get('fadeThreshold', 72),
+                badgePriority: resolvedConfig.get('badgePriority', 'time'),
+                showDateDecorations: resolvedConfig.get('showDateDecorations', true),
+                excludedFolders: (resolvedConfig.get('excludedFolders', []) || []).join('|'),
+                excludedPatterns: (resolvedConfig.get('excludedPatterns', []) || []).join('|'),
+                customColors: JSON.stringify(resolvedConfig.get('customColors', {})),
+                metadataVersion: 2
+            };
+            return `ns-${this._stableHash(settings).slice(0, 8)}`;
+        } catch (error) {
+            this._logger.debug(`Failed to build cache namespace: ${error.message}`);
+            return 'ns-default';
+        }
+    }
+
+    _updateCacheNamespace(config) {
+        const nextNamespace = this._buildCacheNamespace(config);
+        if (nextNamespace && nextNamespace !== this._cacheNamespace) {
+            const previous = this._cacheNamespace;
+            this._cacheNamespace = nextNamespace;
+            this._logger.info(`Cache namespace updated (${previous || 'unset'} → ${nextNamespace})`);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -1694,7 +1774,7 @@ class FileDateDecorationProvider {
 
             // Reduce verbose logging in performance mode
             if (!this._performanceMode) {
-                this._logger.infoWithOptions(this._stressLogOptions, `🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
+                this._logger.debug(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
                 this._logger.infoWithOptions(this._stressLogOptions, `📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
             }
 
@@ -1979,11 +2059,15 @@ class FileDateDecorationProvider {
         }
         
         // Add cache debugging info
+        const sampleCacheKeys = Array.from(this._decorationCache.keys())
+            .slice(0, 5)
+            .map((key) => this._stripNamespaceFromCacheKey(key));
         baseMetrics.cacheDebugging = {
-            memoryCacheKeys: Array.from(this._decorationCache.keys()).slice(0, 5), // First 5 keys for debugging
+            memoryCacheKeys: sampleCacheKeys,
             cacheTimeout: this._cacheTimeout,
             maxCacheSize: this._maxCacheSize,
-            keyStatsSize: this._cacheKeyStats ? this._cacheKeyStats.size : 0
+            keyStatsSize: this._cacheKeyStats ? this._cacheKeyStats.size : 0,
+            cacheNamespace: this._cacheNamespace
         };
         
         // Add performance timing metrics

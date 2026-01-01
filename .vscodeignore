@@ -18,3 +18,4 @@ esbuild.js
 eslint.config.js
 package-lock.json
 *.vsix
+MEMORY_FIX_REPORT.md

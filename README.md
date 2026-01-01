@@ -68,12 +68,13 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 2. **Get details**: Hover over decorations for full timestamps and Git info
 3. **Quick actions**: Right-click files for "Copy File Date" and "Show File Details"
 4. **Commands**: Use Command Palette (Ctrl+Shift+P) for:
-   - **Toggle Date Decorations**
-   - **Copy File Date**
-   - **Show File Details**
-   - **Show Performance Metrics**
-   - **Open Logs**
-   - **Refresh Date Decorations**
+   - `Explorer Dates: Toggle Date Decorations`
+   - `Explorer Dates: Copy File Date`
+   - `Explorer Dates: Show File Details`
+   - `Explorer Dates: Show Performance Metrics`
+   - `Explorer Dates: Open Logs`
+   - `Explorer Dates: Refresh Date Decorations`
+   - Full list in [DOCS/COMMANDS.md](./DOCS/COMMANDS.md)
 
 ## VS Code for Web Support
 
