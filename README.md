@@ -235,8 +235,9 @@ This is useful for:
 - Remote development environments with bandwidth constraints
 
 **Memory Benchmarks (v1.2.5)**
+
 | Scenario | Heap Delta | Status |
-|----------|-----------|--------|
+|---|---|---|
 | Baseline (normal caching) | 0.53 MB | ✅ 95% improvement |
 | Production usage (5ms delays) | 4.68 MB | ✅ Excellent |
 | Memory shedding enabled | 0.54 MB | ✅ Adaptive guardrail working |
