@@ -1,190 +1,190 @@
-# 🔧 Troubleshooting Missing Date Decorations
+# 🔧 Explorer Dates Troubleshooting (v1.3.x)
 
-## 🚨 **"I'm not seeing any badges on files in the explorer"**
-
-If you're not seeing date decorations on JPG files or any other files in VS Code Explorer, here's how to fix it:
-
-### **Quick Fix Commands** ⚡
-
-1. **Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac)**
-2. **Run these commands in order:**
-
-   - `Explorer Dates: Run Diagnostics (Fix Missing Decorations)` - **Press `Ctrl+Shift+H`**
-   - `Explorer Dates: Quick Fix Common Issues`
-   - `Explorer Dates: Refresh Date Decorations`
-
-### **Manual Check - Most Common Issues** 🔍
-
-#### **1. Check if decorations are enabled**
-- Open VS Code Settings (`Ctrl+,`)
-- Search for `explorer dates`
-- Make sure `Show Date Decorations` is **checked ✓**
-
-#### **2. Force show specific file types** 
-For JPG, PNG, or other image files that aren't showing:
-- In Settings, find `Force Show For File Types`
-- Add: `[".jpg", ".jpeg", ".png", ".gif", ".pdf"]`
-- This forces decorations to show even if the files would normally be excluded
-
-#### **3. Clear exclusion patterns**
-- Check `Excluded Patterns` setting
-- Remove any overly broad patterns like `**/*` 
-- Default safe patterns: `["**/*.tmp", "**/*.log", "**/.git/**", "**/node_modules/**"]`
-
-#### **4. Enable troubleshooting mode**
-- Turn on `Enable Troubleshooting Mode` in settings
-- Check the Output panel → "Explorer Dates" to see what's happening
-
-### **Step-by-Step Visual Guide** 📋
-
-**For JPG files specifically:**
-
-1. **Open Settings** → Search "explorer dates"
-2. **Find "Force Show For File Types"**
-3. **Add these extensions:**
-   ```json
-   [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg"]
-   ```
-4. **Save and run:** `Explorer Dates: Refresh Date Decorations`
-
-### **Advanced Diagnostics** 🛠️
-
-If the above doesn't work:
-
-1. **Run:** `Explorer Dates: Run Diagnostics` (`Ctrl+Shift+H`)
-2. **Check the diagnostic report for:**
-   - Extension Status: "Provider Active" should be "Yes"
-   - Current File: "Is Excluded" should be "No" or "false"
-   - Configuration issues
-
-3. **Try the debug cache command:** `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M`)
-
-### **Platform-Specific Issues** 💻
-
-**Windows 10/11:**
-- Make sure VS Code has file system permissions
-- Try running VS Code as administrator once to test
-
-**VS Code Version 1.105.1:**
-- This version is supported
-- Try restarting VS Code completely
-- Check if other extensions are interfering
-
-### **Common Exclusion Patterns That Break Things** ⚠️
-
-These patterns will hide ALL files - remove them:
-- `**/*` (excludes everything)
-- `*.*` (excludes all files with extensions)
-- `**/*.jpg` (excludes all JPG files)
-
-### **Quick Settings Template** 📝
-
-Copy this into your VS Code `settings.json` for image-friendly configuration:
-
-```json
-{
-  "explorerDates.showDateDecorations": true,
-  "explorerDates.forceShowForFileTypes": [".jpg", ".jpeg", ".png", ".gif", ".pdf", ".mp4", ".mov"],
-  "explorerDates.excludedPatterns": [
-    "**/*.tmp",
-    "**/*.log", 
-    "**/.git/**",
-    "**/node_modules/**"
-  ],
-  "explorerDates.enableTroubleShootingMode": true,
-  "explorerDates.colorScheme": "recency"
-}
-```
-
-### **Still Not Working?** 🆘
-
-1. **Restart VS Code completely**
-2. **Disable other file explorer extensions temporarily**
-3. **Run:** `Developer: Reload Window` from Command Palette
-4. **Open GitHub issue** with your diagnostic report: https://github.com/incredincomp/explorer-dates/issues
+This guide replaces the legacy v1.2.x wiki page and reflects the new module-federated architecture, team configuration system, and diagnostic tooling shipped in Explorer Dates v1.3.0. Follow the quick triage flow first, then jump to the playbook that matches your symptoms.
 
 ---
 
-## 🔥 **Performance Issues (High CPU, Fan Noise, Slow Response)**
+## 1. Quick Triage Checklist
 
-If Explorer Dates is using too many resources (CPU spikes, laptop fan running loud, VS Code feeling sluggish), follow these steps:
+1. **Confirm prerequisites**
+   - VS Code 1.105.0+ (`Help → About`)
+   - Explorer Dates v1.3.x (hover the extension in the Extensions panel)
+   - Run `Explorer Dates: Show Chunk Status` to ensure the `fileDecorations` chunk is loaded. If a chunk is disabled, re‑enable it or apply the `Developer` preset via `Explorer Dates: Apply Configuration Preset`.
+2. **Use the guided fix flow (two minutes)**
+   1. `Explorer Dates: Run Diagnostics (Fix Missing Decorations)` – `Ctrl+Shift+H`
+   2. `Explorer Dates: Quick Fix Common Issues`
+   3. `Explorer Dates: Refresh Date Decorations`
+3. **Validate configuration**
+   - Run `Explorer Dates: Validate Configuration`
+   - If you're on a shared profile, also run `Explorer Dates: Validate Team Configuration`
+   - Resolve anything flagged as “invalid”, “deprecated”, or “overridden by team config”
+4. **Collect logs if symptoms persist**
+   - Toggle `explorerDates.enableTroubleShootingMode`
+   - Open *Output → Explorer Dates* or run `Explorer Dates: Monitor VS Code Decoration Requests`
+   - Keep this information handy if you need to file an issue
 
-### **Quick Fix - Enable Performance Mode** ⚡
+If decorations still misbehave, use the playbooks below.
 
-1. **Open Settings** (`Ctrl+,` or `Cmd+,`)
-2. **Search for:** `explorerDates.performanceMode`
-3. **Enable it** by checking the box ✓
-4. **Changes apply immediately** - no restart needed!
+---
 
-**What Performance Mode Does:**
-- ✅ Keeps basic date/time tooltips on hover
-- ❌ Disables Git author information (no blame operations)
-- ❌ Disables automatic file watching (use manual refresh)
-- ❌ Disables status bar integration
-- ❌ Disables progressive loading and background processing
-- ❌ Disables color schemes and visual enhancements
-- ❌ Reduces logging overhead
+## 2. Symptom Playbooks
 
-### **Alternative: Optimize Without Performance Mode**
+### 2.1 No decorations anywhere in the Explorer
 
-If you want to keep some features but reduce resource usage:
+| Checklist | Why it matters |
+| --- | --- |
+| `Explorer Dates: Toggle Date Decorations` → ensure it reports “enabled” | Decorations can be globally disabled without changing your settings |
+| `Explorer Dates: Monitor VS Code Decoration Requests` | Confirms whether VS Code is even asking the provider for badges |
+| `Explorer Dates: Test VS Code Decoration Rendering` | Registers a dummy provider; if this fails, VS Code itself is blocking decorations |
+| `Explorer Dates: Validate Configuration` | Catches invalid exclusions, conflicting badge priorities, or missing chunk flags |
+| `Explorer Dates: Reset to Default Settings` (only if diagnostics show a corrupted config) | Resets settings while preserving team profiles |
 
+**Settings to inspect**
 ```json
 {
-  "explorerDates.showGitInfo": "none",
-  "explorerDates.progressiveLoading": false,
-  "explorerDates.showStatusBar": false,
-  "explorerDates.colorScheme": "none",
-  "explorerDates.excludedFolders": [
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "out",
-    ".vscode-test",
-    "vendor",
-    "target",
-    ".next",
-    ".nuxt"
+  "explorerDates.showDateDecorations": true,
+  "explorerDates.badgePriority": "time",
+  "explorerDates.forceShowForFileTypes": [],
+  "explorerDates.excludedPatterns": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/*.tmp",
+    "**/*.log"
   ]
 }
 ```
 
-### **Symptoms of Resource Issues**
+If `excludedPatterns` contains `**/*`, `*.*`, or file-specific globs (e.g., `**/*.jpg`) the badges will disappear for those files. Remove or narrow them and rerun `Explorer Dates: Refresh Date Decorations`.
 
-- 🔥 Laptop fan running constantly
-- 🐌 VS Code feels sluggish when browsing files
-- 💻 High CPU usage in Task Manager/Activity Monitor
-- 📊 "Extension Host" process using lots of resources
-- 🔋 Battery draining faster than usual
+### 2.2 Only some file types (e.g., JPG/PNG) or folders show badges
 
-### **When to Use Performance Mode**
+1. Open Settings (`Ctrl+,`) → search “Explorer Dates”.
+2. Under **Force Show For File Types** add the extensions you need:
+   ```json
+   [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".pdf", ".mp4", ".mov"]
+   ```
+3. Ensure `explorerDates.smartExclusions` or `explorerDates.workspaceIntelligence` haven’t auto-excluded the folder. Use `Explorer Dates: Show Workspace File Activity` to see what the smart exclusion system is ignoring.
+4. If your workspace applies a team template, open `.vscode/explorer-dates-team.json` (or the path shown in the notification) and confirm no `excludedPatterns` or `excludedFolders` entries conflict with your needs. If they do, re-run `Explorer Dates: Organize Settings` to split user vs workspace overrides cleanly and then adjust your personal settings.
 
-- Large projects (thousands of files)
-- Monorepos with multiple workspaces
-- Projects with many dependencies (large node_modules)
-- Low-resource systems (older laptops, limited RAM)
-- Remote development over slow connections
-- When you only need basic date/time information
+### 2.3 Decorations are stale or update slowly
 
-### **Commands Still Available in Performance Mode**
+| Action | Notes |
+| --- | --- |
+| `Explorer Dates: Refresh Date Decorations` | Clears caches and forces VS Code to request fresh badges |
+| `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M`) | Look for < 80% hit rate or repeated “stale entry” warnings |
+| Check `explorerDates.periodicRefreshInterval` | Large values (>900s) delay automatic updates |
+| Enable incremental workers: `"explorerDates.enableIncrementalWorkers": true` | Background worker keeps metadata current on large repos |
+| Verify file system events are flowing | `Explorer Dates: Show Performance Analytics` highlights watcher drops. If you see repeated `fswatcher_throttled`, enable `"explorerDates.smartFileWatching": true` or fall back to manual refresh |
 
-- ✅ Manual refresh decorations (`Ctrl+Shift+R`)
-- ✅ Show file details
-- ✅ Copy file date
-- ✅ Toggle decorations on/off
-- ✅ All diagnostic and troubleshooting commands
+When working over remote/SSH, VS Code sometimes queues file events. Switching `explorerDates.featureLevel` to `"balanced"` or `"minimal"` reduces watcher pressure.
+
+### 2.4 Performance issues (CPU spikes, fans, laggy Explorer)
+
+1. Enable `Explorer Dates: Performance Mode` or set:
+   ```json
+   {
+     "explorerDates.performanceMode": true,
+     "explorerDates.showGitInfo": "none",
+     "explorerDates.showFileSize": false,
+     "explorerDates.progressiveLoading": false
+   }
+   ```
+2. Use `Explorer Dates: Optimize Bundle Size` → accept the suggested preset to unload unused chunks (onboarding, reporting, templates, etc.).
+3. For large mono-repos:
+   ```json
+   {
+     "explorerDates.featureLevel": "balanced",
+     "explorerDates.smartFileWatching": true,
+     "explorerDates.maxTrackedActivityFiles": 2500,
+     "explorerDates.enableIncrementalWorkers": false
+   }
+   ```
+4. Disable status bar + analytics if unnecessary:
+   ```json
+   {
+     "explorerDates.showStatusBar": false,
+     "explorerDates.enableExportReporting": false,
+     "explorerDates.enableAnalysisCommands": false
+   }
+   ```
+
+Symptoms such as “Extension Host using >100% CPU” or “Explorer scroll lag” typically mean too many features are loaded for the current workspace. The optimization command generates a before/after bundle summary so you can verify improvements immediately.
+
+### 2.5 Team configuration or migration conflicts
+
+When multiple people share settings via templates or `.vscode/settings.json`, conflicts can suppress decorations silently.
+
+1. Run `Explorer Dates: Validate Team Configuration`.
+2. If conflicts are reported, choose **View Conflicts** to open the diff between team vs user settings.
+3. Run `Explorer Dates: Organize Settings` to rehydrate misplaced files (the `settingsCoordinator` moves stray `explorer-dates-*.json` files into `.vscode/explorer-dates/` and updates references automatically).
+4. For legacy settings (pre-v1.3), run:
+   - `Explorer Dates: Migrate Settings`
+   - `Explorer Dates: Clean Legacy Settings`
+5. Confirm the final effective configuration via `Explorer Dates: Show Current Configuration`.
 
 ---
 
-## **Why This Happens** 🤔
+## 3. Command Reference for Troubleshooting
 
-The most common reasons decorations don't appear:
+| Command | Shortcut | Purpose |
+| --- | --- | --- |
+| `Explorer Dates: Run Diagnostics (Fix Missing Decorations)` | `Ctrl+Shift+H` | Guided RCA with auto-remediations |
+| `Explorer Dates: Quick Fix Common Issues` | — | Re-enables decorations, fixes exclusions, refreshes caches |
+| `Explorer Dates: Refresh Date Decorations` | `Ctrl+Shift+R` | Forces VS Code to re-request every badge |
+| `Explorer Dates: Monitor VS Code Decoration Requests` | — | Streams decoration requests to the Output channel |
+| `Explorer Dates: Test VS Code Decoration Rendering` | — | Confirms VS Code can render badges at all |
+| `Explorer Dates: Debug Cache Performance` | `Ctrl+Shift+M` | Shows cache stats and stale/expired entries |
+| `Explorer Dates: Validate Configuration` | — | Detects invalid settings, deprecated keys, scope conflicts |
+| `Explorer Dates: Validate Team Configuration` | — | Verifies shared templates and conflict resolution |
+| `Explorer Dates: Show Chunk Status` | — | Lists loaded/disabled modules + bundle sizes |
+| `Explorer Dates: Optimize Bundle Size` | — | Generates per-feature performance recommendations |
 
-1. **Extension not properly activated** - VS Code sometimes doesn't load extensions fully
-2. **Files excluded by default patterns** - Some patterns are too broad  
-3. **VS Code FileDecorationProvider issues** - Platform-specific API problems
-4. **Cache problems** - Old cached "no decoration" results
-5. **Other extensions interfering** - File tree extensions can conflict
+Keep this table handy when coaching teammates through issues—every command here records enough telemetry (locally) to attach to a support ticket.
 
-The diagnostic tools we added will help identify which of these is the problem! 🎯
+---
+
+## 4. Logging & Support Checklist
+
+When you need to open a GitHub issue, include:
+
+1. VS Code version + Explorer Dates version (`Explorer Dates: Show What's New`)
+2. Workspace type (local, WSL, SSH, Codespaces, vscode.dev/github.dev)
+3. Output from:
+   - `Explorer Dates: Run Diagnostics` (copy the report)
+   - `Explorer Dates: Show Chunk Status`
+   - `Explorer Dates: Validate Configuration`
+4. Relevant log lines from *Output → Explorer Dates* (enable troubleshooting mode first)
+5. Snippet of your `settings.json` (user), workspace `.vscode/settings.json`, and any `explorer-dates-*.json` template in play
+
+Support template:
+```markdown
+### Environment
+- VS Code: 1.105.1
+- Explorer Dates: 1.3.0
+- Workspace: Local Windows 11
+
+### Symptoms
+- No badges after pulling changes
+- `Validate Configuration` flags `excludedPatterns` = "**/*"
+
+### Diagnostics
+- Run Diagnostics: `Provider Active = false`
+- Chunk Status: `fileDecorations` disabled
+
+### Logs
+```
+<paste relevant lines>
+```
+```
+
+---
+
+## 5. FAQ – Why Decorations Fail
+
+1. **Decorations chunk disabled** – Feature gating (module federation) lets you unload large chunks; if the `fileDecorations` chunk is off, nothing renders. Re-enable via `Show Chunk Status`.
+2. **Team template overrides** – Shared configs can force exclusions or disable badges; validate team configuration to spot silent overrides.
+3. **Provider throttled by VS Code** – Certain VS Code builds throttle decoration providers after too many errors. Use `Test VS Code Decoration Rendering` and `Monitor VS Code Decoration Requests` to confirm.
+4. **Cache poisoning** – The cache can store “no decoration” results for excluded files; `Debug Cache Performance` + manual refresh clears these entries.
+5. **Other extensions** – File explorer replacements and Git decorators sometimes consume the decoration budget. Disable them temporarily or use `Developer: Set Log Level` → Trace to confirm conflicts.
+
+Remember: every troubleshooting command listed here is available in both desktop VS Code and the web bundle (`vscode.dev`, `github.dev`). If a command is hidden, the corresponding feature chunk is disabled—enable it in `Show Chunk Status` first.
