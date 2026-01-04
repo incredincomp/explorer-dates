@@ -152,6 +152,17 @@ class Logger {
             this._configurationWatcher.dispose();
             this._configurationWatcher = null;
         }
+        
+        // Clean up global references
+        const GLOBAL_LOGGER_KEY = '__explorerDatesLogger';
+        if (typeof global !== 'undefined' && global[GLOBAL_LOGGER_KEY] === this) {
+            global[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof globalThis !== 'undefined' && globalThis[GLOBAL_LOGGER_KEY] === this) {
+            globalThis[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof window !== 'undefined' && window[GLOBAL_LOGGER_KEY] === this) {
+            window[GLOBAL_LOGGER_KEY] = null;
+        }
+        
         if (loggerInstance === this) {
             loggerInstance = null;
         }
@@ -272,17 +283,42 @@ class Logger {
     }
 }
 
-// Singleton instance
-let loggerInstance = null;
+// Global singleton instance that persists across chunk boundaries
+const GLOBAL_LOGGER_KEY = '__explorerDatesLogger';
 
 /**
- * Get the logger instance
+ * Get or create the global logger instance
  */
 function getLogger() {
-    if (!loggerInstance) {
-        loggerInstance = new Logger();
+    // Use global reference to ensure singleton across all chunks/modules
+    if (typeof global !== 'undefined') {
+        // Node.js environment
+        if (!global[GLOBAL_LOGGER_KEY]) {
+            global[GLOBAL_LOGGER_KEY] = new Logger();
+        }
+        return global[GLOBAL_LOGGER_KEY];
+    } else if (typeof globalThis !== 'undefined') {
+        // Web/modern environments
+        if (!globalThis[GLOBAL_LOGGER_KEY]) {
+            globalThis[GLOBAL_LOGGER_KEY] = new Logger();
+        }
+        return globalThis[GLOBAL_LOGGER_KEY];
+    } else if (typeof window !== 'undefined') {
+        // Browser fallback
+        if (!window[GLOBAL_LOGGER_KEY]) {
+            window[GLOBAL_LOGGER_KEY] = new Logger();
+        }
+        return window[GLOBAL_LOGGER_KEY];
+    } else {
+        // Fallback to module-local singleton
+        if (!loggerInstance) {
+            loggerInstance = new Logger();
+        }
+        return loggerInstance;
     }
-    return loggerInstance;
 }
+
+// Module-local fallback instance
+let loggerInstance = null;
 
 module.exports = { Logger, getLogger };

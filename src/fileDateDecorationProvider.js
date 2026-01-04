@@ -3422,11 +3422,12 @@ class FileDateDecorationProvider {
         // Use file locking for thread safety
         return this._withFileLock(filePath, async () => {
             try {
-                this._logger.info(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+                // Only log call context in debug mode to reduce log noise
+                this._logger.debug(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
                 
                 // Early cancellation check
                 if (token?.isCancellationRequested || this._disposed) {
-                    this._logger.info('🚫 Operation cancelled early');
+                    this._logger.debug('🚫 Operation cancelled early');
                     return undefined;
                 }
 
@@ -3464,7 +3465,8 @@ class FileDateDecorationProvider {
             // Reduce verbose logging in performance mode
             if (!this._performanceMode) {
                 this._logger.debug(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
-                this._logger.infoWithOptions(this._stressLogOptions, `📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+                // Only log call context details at debug level to reduce noise
+                this._logger.debug(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
             }
 
             const config = vscode.workspace.getConfiguration('explorerDates');
@@ -3483,14 +3485,14 @@ class FileDateDecorationProvider {
 
             if (!_get('showDateDecorations', true)) {
                 if (!this._performanceMode) {
-                    this._logger.infoWithOptions(this._stressLogOptions, `❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
+                    this._logger.debug(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
                 }
                 return undefined;
             }
 
             if (await this._isExcludedSimple(uri)) {
                 if (!this._performanceMode) {
-                    this._logger.infoWithOptions(this._stressLogOptions, `❌ File excluded: ${fileLabel}`);
+                    this._logger.debug(`❌ File excluded: ${fileLabel}`);
                 }
                 return undefined;
             }

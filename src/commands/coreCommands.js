@@ -131,24 +131,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
-        try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
-            await config.update('badgePriority', 'time', vscode.ConfigurationTarget.Global);
-            await config.update('accessibilityMode', false, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage('Reset high contrast, badge priority, and accessibility mode to defaults. Changes should take effect immediately.');
-            logger.info('Reset problematic settings to defaults');
-
-            if (fileDateProvider) {
-                fileDateProvider.clearAllCaches();
-                fileDateProvider.refreshAll();
-            }
-        } catch (error) {
-            logger.error('Failed to reset settings', error);
-            vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
-        }
-    }));
+    // Reset to defaults command is now handled by migrationCommands.js which provides comprehensive reset functionality
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {
         try {
@@ -320,48 +303,8 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
-        try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const customColors = config.get('customColors', {
-                veryRecent: '#00ff00',
-                recent: '#ffff00',
-                old: '#ff0000'
-            });
-
-            const message = `To use custom colors with Explorer Dates, add the following to your settings.json:\n\n` +
-                `"workbench.colorCustomizations": {\n` +
-                `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
-                `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
-                `  "explorerDates.customColor.old": "${customColors.old}"\n` +
-                `}\n\n` +
-                `Also set: "explorerDates.colorScheme": "custom"`;
-
-            const choice = await vscode.window.showInformationMessage(
-                'Custom colors configuration',
-                { modal: true, detail: message },
-                'Copy to Clipboard',
-                'Open Settings'
-            );
-
-            if (choice === 'Copy to Clipboard') {
-                const configText = `"workbench.colorCustomizations": {\n` +
-                    `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
-                    `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
-                    `  "explorerDates.customColor.old": "${customColors.old}"\n` +
-                    `}`;
-                await vscode.env.clipboard.writeText(configText);
-                vscode.window.showInformationMessage('Custom color configuration copied to clipboard');
-            } else if (choice === 'Open Settings') {
-                await vscode.commands.executeCommand('workbench.action.openSettings', 'workbench.colorCustomizations');
-            }
-
-            logger.info('Custom colors help displayed');
-        } catch (error) {
-            logger.error('Failed to apply custom colors', error);
-            vscode.window.showErrorMessage(`Failed to apply custom colors: ${error.message}`);
-        }
-    }));
+    // Note: explorerDates.applyCustomColors command is now handled by migrationCommands.js
+    // with enhanced functionality including interactive setup options
 
     subscriptions.forEach(disposable => context.subscriptions.push(disposable));
 }
