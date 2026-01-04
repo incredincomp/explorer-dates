@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { normalizePath, getRelativePath, getFileName } = require('./utils/pathUtils');
 
@@ -48,7 +48,7 @@ class SmartExclusionManager {
      */
     async cleanupAllWorkspaceProfiles() {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const profiles = config.get('workspaceExclusionProfiles', {});
+        const profiles = config.get('workspaceExclusionProfiles', {}) || {};
         let updated = false;
 
         for (const [workspaceKey, exclusions] of Object.entries(profiles)) {

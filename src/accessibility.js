@@ -1,6 +1,6 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
-const { getLocalization } = require('./localization');
+const { getLogger } = require('./utils/logger');
+const { getLocalization } = require('./utils/localization');
 const { getFileName } = require('./utils/pathUtils');
 
 /**

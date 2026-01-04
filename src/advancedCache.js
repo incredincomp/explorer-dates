@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { GLOBAL_STATE_KEYS, DEFAULT_PERSISTENT_CACHE_TTL } = require('./constants');
 

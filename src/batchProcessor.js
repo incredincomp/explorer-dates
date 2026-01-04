@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 
 /**
  * Batch Processing Manager for file decorations
@@ -15,6 +15,9 @@ class BatchProcessor {
         this._totalCount = 0;
         this._statusBar = null;
         this._configurationWatcher = null;
+        this._adaptiveBatching = true;
+        this._workspaceScale = 'normal';
+        this._minBatchSize = 5;
         
         // Performance tracking
         this._metrics = {
@@ -31,7 +34,8 @@ class BatchProcessor {
      */
     initialize() {
         const config = vscode.workspace.getConfiguration('explorerDates');
-        this._batchSize = config.get('batchSize', 50);
+        this._batchSize = this._clampBatchSize(config.get('batchSize', 50));
+        this._adaptiveBatching = config.get('adaptiveBatchProcessing', true);
         
         // Create status bar for progress indication
         this._statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -1000);
@@ -42,8 +46,12 @@ class BatchProcessor {
         }
         this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.batchSize')) {
-                this._batchSize = vscode.workspace.getConfiguration('explorerDates').get('batchSize', 50);
+                this._batchSize = this._clampBatchSize(vscode.workspace.getConfiguration('explorerDates').get('batchSize', 50));
                 this._logger.debug(`Batch size updated to: ${this._batchSize}`);
+            }
+            if (e.affectsConfiguration('explorerDates.adaptiveBatchProcessing')) {
+                this._adaptiveBatching = vscode.workspace.getConfiguration('explorerDates').get('adaptiveBatchProcessing', true);
+                this._logger.debug(`Adaptive batch processing ${this._adaptiveBatching ? 'enabled' : 'disabled'}`);
             }
         });
     }
@@ -59,8 +67,24 @@ class BatchProcessor {
             priority: options.priority || 'normal',
             background: options.background || false,
             onProgress: options.onProgress,
-            onComplete: options.onComplete
+            onComplete: options.onComplete,
+            cancelSignal: options.cancellationToken || null,
+            jobLabel: options.jobLabel || 'batch',
+            abortListener: null
         };
+
+        if (batch.cancelSignal) {
+            if (batch.cancelSignal.aborted) {
+                this._logger.debug(`Skipped queueing batch (${batch.jobLabel}) - cancellation requested`);
+                return null;
+            }
+            batch.abortListener = () => {
+                this.cancelBatch(batch.id, 'aborted');
+            };
+            if (typeof batch.cancelSignal.addEventListener === 'function') {
+                batch.cancelSignal.addEventListener('abort', batch.abortListener, { once: true });
+            }
+        }
 
         // Insert based on priority
         if (batch.priority === 'high') {
@@ -125,19 +149,36 @@ class BatchProcessor {
      */
     async _processBatch(batch) {
         const batchStartTime = Date.now();
+        if (batch.cancelSignal?.aborted) {
+            this._logger.debug(`Batch ${batch.id} (${batch.jobLabel}) aborted before processing`);
+            this._completeBatch(batch, false, 'aborted');
+            return;
+        }
+
         this._logger.debug(`Processing batch ${batch.id} with ${batch.uris.length} URIs`);
         
         try {
             // Process URIs in chunks of batch size
-            const chunks = this._chunkArray(batch.uris, this._batchSize);
+            const effectiveBatchSize = this._getEffectiveBatchSize(batch.uris.length);
+            const chunks = this._chunkArray(batch.uris, effectiveBatchSize);
             
             for (let i = 0; i < chunks.length; i++) {
+                if (batch.cancelSignal?.aborted) {
+                    this._logger.debug(`Batch ${batch.id} cancelled during chunk processing`);
+                    break;
+                }
+
                 const chunk = chunks[i];
                 const chunkResults = [];
                 
                 // Process chunk items
                 for (const uri of chunk) {
                     try {
+                        if (batch.cancelSignal?.aborted) {
+                            this._logger.debug(`Batch ${batch.id} cancelled mid-item`);
+                            break;
+                        }
+
                         const result = await batch.processor(uri);
                         chunkResults.push({ uri, result, success: true });
                         this._processedCount++;
@@ -162,6 +203,11 @@ class BatchProcessor {
                 
                 // Allow cancellation checks and UI updates
                 await this._sleep(0);
+
+                if (batch.cancelSignal?.aborted) {
+                    this._logger.debug(`Batch ${batch.id} cancelled after chunk`);
+                    break;
+                }
                 
                 // Check if we should pause for UI responsiveness
                 if (!batch.background && i < chunks.length - 1) {
@@ -170,25 +216,12 @@ class BatchProcessor {
             }
             
             // Call completion callback
-            if (batch.onComplete) {
-                batch.onComplete({
-                    processed: batch.uris.length,
-                    success: true,
-                    duration: Date.now() - batchStartTime
-                });
-            }
+            this._completeBatch(batch, true, null, Date.now() - batchStartTime);
             
         } catch (error) {
             this._logger.error(`Batch ${batch.id} processing failed`, error);
             
-            if (batch.onComplete) {
-                batch.onComplete({
-                    processed: 0,
-                    success: false,
-                    error: error,
-                    duration: Date.now() - batchStartTime
-                });
-            }
+            this._completeBatch(batch, false, error, Date.now() - batchStartTime);
         }
         
         this._metrics.totalBatches++;
@@ -304,7 +337,10 @@ class BatchProcessor {
             ...this._metrics,
             isProcessing: this._isProcessing,
             queueLength: this._processingQueue.length,
-            currentProgress: this._totalCount > 0 ? (this._processedCount / this._totalCount) : 0
+            currentProgress: this._totalCount > 0 ? (this._processedCount / this._totalCount) : 0,
+            batchSize: this._batchSize,
+            adaptiveBatching: this._adaptiveBatching,
+            workspaceScale: this._workspaceScale
         };
     }
 
@@ -320,11 +356,20 @@ class BatchProcessor {
     /**
      * Cancel specific batch
      */
-    cancelBatch(batchId) {
+    cancelBatch(batchId, reason = 'manual') {
         const index = this._processingQueue.findIndex(batch => batch.id === batchId);
         if (index !== -1) {
             const cancelled = this._processingQueue.splice(index, 1)[0];
+            this._detachAbort(cancelled);
             this._logger.debug(`Cancelled batch ${batchId} with ${cancelled.uris.length} URIs`);
+            if (cancelled.onComplete) {
+                cancelled.onComplete({
+                    processed: 0,
+                    success: false,
+                    error: new Error(`Batch cancelled (${reason})`),
+                    duration: 0
+                });
+            }
             return true;
         }
         return false;
@@ -343,6 +388,69 @@ class BatchProcessor {
             this._configurationWatcher = null;
         }
         this._logger.info('BatchProcessor disposed', this.getMetrics());
+    }
+
+    setWorkspaceScale(scale = 'normal') {
+        if (['normal', 'large', 'extreme'].includes(scale)) {
+            this._workspaceScale = scale;
+        } else {
+            this._workspaceScale = 'normal';
+        }
+        this._logger.debug(`Batch processor workspace scale set to ${this._workspaceScale}`);
+    }
+
+    _getEffectiveBatchSize(totalItems) {
+        if (!this._adaptiveBatching) {
+            return this._batchSize;
+        }
+
+        let scaleFactor = 1;
+        if (this._workspaceScale === 'large') {
+            scaleFactor = 0.6;
+        } else if (this._workspaceScale === 'extreme') {
+            scaleFactor = 0.35;
+        }
+
+        let effective = Math.max(this._minBatchSize, Math.floor(this._batchSize * scaleFactor));
+
+        if (totalItems > 2000) {
+            effective = Math.max(this._minBatchSize, Math.floor(effective * 0.5));
+        } else if (totalItems > 500) {
+            effective = Math.max(this._minBatchSize, Math.floor(effective * 0.75));
+        }
+
+        return Math.max(this._minBatchSize, effective);
+    }
+
+    _clampBatchSize(value) {
+        const numeric = Number(value) || 50;
+        return Math.min(200, Math.max(this._minBatchSize, Math.round(numeric)));
+    }
+
+    _completeBatch(batch, success, error = null, duration = 0) {
+        this._detachAbort(batch);
+        if (batch.onComplete) {
+            batch.onComplete({
+                processed: success ? batch.uris.length : 0,
+                success,
+                error,
+                duration
+            });
+        }
+    }
+
+    _detachAbort(batch) {
+        if (!batch?.cancelSignal || !batch.abortListener) {
+            return;
+        }
+        if (typeof batch.cancelSignal.removeEventListener === 'function') {
+            try {
+                batch.cancelSignal.removeEventListener('abort', batch.abortListener);
+            } catch {
+                // ignore
+            }
+        }
+        batch.abortListener = null;
     }
 }
 

@@ -79,37 +79,47 @@ async function runTestScenario(name, configOverrides, testFn) {
  * Test that incremental workers feature flag prevents chunk loading
  */
 async function testIncrementalWorkersDisabled() {
-    await runTestScenario('Incremental workers disabled - chunk not loaded', {
-        'explorerDates.enableIncrementalWorkers': false
-    }, async (context) => {
-        const featureFlags = require('../src/featureFlags');
-        
-        // Check that the feature flag logic was applied
-        const isEnabled = featureFlags.isEnabled('incrementalWorkers');
-        assert.strictEqual(isEnabled, false, 'Feature flag should report incremental workers as disabled');
-        
-        // Capture console output to verify the disabled message
-        const originalConsoleLog = console.log;
-        const consoleMessages = [];
-        console.log = (...args) => {
-            consoleMessages.push(args.join(' '));
-            originalConsoleLog(...args);
-        };
-        
-        try {
+    // Set up console capture before extension activation
+    const originalConsoleLog = console.log;
+    const consoleMessages = [];
+    console.log = (...args) => {
+        // Properly serialize console arguments, including objects
+        const serializedArgs = args.map(arg => {
+            if (typeof arg === 'object' && arg !== null) {
+                return JSON.stringify(arg);
+            }
+            return String(arg);
+        });
+        consoleMessages.push(serializedArgs.join(' '));
+        originalConsoleLog(...args);
+    };
+    
+    try {
+        await runTestScenario('Incremental workers disabled - chunk not loaded', {
+            'explorerDates.enableIncrementalWorkers': false,
+            'explorerDates.consoleLogLevel': 'info'
+        }, async (context) => {
+            const featureFlags = require('../src/featureFlags');
+            
+            // Check that the feature flag logic was applied
+            const isEnabled = featureFlags.isEnabled('incrementalWorkers');
+            assert.strictEqual(isEnabled, false, 'Feature flag should report incremental workers as disabled');
+            
             // Try to load the chunk and verify it returns null
             const chunk = await featureFlags.incrementalWorkers();
             assert.strictEqual(chunk, null, 'Incremental workers chunk should return null when disabled');
             
             // Verify that the disabled message was logged to console
             const disabledMessage = consoleMessages.find(msg => 
-                msg.includes('Incremental Workers disabled') && msg.includes('saving ~19KB')
+                msg.includes('Feature disabled via configuration') && 
+                msg.includes('"feature":"incrementalWorkers"') && 
+                msg.includes('"savedKB":19')
             );
             assert(disabledMessage, 'Should log bundle size savings message when incremental workers disabled');
-        } finally {
-            console.log = originalConsoleLog;
-        }
-    });
+        });
+    } finally {
+        console.log = originalConsoleLog;
+    }
 }
 
 /**

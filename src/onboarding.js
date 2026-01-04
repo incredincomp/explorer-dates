@@ -1,6 +1,6 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
-const { getLocalization } = require('./localization');
+const { getLogger } = require('./utils/logger');
+const { getLocalization } = require('./utils/localization');
 
 /**
  * Onboarding Manager for first-time users and feature discovery
@@ -75,14 +75,30 @@ class OnboardingManager {
                 return this._showGentleUpdateNotification(extensionVersion);
             }
             
-            const message = isUpdate ?
+            // Check if settings migration occurred
+            const migrationHistory = this._context.globalState.get('explorerDates.migrationHistory', []);
+            const recentMigration = migrationHistory.find(record => 
+                record.extensionVersion === extensionVersion && record.migratedSettings.length > 0
+            );
+            
+            let message = isUpdate ?
                 `Explorer Dates has been updated to v${extensionVersion} with new features and improvements!` :
                 'See file modification dates right in VS Code Explorer with intuitive time badges, file sizes, Git info, and much more!';
+            
+            // Add migration notice if applicable
+            if (recentMigration) {
+                message += `\n\n✅ Your settings have been automatically migrated to maintain compatibility.`;
+            }
             
             // Reduce options for existing users to prevent overwhelm
             const actions = isUpdate ? 
                 ['📖 What\'s New', '⚙️ Settings', 'Dismiss'] :
                 ['🚀 Quick Setup', '📖 Feature Tour', '⚙️ Settings', 'Maybe Later'];
+            
+            // Add migration history option if there have been migrations
+            if (migrationHistory.length > 0 && isUpdate) {
+                actions.splice(-1, 0, '📜 Migration History');
+            }
             
             const action = await vscode.window.showInformationMessage(
                 message,
@@ -103,6 +119,9 @@ class OnboardingManager {
                     break;
                 case '📖 What\'s New':
                     await this.showWhatsNew(extensionVersion);
+                    break;
+                case '📜 Migration History':
+                    await vscode.commands.executeCommand('explorerDates.showMigrationHistory');
                     break;
                 case '⚙️ Settings':
                     await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
@@ -161,7 +180,9 @@ class OnboardingManager {
                 }
             );
 
-            panel.webview.html = this._generateSetupWizardHTML();
+            // Lazy load webview assets
+            const html = await this._generateSetupWizardHTML();
+            panel.webview.html = html;
             
             // Handle messages from webview
             panel.webview.onDidReceiveMessage(async (message) => {
@@ -367,7 +388,9 @@ class OnboardingManager {
                 }
             );
 
-            panel.webview.html = this._generateFeatureTourHTML();
+            // Lazy load webview assets
+            const html = await this._generateFeatureTourHTML();
+            panel.webview.html = html;
             
             // Handle tour navigation
             panel.webview.onDidReceiveMessage(async (message) => {
@@ -386,9 +409,9 @@ class OnboardingManager {
     }
 
     /**
-     * Generate HTML for setup wizard
+     * Generate HTML for setup wizard with lazy-loaded assets
      */
-    _generateSetupWizardHTML() {
+    async _generateSetupWizardHTML() {
         const allPresets = this._getConfigurationPresets();
         
         // Simplified preset selection - only show 3 core options to reduce overwhelm
@@ -397,6 +420,21 @@ class OnboardingManager {
             developer: allPresets.developer,
             accessible: allPresets.accessible
         };
+        
+        // Try to load assets from chunk first
+        try {
+            const { loadOnboardingAssets } = require('./chunks/onboarding-chunk');
+            const assets = await loadOnboardingAssets();
+            
+            if (assets) {
+                this._logger.debug('Using chunked onboarding assets for setup wizard');
+                return await assets.getSetupWizardHTML(simplifiedPresets);
+            }
+        } catch (error) {
+            this._logger.warn('Failed to load chunked assets, using inline fallback', error);
+        }
+        
+        // Fallback to inline template for compatibility
         
         const presetOptions = Object.entries(simplifiedPresets).map(([key, preset]) => `
             <div class="preset-option" data-preset="${key}" 
@@ -619,9 +657,30 @@ class OnboardingManager {
     }
 
     /**
-     * Generate HTML for feature tour
+     * Generate HTML for feature tour with lazy-loaded assets
      */
-    _generateFeatureTourHTML() {
+    async _generateFeatureTourHTML() {
+        // Try to load assets from chunk first
+        try {
+            const { loadOnboardingAssets } = require('./chunks/onboarding-chunk');
+            const assets = await loadOnboardingAssets();
+            
+            if (assets) {
+                this._logger.debug('Using chunked onboarding assets for feature tour');
+                return await assets.getFeatureTourHTML();
+            }
+        } catch (error) {
+            this._logger.warn('Failed to load chunked assets for feature tour, using inline fallback', error);
+        }
+        
+        // Fallback to inline template for compatibility
+        return this._generateFeatureTourHTMLInline();
+    }
+
+    /**
+     * Generate HTML for feature tour (inline fallback)
+     */
+    _generateFeatureTourHTMLInline() {
         return `
             <!DOCTYPE html>
             <html>
@@ -872,7 +931,9 @@ class OnboardingManager {
                 }
             );
 
-            panel.webview.html = this._generateWhatsNewHTML(version);
+            // Lazy load webview assets
+            const html = await this._generateWhatsNewHTML(version);
+            panel.webview.html = html;
             
             // Handle interactions
             panel.webview.onDidReceiveMessage(async (message) => {
@@ -901,9 +962,30 @@ class OnboardingManager {
     }
 
     /**
-     * Generate HTML for What's New panel
+     * Generate HTML for What's New panel with lazy-loaded assets
      */
-    _generateWhatsNewHTML(version) {
+    async _generateWhatsNewHTML(version) {
+        // Try to load assets from chunk first
+        try {
+            const { loadOnboardingAssets } = require('./chunks/onboarding-chunk');
+            const assets = await loadOnboardingAssets();
+            
+            if (assets) {
+                this._logger.debug('Using chunked onboarding assets for what\'s new');
+                return await assets.getWhatsNewHTML(version);
+            }
+        } catch (error) {
+            this._logger.warn('Failed to load chunked assets for what\'s new, using inline fallback', error);
+        }
+        
+        // Fallback to inline template for compatibility
+        return this._generateWhatsNewHTMLInline(version);
+    }
+
+    /**
+     * Generate HTML for What's New panel (inline fallback)
+     */
+    _generateWhatsNewHTMLInline(version) {
         return `
             <!DOCTYPE html>
             <html lang="en">

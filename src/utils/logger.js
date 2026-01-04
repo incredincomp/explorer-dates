@@ -20,6 +20,8 @@ const inspectValue = (() => {
 
 const DEFAULT_LOG_PROFILE = 'default';
 const SUPPORTED_PROFILES = new Set(['default', 'stress', 'soak']);
+const LOG_LEVEL_ORDER = ['debug', 'info', 'warn', 'error'];
+const DEFAULT_CONSOLE_LEVEL = 'warn';
 
 /**
  * Logger utility for debugging and error tracking
@@ -34,11 +36,15 @@ class Logger {
             this._logProfile = DEFAULT_LOG_PROFILE;
         }
         this._throttleState = new Map();
+        this._consoleLevel = DEFAULT_CONSOLE_LEVEL;
         this._updateConfig();
         
         // Listen for configuration changes
         this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('explorerDates.enableLogging')) {
+            if (
+                e.affectsConfiguration('explorerDates.enableLogging') ||
+                e.affectsConfiguration('explorerDates.consoleLogLevel')
+            ) {
                 this._updateConfig();
             }
         });
@@ -47,6 +53,10 @@ class Logger {
     _updateConfig() {
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._isEnabled = config.get('enableLogging', false);
+        const configuredConsoleLevel = (config.get('consoleLogLevel', DEFAULT_CONSOLE_LEVEL) || '').toLowerCase();
+        this._consoleLevel = LOG_LEVEL_ORDER.includes(configuredConsoleLevel)
+            ? configuredConsoleLevel
+            : DEFAULT_CONSOLE_LEVEL;
     }
 
     setLogProfile(profileName = DEFAULT_LOG_PROFILE) {
@@ -116,7 +126,7 @@ class Logger {
             evaluatedArgs.forEach((arg) => this._outputChannel.appendLine(this._serializeArg(arg)));
         }
 
-        console.error(formattedMessage, error, ...evaluatedArgs);
+        this._mirrorToConsole('error', formattedMessage, [error, ...evaluatedArgs]);
     }
 
     /**
@@ -165,13 +175,7 @@ class Logger {
             evaluatedArgs.forEach((arg) => this._outputChannel.appendLine(this._serializeArg(arg)));
         }
 
-        const consoleMethod = level === 'warn'
-            ? console.warn
-            : level === 'error'
-                ? console.error
-                : console.log;
-
-        consoleMethod(formattedMessage, ...evaluatedArgs);
+        this._mirrorToConsole(level, formattedMessage, evaluatedArgs);
     }
 
     _evaluateArgs(args) {
@@ -232,7 +236,7 @@ class Logger {
             state.noticeLogged = true;
             const notice = `[${new Date().toISOString()}] [INFO] ⏸️ Suppressing further logs for "${key}" after ${limit} entries (profile=${this._logProfile})`;
             this._outputChannel.appendLine(notice);
-            console.log(notice);
+            this._mirrorToConsole('info', notice);
         }
         this._throttleState.set(key, state);
         return true;
@@ -244,6 +248,27 @@ class Logger {
             return activeProfile === DEFAULT_LOG_PROFILE;
         }
         return activeProfile === requestedProfile;
+    }
+
+    _shouldMirrorToConsole(level) {
+        const configuredIndex = LOG_LEVEL_ORDER.indexOf(this._consoleLevel);
+        const messageIndex = LOG_LEVEL_ORDER.indexOf(level);
+        if (configuredIndex === -1 || messageIndex === -1) {
+            return false;
+        }
+        return messageIndex >= configuredIndex;
+    }
+
+    _mirrorToConsole(level, message, args = []) {
+        if (!this._shouldMirrorToConsole(level)) {
+            return;
+        }
+        const method = level === 'warn'
+            ? console.warn
+            : level === 'error'
+                ? console.error
+                : console.log;
+        method.call(console, message, ...args);
     }
 }
 

@@ -4,127 +4,73 @@
 // doesn't touch Node-only APIs at load/activation time.
 const assert = require('assert');
 const path = require('path');
-const Module = require('module');
+const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
+const { createExtensionContext } = require('./helpers/mockVscode');
 
-// Provide minimal globals used by the web worker host
-globalThis.Blob = class Blob {
-    constructor(parts, options) {
-        this.parts = parts;
-        this.options = options;
-    }
-};
-globalThis.URL = {
-    createObjectURL() {
-        return 'blob://fake';
-    }
-};
-globalThis.Worker = class Worker {
-    constructor(url) {
-        this.url = url;
-        this.onmessage = null;
-        this.onerror = null;
-    }
-    postMessage() {}
-    terminate() {}
-};
-globalThis.self = globalThis;
+async function runWebSmokeTest() {
+    const extensionRoot = path.join(__dirname, '..');
+    const workspaceFolders = [
+        { path: path.join(extensionRoot, 'tests', 'fixtures', 'web-a'), name: 'web-a' },
+        { path: path.join(extensionRoot, 'tests', 'fixtures', 'web-b'), name: 'web-b' }
+    ];
+    const harness = createWebVscodeMock({
+        extensionPath: extensionRoot,
+        workspaceFolders
+    });
+    const webBundlePath = path.join(__dirname, '..', 'dist', 'extension.web.js');
+    delete require.cache[require.resolve(webBundlePath)];
+    const webBundle = require(webBundlePath);
 
-// Minimal vscode shim
-const vscode = {
-    workspace: {
-        getConfiguration() {
-            return {
-                get: () => undefined,
-                has: () => false,
-                update: () => Promise.resolve()
-            };
-        },
-        onDidChangeConfiguration() { return { dispose() {} }; }
-    },
-    ColorThemeKind: {
-        Light: 1,
-        Dark: 2,
-        HighContrast: 3,
-        HighContrastLight: 4
-    },
-    window: {
-        createStatusBarItem() {
-            return { show() {}, hide() {}, dispose() {} };
-        },
-        activeColorTheme: { kind: 1 },
-        onDidChangeActiveColorTheme() { return { dispose() {} }; },
-        createOutputChannel() {
-            return { appendLine() {}, append() {}, show() {}, clear() {}, dispose() {} };
-        },
-        showInformationMessage() {},
-        showWarningMessage() {},
-        showErrorMessage() {},
-        onDidChangeActiveTextEditor() { return { dispose() {} }; },
-        onDidChangeVisibleTextEditors() { return { dispose() {} }; },
-        registerFileDecorationProvider() { return { dispose() {} }; }
-    },
-    commands: {
-        registerCommand() { return { dispose() {} }; },
-        executeCommand() { return Promise.resolve(); }
-    },
-    env: {
-        uiKind: 2,
-        appName: 'vscode-web',
-        uriScheme: 'vscode-web',
-        language: 'en',
-        machineId: 'web-smoke',
-        sessionId: 'web-smoke',
-        remoteName: undefined
-    },
-    languages: {
-        registerCodeActionsProvider() { return { dispose() {} }; }
-    },
-    Uri: {
-        joinPath: (...segments) => ({ fsPath: path.join(...segments) }),
-        parse: (p) => ({ fsPath: p }),
-        file: (p) => ({ fsPath: p })
-    },
-    EventEmitter: class EventEmitter {
-        constructor() { this.listeners = []; }
-        event = (listener) => { this.listeners.push(listener); return { dispose() {} }; };
-        fire(data) { this.listeners.forEach((l) => l(data)); }
-        dispose() {}
-    },
-    StatusBarAlignment: { Right: 2 },
-    ThemeColor: class ThemeColor {
-        constructor(id) { this.id = id; }
-    },
-    FileDecoration: class FileDecoration {
-        constructor(badge) { this.badge = badge; }
-    },
-    UIKind: { Desktop: 1, Web: 2 },
-    ExtensionMode: { Production: 1, Development: 2, Test: 3 }
-};
-const originalLoad = Module._load;
-Module._load = function(request, parent, isMain) {
-    if (request === 'vscode') {
-        return vscode;
-    }
-    return originalLoad(request, parent, isMain);
-};
+    assert.ok(webBundle.activate, 'Web bundle should export activate');
+    assert.ok(webBundle.deactivate, 'Web bundle should export deactivate');
 
-// Load the web bundle
-const webBundlePath = path.join(__dirname, '..', 'dist', 'extension.web.js');
-const webBundle = require(webBundlePath);
+    const context = createExtensionContext({
+        extensionUri: harness.extensionUri,
+        extensionPath: harness.extensionUri.fsPath
+    });
 
-assert.ok(webBundle.activate, 'Web bundle should export activate');
-assert.ok(webBundle.deactivate, 'Web bundle should export deactivate');
+    try {
+        await webBundle.activate(context);
+        await webBundle.deactivate();
 
-// Run a lightweight activate/deactivate cycle
-const context = { subscriptions: [] };
-Promise.resolve(webBundle.activate(context))
-    .then(() => Promise.resolve(webBundle.deactivate()))
-    .then(() => {
-        Module._load = originalLoad;
+        const gitContextCall = harness.commandCalls.find(
+            (call) =>
+                call.command === 'setContext' &&
+                call.args[0] === 'explorerDates.gitFeaturesAvailable'
+        );
+        assert.ok(gitContextCall, 'Web bundle should set git availability context');
+        assert.strictEqual(
+            gitContextCall.args[1],
+            false,
+            'Git features must be disabled in web environments'
+        );
+
+        assert.strictEqual(
+            harness.fileWatcherCount,
+            0,
+            'Web bundle should not register VS Code file system watchers'
+        );
+
+        const loadedGitChunk = harness.chunkLoads.includes('gitInsights');
+        assert.strictEqual(
+            loadedGitChunk,
+            false,
+            'Web bundle must not load gitInsights chunk in browser environments'
+        );
+
+        assert.strictEqual(
+            harness.vscode.workspace.workspaceFolders.length,
+            workspaceFolders.length,
+            'Web harness should expose all workspace folders for chunk resolution'
+        );
+
         console.log('✅ Web bundle smoke test passed');
-    })
-    .catch((error) => {
-        Module._load = originalLoad;
+    } catch (error) {
         console.error('❌ Web bundle smoke test failed:', error);
         process.exitCode = 1;
-    });
+    } finally {
+        harness.restore();
+    }
+}
+
+runWebSmokeTest();

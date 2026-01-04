@@ -1,12 +1,33 @@
 // extension.js - Explorer Dates
 const vscode = require('vscode');
 const { FileDateDecorationProvider } = require('./src/fileDateDecorationProvider');
-const { getLogger } = require('./src/logger');
-const { getLocalization } = require('./src/localization');
+const { getLogger } = require('./src/utils/logger');
+const { getLocalization } = require('./src/utils/localization');
 const { fileSystem } = require('./src/filesystem/FileSystemAdapter');
 const { registerCoreCommands } = require('./src/commands/coreCommands');
-const { registerAnalysisCommands } = require('./src/commands/analysisCommands');
 const { registerOnboardingCommands } = require('./src/commands/onboardingCommands');
+const { registerMigrationCommands } = require('./src/commands/migrationCommands');
+const { initializeTemplateStore } = require('./src/utils/templateStore');
+const { SettingsMigrationManager } = require('./src/utils/settingsMigration');
+const { ExtensionError, ERROR_CODES } = require('./src/utils/errors');
+const { ensureDate } = require('./src/utils/dateHelpers');
+const isWebEnvironment = typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
+let nodeFs = null;
+let nodePath = null;
+const webTextDecoder = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
+if (!isWebEnvironment) {
+    try {
+        nodeFs = require('fs');
+    } catch {
+        nodeFs = null;
+    }
+    try {
+        nodePath = require('path');
+    } catch {
+        nodePath = null;
+    }
+}
+const AUTO_SUGGESTION_DELAY_MS = 3000;
 // Lazy load large modules to reduce initial bundle size
 // const { OnboardingManager } = require('./src/onboarding');
 // const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
@@ -17,583 +38,293 @@ let fileDateProvider;
 let logger;
 let l10n;
 
+function getActiveLogger() {
+    if (!logger) {
+        logger = getLogger();
+    }
+    return logger;
+}
+
 /**
- * Generate HTML for API information panel
+ * Enhanced Dynamic Loading System with Feature Flags
+ * Implements module federation for maximum bundle optimization
  */
-function getApiInformationHtml(api) {
-    return `<!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Explorer Dates API</title>
-        <style>
-            body { 
-                font-family: var(--vscode-font-family); 
-                color: var(--vscode-foreground);
-                background-color: var(--vscode-editor-background);
-                padding: 20px;
-                line-height: 1.6;
+
+const featureFlagsModule = require('./src/featureFlags');
+const featureFlags = featureFlagsModule;  // Get all exported methods including spread ones
+const { setFeatureChunkResolver } = featureFlagsModule;
+const { generateDevLoaderMap } = require('./src/shared/chunkMap');
+
+// Chunk loading system for module federation
+const sourceChunkLoader = (() => {
+    if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+        return null;
+    }
+    try {
+        const localRequire = eval('require');
+        return (chunkName) => {
+            try {
+                // Generate the map from shared chunk configuration
+                const map = generateDevLoaderMap(localRequire);
+                const chunk = map[chunkName]?.();
+                return chunk?.default || chunk || null;
+            } catch (error) {
+                const chunkError = new ExtensionError(
+                    ERROR_CODES.CHUNK_LOAD_FAILED,
+                    `Source chunk fallback failed for ${chunkName}`,
+                    { chunkName, source: 'development', error: error.message }
+                );
+                getActiveLogger().warn(chunkError.message, chunkError.context);
+                return null;
             }
-            .header {
-                margin-bottom: 30px;
-                padding-bottom: 15px;
-                border-bottom: 1px solid var(--vscode-panel-border);
+        };
+    } catch {
+        return null;
+    }
+})();
+
+const chunkLoader = {
+    loadedChunks: new Map(),
+    distPath: nodePath ? __dirname : null,
+    extensionUri: null,
+    webChunkPromises: new Map(),
+    _webLoadedScripts: new Set(),
+
+    initialize(context) {
+        if (nodePath) {
+            if (typeof context?.asAbsolutePath === 'function') {
+                this.distPath = context.asAbsolutePath('dist');
+            } else if (context?.extensionPath) {
+                this.distPath = nodePath.join(context.extensionPath, 'dist');
             }
-            .api-section {
-                margin-bottom: 30px;
-                padding: 20px;
-                background-color: var(--vscode-editor-background);
-                border: 1px solid var(--vscode-panel-border);
-                border-radius: 8px;
+        }
+        if (context?.extensionUri) {
+            this.extensionUri = context.extensionUri;
+        }
+    },
+
+    async loadChunk(chunkName) {
+        if (this.loadedChunks.has(chunkName)) {
+            return this.loadedChunks.get(chunkName);
+        }
+
+        try {
+            if (isWebEnvironment) {
+                const chunk = await this._loadWebChunk(chunkName);
+                if (chunk) {
+                    this.loadedChunks.set(chunkName, chunk);
+                    getActiveLogger().info('Chunk loaded', { chunkName, target: 'web' });
+                }
+                return chunk;
             }
-            .method {
-                background-color: var(--vscode-textCodeBlock-background);
-                padding: 15px;
-                margin: 10px 0;
-                border-radius: 4px;
-                font-family: monospace;
+
+            const chunk = this._loadNodeChunk(chunkName);
+            if (chunk) {
+                this.loadedChunks.set(chunkName, chunk);
+                getActiveLogger().info('Chunk loaded', { chunkName, target: 'node' });
             }
-            .method-name {
-                font-weight: bold;
-                color: var(--vscode-textLink-foreground);
+            return chunk;
+        } catch (error) {
+            const chunkError = error instanceof ExtensionError
+                ? error
+                : new ExtensionError(
+                    ERROR_CODES.CHUNK_LOAD_FAILED,
+                    `Failed to load chunk ${chunkName}`,
+                    {
+                        chunkName,
+                        target: isWebEnvironment ? 'web' : 'node',
+                        error: error?.message
+                    }
+                );
+            getActiveLogger().warn(chunkError.message, chunkError.context);
+            return null;
+        }
+    },
+
+    _loadNodeChunk(chunkName) {
+        if (nodeFs && nodePath && this.distPath) {
+            const builtChunkPath = nodePath.join(this.distPath, 'chunks', `${chunkName}.js`);
+            if (nodeFs.existsSync(builtChunkPath)) {
+                try {
+                    let chunk = require(builtChunkPath);
+                    if (chunk?.default) {
+                        chunk = chunk.default;
+                    }
+                    return chunk;
+                } catch (error) {
+                    const chunkError = new ExtensionError(
+                        ERROR_CODES.CHUNK_LOAD_FAILED,
+                        `Failed to require built chunk ${chunkName}`,
+                        { chunkName, path: builtChunkPath, error: error.message }
+                    );
+                    getActiveLogger().warn(chunkError.message, chunkError.context);
+                }
             }
-            .example {
-                background-color: var(--vscode-textCodeBlock-background);
-                padding: 15px;
-                margin: 10px 0;
-                border-radius: 4px;
-                font-family: monospace;
-                border-left: 4px solid var(--vscode-charts-blue);
-            }
-            code {
-                background-color: var(--vscode-textCodeBlock-background);
-                padding: 2px 4px;
-                border-radius: 2px;
-                font-family: monospace;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>🔌 Explorer Dates Extension API</h1>
-            <p>Version: ${api.version} | API Version: ${api.apiVersion}</p>
-        </div>
+        }
+
+        if (sourceChunkLoader) {
+            return sourceChunkLoader(chunkName);
+        }
+
+        return null;
+    },
+
+    async _loadWebChunk(chunkName) {
+        if (!this.extensionUri) {
+            const chunkError = new ExtensionError(
+                ERROR_CODES.CHUNK_LOAD_FAILED,
+                'Missing extensionUri for web chunk loading',
+                { chunkName }
+            );
+            getActiveLogger().warn(chunkError.message, chunkError.context);
+            return null;
+        }
+
+        if (!this.webChunkPromises.has(chunkName)) {
+            const promise = (async () => {
+                await this._ensureWebChunkScript(chunkName);
+                const registry = globalThis.__explorerDatesChunks || {};
+                const chunk = registry[chunkName];
+                if (!chunk) {
+                    throw new Error(`Web chunk ${chunkName} failed to register`);
+                }
+                return chunk;
+            })();
+            this.webChunkPromises.set(chunkName, promise);
+        }
+
+        return this.webChunkPromises.get(chunkName);
+    },
+
+    async _ensureWebChunkScript(chunkName) {
+        if (this._webLoadedScripts.has(chunkName)) {
+            return;
+        }
+        const chunkUri = vscode.Uri.joinPath(this.extensionUri, 'dist', 'web-chunks', `${chunkName}.js`);
+        if (!vscode.workspace?.fs || !webTextDecoder) {
+            throw new Error('Workspace FS or TextDecoder unavailable for web chunk loading');
+        }
+        const raw = await vscode.workspace.fs.readFile(chunkUri);
+        const source = webTextDecoder.decode(raw);
+        const evaluator = new Function(source);
+        evaluator.call(globalThis);
+        this._webLoadedScripts.add(chunkName);
+    }
+};
+
+/**
+ * Dynamic import for maximum bundle splitting with feature flags
+ */
+const dynamicImports = {
+    async loadOnboarding(context) {
+        const chunk = await featureFlags.onboarding();
+        if (!chunk) {
+            return null;
+        }
+        if (typeof chunk.createOnboardingManager === 'function') {
+            return chunk.createOnboardingManager(context);
+        }
+        if (chunk.OnboardingManager) {
+            return new chunk.OnboardingManager(context);
+        }
+        return null;
+    },
+
+    async loadExportReporting(context) {
+        const chunk = await featureFlags.exportReporting();
+        if (typeof chunk?.createExportReportingManager === 'function') {
+            return chunk.createExportReportingManager(context);
+        }
+        if (!chunk) {
+            return null;
+        }
+        return null;
+    },
+
+    async loadWorkspaceTemplates(context) {
+        const chunk = await featureFlags.workspaceTemplates();
+        if (typeof chunk?.createWorkspaceTemplatesManager === 'function') {
+            return chunk.createWorkspaceTemplatesManager(context);
+        }
+        if (chunk?.WorkspaceTemplatesManager) {
+            return new chunk.WorkspaceTemplatesManager(context);
+        }
+        return null;
+    },
+
+    async loadAnalysisCommands() {
+        return featureFlags.analysisCommands();
+    },
+
+    async loadExtensionApi(context) {
+        const chunk = await featureFlags.extensionApi();
+        if (!chunk) {
+            return null;
+        }
         
-        <div class="api-section">
-            <h2>📋 Core Functions</h2>
-            <div class="method">
-                <div class="method-name">getFileDecorations(filePaths: string[])</div>
-                <p>Get decoration information for specified files</p>
-            </div>
-            <div class="method">
-                <div class="method-name">refreshDecorations(filePaths?: string[])</div>
-                <p>Refresh decorations for all files or specific files</p>
-            </div>
-            <div class="method">
-                <div class="method-name">formatDate(date: Date, format?: string)</div>
-                <p>Format date according to current settings</p>
-            </div>
-            <div class="method">
-                <div class="method-name">getFileStats(filePath: string)</div>
-                <p>Get comprehensive file statistics</p>
-            </div>
-        </div>
-
-        <div class="api-section">
-            <h2>🔌 Plugin System</h2>
-            <div class="method">
-                <div class="method-name">registerPlugin(pluginId: string, plugin: Plugin)</div>
-                <p>Register a new plugin with the extension</p>
-            </div>
-            <div class="method">
-                <div class="method-name">registerDecorationProvider(providerId: string, provider: DecorationProvider)</div>
-                <p>Register a custom decoration provider</p>
-            </div>
-        </div>
-
-        <div class="api-section">
-            <h2>📡 Events</h2>
-            <div class="method">
-                <div class="method-name">onDecorationChanged(callback: Function)</div>
-                <p>Subscribe to decoration change events</p>
-            </div>
-            <div class="method">
-                <div class="method-name">onFileScanned(callback: Function)</div>
-                <p>Subscribe to file scan events</p>
-            </div>
-        </div>
-
-        <div class="api-section">
-            <h2>💡 Usage Example</h2>
-            <div class="example">
-// Get the Explorer Dates API<br>
-const explorerDatesApi = vscode.extensions.getExtension('your-publisher.explorer-dates')?.exports;<br><br>
-// Register a custom decoration provider<br>
-explorerDatesApi.registerDecorationProvider('myProvider', {<br>
-&nbsp;&nbsp;provideDecoration: async (uri, stat, currentDecoration) => {<br>
-&nbsp;&nbsp;&nbsp;&nbsp;return {<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;badge: currentDecoration.badge + ' 🔥',<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tooltip: currentDecoration.tooltip + '\\nCustom info'<br>
-&nbsp;&nbsp;&nbsp;&nbsp;};<br>
-&nbsp;&nbsp;}<br>
-});<br><br>
-// Listen for decoration changes<br>
-explorerDatesApi.onDecorationChanged((data) => {<br>
-&nbsp;&nbsp;console.log('Decorations changed:', data);<br>
-});
-            </div>
-        </div>
-
-        <div class="api-section">
-            <h2>📚 Plugin Structure</h2>
-            <div class="example">
-const myPlugin = {<br>
-&nbsp;&nbsp;name: 'My Custom Plugin',<br>
-&nbsp;&nbsp;version: '1.0.0',<br>
-&nbsp;&nbsp;author: 'Your Name',<br>
-&nbsp;&nbsp;description: 'Adds custom functionality',<br><br>
-&nbsp;&nbsp;activate: (api) => {<br>
-&nbsp;&nbsp;&nbsp;&nbsp;// Plugin initialization<br>
-&nbsp;&nbsp;&nbsp;&nbsp;console.log('Plugin activated!');<br>
-&nbsp;&nbsp;},<br><br>
-&nbsp;&nbsp;deactivate: () => {<br>
-&nbsp;&nbsp;&nbsp;&nbsp;// Cleanup<br>
-&nbsp;&nbsp;&nbsp;&nbsp;console.log('Plugin deactivated!');<br>
-&nbsp;&nbsp;}<br>
-};<br><br>
-// Register the plugin<br>
-explorerDatesApi.registerPlugin('myPlugin', myPlugin);
-            </div>
-        </div>
-    </body>
-    </html>`;
-}
-
-/**
- * Generate HTML for workspace activity report
- */
-function generateWorkspaceActivityHTML(files) {
-    const formatFileSize = (bytes) => {
-        if (bytes < 1024) return `${bytes} B`;
-        const kb = bytes / 1024;
-        if (kb < 1024) return `${kb.toFixed(1)} KB`;
-        const mb = kb / 1024;
-        return `${mb.toFixed(1)} MB`;
-    };
-    
-    const fileRows = files.map(file => `
-        <tr>
-            <td>${file.path}</td>
-            <td>${file.modified.toLocaleString()}</td>
-            <td>${formatFileSize(file.size)}</td>
-        </tr>
-    `).join('');
-    
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Workspace File Activity</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #333; }
-                th { background-color: var(--vscode-editor-background); font-weight: bold; }
-                tr:hover { background-color: var(--vscode-list-hoverBackground); }
-                .header { margin-bottom: 20px; }
-                .stats { display: flex; gap: 20px; margin-bottom: 20px; }
-                .stat-box { padding: 10px; background: var(--vscode-editor-background); border-radius: 4px; }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>📊 Workspace File Activity</h1>
-                <p>Recently modified files in your workspace</p>
-            </div>
-            <div class="stats">
-                <div class="stat-box">
-                    <strong>Total Files Analyzed:</strong> ${files.length}
-                </div>
-                <div class="stat-box">
-                    <strong>Most Recent:</strong> ${files.length > 0 ? files[0].modified.toLocaleString() : 'N/A'}
-                </div>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>File Path</th>
-                        <th>Last Modified</th>
-                        <th>Size</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${fileRows}
-                </tbody>
-            </table>
-        </body>
-        </html>
-    `;
-}
-
-/**
- * Generate HTML for diagnostics
- */
-function generateDiagnosticsHTML(diagnostics) {
-    const sections = Object.entries(diagnostics).map(([title, data]) => {
-        const rows = Object.entries(data).map(([key, value]) => {
-            const displayValue = Array.isArray(value) ? value.join(', ') || 'None' : value?.toString() || 'N/A';
-            return `
-                <tr>
-                    <td><strong>${key}:</strong></td>
-                    <td>${displayValue}</td>
-                </tr>
-            `;
-        }).join('');
+        // Handle various chunk export patterns
+        if (typeof chunk === 'function') {
+            // Check if it's the createExtensionApiManager factory function
+            if (chunk.name === 'createExtensionApiManager') {
+                return chunk(context);
+            }
+            // Otherwise, might be the class itself
+                try {
+                    return new chunk();
+                } catch {
+                    // Failed to construct, return null
+                    return null;
+                }
+        } else if (typeof chunk.createExtensionApiManager === 'function') {
+            return chunk.createExtensionApiManager(context);
+        } else if (chunk.ExtensionApiManager) {
+            return new chunk.ExtensionApiManager();
+        }
         
-        return `
-            <div class="diagnostic-section">
-                <h3>🔍 ${title}</h3>
-                <table>
-                    ${rows}
-                </table>
-            </div>
-        `;
-    }).join('');
-    
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Explorer Dates Diagnostics</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: var(--vscode-editor-background); color: var(--vscode-foreground); }
-                .diagnostic-section { margin-bottom: 30px; padding: 20px; background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 8px; }
-                table { width: 100%; border-collapse: collapse; }
-                td { padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border); }
-                h1 { color: var(--vscode-textLink-foreground); }
-                h3 { color: var(--vscode-textPreformat-foreground); margin-top: 0; }
-                .header { margin-bottom: 20px; }
-                .fix-suggestions { background: var(--vscode-inputValidation-warningBackground); padding: 15px; border-radius: 4px; margin-top: 20px; }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>🔧 Explorer Dates Diagnostics</h1>
-                <p>This report helps identify why date decorations might not be appearing in your Explorer.</p>
-            </div>
-            
-            ${sections}
-            
-            <div class="fix-suggestions">
-                <h3>💡 Quick Fixes</h3>
-                <p><strong>If decorations aren't showing:</strong></p>
-                <ol>
-                    <li>Try running <code>Explorer Dates: Quick Fix</code> command</li>
-                    <li>Use <code>Explorer Dates: Refresh Date Decorations</code> to force refresh</li>
-                    <li>Check if your files are excluded by patterns above</li>
-                    <li>Restart VS Code if the provider isn't active</li>
-                </ol>
-            </div>
-        </body>
-        </html>
-    `;
+        return null;
+    }
+};
+
+let onboardingManagerPromise = null;
+let workspaceTemplatesManagerPromise = null;
+let exportReportingManagerPromise = null;
+let extensionApiManagerPromise = null;
+
+function ensureOnboardingManager(context) {
+    if (!onboardingManagerPromise) {
+        onboardingManagerPromise = dynamicImports.loadOnboarding(context);
+    }
+    return onboardingManagerPromise;
 }
+
+function ensureWorkspaceTemplatesManager(context) {
+    if (!workspaceTemplatesManagerPromise) {
+        workspaceTemplatesManagerPromise = dynamicImports.loadWorkspaceTemplates(context);
+    }
+    return workspaceTemplatesManagerPromise;
+}
+
+function ensureExportReportingManager(context) {
+    if (!exportReportingManagerPromise) {
+        exportReportingManagerPromise = dynamicImports.loadExportReporting(context);
+    }
+    return exportReportingManagerPromise;
+}
+
+function ensureExtensionApiManager(context) {
+    if (!extensionApiManagerPromise) {
+        extensionApiManagerPromise = dynamicImports.loadExtensionApi(context);
+    }
+    return extensionApiManagerPromise;
+}
+
+
+
+
 
 /**
  * Generate comprehensive diagnostics webview HTML
  */
-function generateDiagnosticsWebview(results) {
-    return `<!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Comprehensive Decoration Diagnostics</title>
-        <style>
-            body { 
-                font-family: var(--vscode-font-family); 
-                color: var(--vscode-foreground);
-                background-color: var(--vscode-editor-background);
-                padding: 20px;
-                line-height: 1.6;
-            }
-            .header {
-                margin-bottom: 30px;
-                padding-bottom: 15px;
-                border-bottom: 2px solid var(--vscode-panel-border);
-            }
-            .test-section {
-                margin-bottom: 25px;
-                padding: 20px;
-                border: 1px solid var(--vscode-panel-border);
-                border-radius: 8px;
-            }
-            .test-ok { 
-                background-color: rgba(0, 255, 0, 0.1);
-                border-left: 4px solid var(--vscode-terminal-ansiGreen);
-            }
-            .test-warning { 
-                background-color: rgba(255, 255, 0, 0.1);
-                border-left: 4px solid var(--vscode-terminal-ansiYellow);
-            }
-            .test-error { 
-                background-color: rgba(255, 0, 0, 0.1);
-                border-left: 4px solid var(--vscode-terminal-ansiRed);
-            }
-            .status-ok { color: var(--vscode-terminal-ansiGreen); font-weight: bold; }
-            .status-warning { color: var(--vscode-terminal-ansiYellow); font-weight: bold; }
-            .status-error { color: var(--vscode-terminal-ansiRed); font-weight: bold; }
-            .issue-critical { 
-                color: var(--vscode-terminal-ansiRed); 
-                font-weight: bold;
-                background-color: rgba(255, 0, 0, 0.2);
-                padding: 5px;
-                border-radius: 3px;
-                margin: 5px 0;
-            }
-            .issue-warning { 
-                color: var(--vscode-terminal-ansiYellow); 
-                background-color: rgba(255, 255, 0, 0.2);
-                padding: 5px;
-                border-radius: 3px;
-                margin: 5px 0;
-            }
-            pre { 
-                background-color: var(--vscode-textCodeBlock-background);
-                padding: 15px;
-                border-radius: 4px;
-                overflow-x: auto;
-                font-size: 0.9em;
-            }
-            .summary {
-                background-color: var(--vscode-textBlockQuote-background);
-                border-left: 4px solid var(--vscode-textBlockQuote-border);
-                padding: 15px;
-                margin: 20px 0;
-            }
-            .file-test {
-                display: inline-block;
-                margin: 5px;
-                padding: 8px 12px;
-                background-color: var(--vscode-badge-background);
-                color: var(--vscode-badge-foreground);
-                border-radius: 4px;
-                font-family: monospace;
-                font-size: 0.9em;
-            }
-            .badge-test {
-                display: inline-block;
-                margin: 3px;
-                padding: 4px 8px;
-                background-color: var(--vscode-button-background);
-                color: var(--vscode-button-foreground);
-                border-radius: 3px;
-                font-family: monospace;
-                font-size: 0.8em;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>🔍 Comprehensive Decoration Diagnostics</h1>
-            <p><strong>VS Code:</strong> ${results.vscodeVersion} | <strong>Extension:</strong> ${results.extensionVersion}</p>
-            <p><strong>Generated:</strong> ${new Date(results.timestamp).toLocaleString()}</p>
-        </div>
-
-        ${Object.entries(results.tests).map(([testName, testResult]) => {
-            const statusClass = testResult.status === 'OK' ? 'test-ok' : 
-                               testResult.status === 'ISSUES_FOUND' ? 'test-warning' : 'test-error';
-            const statusColor = testResult.status === 'OK' ? 'status-ok' : 
-                               testResult.status === 'ISSUES_FOUND' ? 'status-warning' : 'status-error';
-            
-            return `
-            <div class="test-section ${statusClass}">
-                <h2>🧪 ${testName.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</h2>
-                <p class="${statusColor}">Status: ${testResult.status}</p>
-                
-                ${testResult.issues && testResult.issues.length > 0 ? `
-                    <h3>Issues Found:</h3>
-                    ${testResult.issues.map(issue => {
-                        const issueClass = issue.startsWith('CRITICAL:') ? 'issue-critical' : 'issue-warning';
-                        return `<div class="${issueClass}">⚠️ ${issue}</div>`;
-                    }).join('')}
-                ` : ''}
-                
-                ${testResult.settings ? `
-                    <h3>Settings:</h3>
-                    <pre>${JSON.stringify(testResult.settings, null, 2)}</pre>
-                ` : ''}
-                
-                ${testResult.testFiles ? `
-                    <h3>File Tests:</h3>
-                    ${testResult.testFiles.map(file => `
-                        <div class="file-test">
-                            📄 ${file.file}: 
-                            ${file.exists ? '✅' : '❌'} exists | 
-                            ${file.excluded ? '🚫' : '✅'} ${file.excluded ? 'excluded' : 'included'} | 
-                            ${file.hasDecoration ? '🏷️' : '❌'} ${file.hasDecoration ? `badge: ${file.badge}` : 'no decoration'}
-                        </div>
-                    `).join('')}
-                ` : ''}
-                
-                ${testResult.tests ? `
-                    <h3>Test Results:</h3>
-                    ${testResult.tests.map(test => `
-                        <div class="badge-test">
-                            ${test.success ? '✅' : '❌'} ${test.name}
-                            ${test.badge ? ` → "${test.badge}"` : ''}
-                            ${test.error ? ` (${test.error})` : ''}
-                        </div>
-                    `).join('')}
-                ` : ''}
-                
-                ${testResult.cacheInfo ? `
-                    <h3>Cache Information:</h3>
-                    <pre>${JSON.stringify(testResult.cacheInfo, null, 2)}</pre>
-                ` : ''}
-                
-                ${testResult.decorationExtensions && testResult.decorationExtensions.length > 0 ? `
-                    <h3>Other Decoration Extensions:</h3>
-                    ${testResult.decorationExtensions.map(ext => `
-                        <div class="file-test">🔌 ${ext.name} (${ext.id})</div>
-                    `).join('')}
-                ` : ''}
-            </div>`;
-        }).join('')}
-        
-        <div class="summary">
-            <h2>🎯 Summary & Next Steps</h2>
-            <p>Review the test results above to identify the root cause of missing decorations.</p>
-            <p><strong>Most common causes:</strong></p>
-            <ul>
-                <li>VS Code decoration settings disabled (explorer.decorations.badges/colors)</li>
-                <li>Extension conflicts with icon themes or other decoration providers</li>
-                <li>File exclusion patterns being too aggressive</li>
-                <li>Badge format issues (length, characters, encoding)</li>
-            </ul>
-        </div>
-        
-        <div class="test-section">
-            <h2>🔧 Raw Results</h2>
-            <pre>${JSON.stringify(results, null, 2)}</pre>
-        </div>
-    </body>
-    </html>`;
-}
-
-/**
- * Generate HTML for performance analytics
- */
-function generatePerformanceAnalyticsHTML(metrics) {
-    const formatBytes = (bytes) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
-    
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Performance Analytics</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
-                .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
-                .metric-card { background: var(--vscode-editor-background); padding: 15px; border-radius: 8px; border: 1px solid var(--vscode-widget-border); }
-                .metric-title { font-weight: bold; margin-bottom: 10px; color: var(--vscode-foreground); }
-                .metric-value { font-size: 24px; font-weight: bold; color: var(--vscode-textLink-foreground); }
-                .metric-label { font-size: 12px; color: var(--vscode-descriptionForeground); }
-                .progress-bar { width: 100%; height: 8px; background: var(--vscode-progressBar-background); border-radius: 4px; margin: 8px 0; }
-                .progress-fill { height: 100%; background: var(--vscode-progressBar-foreground); border-radius: 4px; }
-            </style>
-        </head>
-        <body>
-            <h1>🚀 Explorer Dates Performance Analytics</h1>
-            <div class="metric-grid">
-                <div class="metric-card">
-                    <div class="metric-title">📊 Basic Metrics</div>
-                    <div class="metric-value">${metrics.totalDecorations || 0}</div>
-                    <div class="metric-label">Total Decorations</div>
-                    <div class="metric-value">${metrics.cacheHitRate || '0%'}</div>
-                    <div class="metric-label">Cache Hit Rate</div>
-                </div>
-                
-                ${metrics.advancedCache ? `
-                <div class="metric-card">
-                    <div class="metric-title">🧠 Advanced Cache</div>
-                    <div class="metric-value">${metrics.advancedCache.memoryItems || 0}</div>
-                    <div class="metric-label">Memory Items</div>
-                    <div class="metric-value">${formatBytes(metrics.advancedCache.memoryUsage || 0)}</div>
-                    <div class="metric-label">Memory Usage</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${metrics.advancedCache.memoryUsagePercent || 0}%"></div>
-                    </div>
-                    <div class="metric-label">${metrics.advancedCache.memoryUsagePercent || '0.00'}% of limit</div>
-                    <div class="metric-value">${metrics.advancedCache.memoryHitRate || '0%'}</div>
-                    <div class="metric-label">Memory Hit Rate</div>
-                    <div class="metric-value">${metrics.advancedCache.diskHitRate || '0%'}</div>
-                    <div class="metric-label">Disk Hit Rate</div>
-                </div>
-                ` : `
-                <div class="metric-card">
-                    <div class="metric-title">🧠 Advanced Cache</div>
-                    <div class="metric-value">0</div>
-                    <div class="metric-label">Memory Items</div>
-                    <div class="metric-value">0 B</div>
-                    <div class="metric-label">Memory Usage</div>
-                    <div class="metric-value">Inactive</div>
-                    <div class="metric-label">Status</div>
-                </div>
-                `}
-                
-                ${metrics.batchProcessor ? `
-                <div class="metric-card">
-                    <div class="metric-title">⚡ Batch Processor</div>
-                    <div class="metric-value">${metrics.batchProcessor.totalBatches}</div>
-                    <div class="metric-label">Total Batches Processed</div>
-                    <div class="metric-value">${metrics.batchProcessor.averageBatchTime.toFixed(2)}ms</div>
-                    <div class="metric-label">Average Batch Time</div>
-                    <div class="metric-value">${metrics.batchProcessor.isProcessing ? 'Active' : 'Idle'}</div>
-                    <div class="metric-label">Current Status</div>
-                    <div class="metric-value">${metrics.batchProcessor.queueLength || 0}</div>
-                    <div class="metric-label">Queued Items</div>
-                    <div class="metric-value">${metrics.batchProcessor.currentProgress ? (metrics.batchProcessor.currentProgress * 100).toFixed(0) + '%' : '0%'}</div>
-                    <div class="metric-label">Progress</div>
-                </div>
-                ` : ''}
-                
-                <div class="metric-card">
-                    <div class="metric-title">📈 Performance</div>
-                    <div class="metric-value">${metrics.cacheHits || 0}</div>
-                    <div class="metric-label">Cache Hits</div>
-                    <div class="metric-value">${metrics.cacheMisses || 0}</div>
-                    <div class="metric-label">Cache Misses</div>
-                    <div class="metric-value">${metrics.errors || 0}</div>
-                    <div class="metric-label">Errors</div>
-                </div>
-
-                ${metrics.performanceTiming ? `
-                <div class="metric-card">
-                    <div class="metric-title">🕒 I/O Latency</div>
-                    <div class="metric-value">${metrics.performanceTiming.avgGitBlameMs}ms</div>
-                    <div class="metric-label">Avg Git Blame (${metrics.performanceTiming.gitBlameCalls} calls)</div>
-                    <div class="metric-value">${metrics.performanceTiming.avgFileStatMs}ms</div>
-                    <div class="metric-label">Avg File Stat (${metrics.performanceTiming.fileStatCalls} calls)</div>
-                    <div class="metric-value">${metrics.performanceTiming.totalGitBlameTimeMs}ms</div>
-                    <div class="metric-label">Total Git Time</div>
-                    <div class="metric-value">${metrics.performanceTiming.totalFileStatTimeMs}ms</div>
-                    <div class="metric-label">Total File Stat Time</div>
-                </div>
-                ` : ''}
-            </div>
-        </body>
-        </html>
-    `;
-}
 
 /**
  * Initialize status bar integration
@@ -620,7 +351,7 @@ function initializeStatusBar(context) {
             
             const stat = await fileSystem.stat(uri);
             
-            const modified = stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime);
+            const modified = ensureDate(stat.mtime);
             const timeAgo = fileDateProvider._formatDateBadge(modified, 'smart');
             const fileSize = fileDateProvider._formatFileSize(stat.size, 'auto');
             
@@ -632,14 +363,14 @@ function initializeStatusBar(context) {
         }
     };
     
-    // Listen for active editor changes
-    vscode.window.onDidChangeActiveTextEditor(updateStatusBar);
-    vscode.window.onDidChangeTextEditorSelection(updateStatusBar);
+    // Listen for active editor changes and capture disposables
+    const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor(updateStatusBar);
+    const selectionChangeDisposable = vscode.window.onDidChangeTextEditorSelection(updateStatusBar);
     
     // Initial update
     updateStatusBar();
     
-    context.subscriptions.push(statusBarItem);
+    context.subscriptions.push(statusBarItem, editorChangeDisposable, selectionChangeDisposable);
     return statusBarItem;
 }
 
@@ -653,15 +384,28 @@ async function activate(context) {
         logger = getLogger();
         l10n = getLocalization();
         context.subscriptions.push(l10n);
+        initializeTemplateStore(context);
+        chunkLoader.initialize(context);
+        setFeatureChunkResolver((chunkName) => chunkLoader.loadChunk(chunkName));
         
         logger.info('Explorer Dates: Extension activated');
+
+        // Initialize and run settings migration
+        const settingsMigrationManager = new SettingsMigrationManager();
+        try {
+            await settingsMigrationManager.migrateAllSettings(context);
+        } catch (error) {
+            logger.warn('Settings migration encountered issues:', error);
+        }
 
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
         await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', !isWeb);
 
         const featureConfig = vscode.workspace.getConfiguration('explorerDates');
         const workspaceTemplatesEnabled = featureConfig.get('enableWorkspaceTemplates', true);
-        const reportingEnabled = featureConfig.get('enableReporting', true);
+        // Use unified enableExportReporting setting (with fallback to legacy enableReporting)
+        const reportingEnabled = featureConfig.get('enableExportReporting', 
+            featureConfig.get('enableReporting', true));
         const apiEnabled = featureConfig.get('enableExtensionApi', true);
 
         // Register file date decoration provider for overlay dates in Explorer
@@ -674,96 +418,157 @@ async function activate(context) {
         // Initialize advanced performance systems
         await fileDateProvider.initializeAdvancedSystems(context);
         
+        // Check workspace size and prompt for performance mode if very large
+        await fileDateProvider.checkWorkspaceSize();
+        
         // Initialize managers lazily to reduce startup time and bundle size
-        let onboardingManager = null;
-        let workspaceTemplatesManager = null;
         let extensionApiManager = null;
-        let exportReportingManager = null;
+        let exportReportingRegistered = false;
         
         // Helper functions for lazy loading
-        const getOnboardingManager = () => {
-            if (!onboardingManager) {
-                const { OnboardingManager } = require('./src/onboarding');
-                onboardingManager = new OnboardingManager(context);
-            }
-            return onboardingManager;
-        };
         
-        const getWorkspaceTemplatesManager = () => {
-            if (!workspaceTemplatesEnabled) {
-                throw new Error('Workspace templates are disabled via explorerDates.enableWorkspaceTemplates');
+        const getExtensionApiManager = async () => {
+            if (!apiEnabled) {
+                throw new Error('Extension API is disabled via explorerDates.enableExtensionApi');
             }
-            if (!workspaceTemplatesManager) {
-                const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
-                workspaceTemplatesManager = new WorkspaceTemplatesManager(context);
-            }
-            return workspaceTemplatesManager;
-        };
-        
-        const getExtensionApiManager = () => {
             if (!extensionApiManager) {
-                const { ExtensionApiManager } = require('./src/extensionApi');
-                extensionApiManager = new ExtensionApiManager();
-                context.subscriptions.push(extensionApiManager);
+                extensionApiManager = await ensureExtensionApiManager(context);
+                if (extensionApiManager && context.subscriptions) {
+                    context.subscriptions.push(extensionApiManager);
+                }
             }
             return extensionApiManager;
         };
         
-        const getExportReportingManager = () => {
+        const getExportReportingManager = async () => {
             if (!reportingEnabled) {
-                throw new Error('Reporting is disabled via explorerDates.enableReporting');
+                throw new Error('Reporting is disabled via explorerDates.enableExportReporting');
             }
-            if (!exportReportingManager) {
-                const { ExportReportingManager } = require('./src/exportReporting');
-                exportReportingManager = new ExportReportingManager();
-                context.subscriptions.push(exportReportingManager);
+            if (!exportReportingRegistered) {
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const performanceMode = config.get('performanceMode', false);
+                const lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+                if (performanceMode || lightweightMode) {
+                    logger.warn('Initializing Export Reporting Manager while performance/lightweight mode is active; activity tracking will remain suppressed.');
+                }
             }
-            return exportReportingManager;
+            const manager = await ensureExportReportingManager(context);
+            if (manager && !exportReportingRegistered) {
+                context.subscriptions.push(manager);
+                exportReportingRegistered = true;
+            }
+            return manager;
         };
         
         // Expose public API for other extensions (lazy)
-        const apiFactory = () => getExtensionApiManager().getApi();
+        let cachedApi = null;
+        let apiPromise = null;
+        
+        const apiFactory = async () => {
+            if (!apiPromise) {
+                apiPromise = (async () => {
+                    const manager = await getExtensionApiManager();
+                    cachedApi = manager ? manager.getApi() : null;
+                    return cachedApi;
+                })();
+            }
+            return apiPromise;
+        };
+        
         if (apiEnabled) {
+            // Maintain synchronous compatibility: export function, not call result
             context.exports = apiFactory;
+            // Also expose async version for future use
+            context.exportsAsync = apiFactory;
         } else {
             context.exports = undefined;
+            context.exportsAsync = undefined;
             logger.info('Explorer Dates API exports disabled via explorerDates.enableExtensionApi');
         }
 
         // Show onboarding if needed
         const onboardingConfig = vscode.workspace.getConfiguration('explorerDates');
-        if (onboardingConfig.get('showWelcomeOnStartup', true) && await getOnboardingManager().shouldShowOnboarding()) {
-            // Delay to let extension fully activate and avoid interrupting user workflow
-            // Longer delay for more graceful experience
-            setTimeout(() => {
-                getOnboardingManager().showWelcomeMessage();
-            }, 5000);
+        if (onboardingConfig.get('showWelcomeOnStartup', true)) {
+            const onboardingManager = await ensureOnboardingManager(context);
+            if (onboardingManager && await onboardingManager.shouldShowOnboarding()) {
+                // Delay to let extension fully activate and avoid interrupting user workflow
+                // Longer delay for more graceful experience
+                setTimeout(() => {
+                    onboardingManager.showWelcomeMessage();
+                }, 5000);
+            }
         }
 
         registerCoreCommands({ context, fileDateProvider, logger, l10n });
 
-        registerAnalysisCommands({
-            context,
-            fileDateProvider,
-            logger,
-            generators: {
-                generateWorkspaceActivityHTML,
-                generatePerformanceAnalyticsHTML,
-                generateDiagnosticsHTML,
-                generateDiagnosticsWebview
+        // Lazy load analysis commands only when needed
+        const registerAnalysisCommandsLazy = async () => {
+            const analysisCommands = await dynamicImports.loadAnalysisCommands();
+            if (!analysisCommands) {
+                vscode.window.showWarningMessage('Analysis commands unavailable.');
+                return null;
             }
+            // Handle both module export and direct function export
+            const registerFn = analysisCommands.registerAnalysisCommands || analysisCommands;
+            if (typeof registerFn !== 'function') {
+                vscode.window.showWarningMessage('Analysis commands registration function not found.');
+                return null;
+            }
+            return registerFn({
+                context,
+                fileDateProvider,
+                logger,
+                chunkLoader
+            });
+        };
+        
+        // Register analysis commands if enabled
+        const analysisEnabled = featureConfig.get('enableAnalysisCommands', true);
+        if (analysisEnabled) {
+            try {
+                await registerAnalysisCommandsLazy();
+                logger.info('Analysis commands registered successfully');
+            } catch (error) {
+                logger.warn('Failed to register analysis commands:', error);
+            }
+        }
+
+        registerOnboardingCommands({
+            context,
+            logger,
+            getOnboardingManager: () => ensureOnboardingManager(context)
         });
 
-        registerOnboardingCommands({ context, logger, getOnboardingManager });
+        // Register migration commands
+        const migrationSubscriptions = registerMigrationCommands({
+            context,
+            logger,
+            getSettingsMigrationManager: () => Promise.resolve(settingsMigrationManager)
+        });
+        context.subscriptions.push(...migrationSubscriptions);
 
-        // Register workspace templates commands
+        // Register workspace templates commands with lazy loading
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
                 if (!workspaceTemplatesEnabled) {
                     vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to use this command.');
                     return;
                 }
-                await getWorkspaceTemplatesManager().showTemplateManager();
+                
+                // Verify chunk availability before proceeding
+                const workspaceTemplatesChunk = await featureFlags.workspaceTemplates();
+                if (!workspaceTemplatesChunk) {
+                    vscode.window.showWarningMessage('Workspace templates feature is not available. The required module failed to load.');
+                    logger.warn('openTemplateManager command executed but workspaceTemplates chunk is unavailable');
+                    return;
+                }
+                
+                const templatesManager = await ensureWorkspaceTemplatesManager(context);
+                if (!templatesManager) {
+                    vscode.window.showWarningMessage('Workspace templates module unavailable.');
+                    return;
+                }
+                await templatesManager.showTemplateManager();
                 logger.info('Template manager opened');
             } catch (error) {
                 logger.error('Failed to open template manager', error);
@@ -787,7 +592,12 @@ async function activate(context) {
                         prompt: 'Enter description (optional)',
                         placeHolder: 'Brief description of this template'
                     }) || '';
-                    await getWorkspaceTemplatesManager().saveCurrentConfiguration(name, description);
+                    const templatesManager = await ensureWorkspaceTemplatesManager(context);
+                    if (!templatesManager) {
+                        vscode.window.showWarningMessage('Workspace templates module unavailable.');
+                        return;
+                    }
+                    await templatesManager.saveCurrentConfiguration(name, description);
                 }
                 logger.info('Template saved');
             } catch (error) {
@@ -801,10 +611,24 @@ async function activate(context) {
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
             try {
                 if (!reportingEnabled) {
-                    vscode.window.showInformationMessage('Reporting features are disabled. Enable explorerDates.enableReporting to generate reports.');
+                    vscode.window.showInformationMessage('Reporting features are disabled. Enable explorerDates.enableExportReporting to generate reports.');
                     return;
                 }
-                await getExportReportingManager().showReportDialog();
+                
+                // Verify chunk availability before proceeding
+                const exportReportingChunk = await featureFlags.exportReporting();
+                if (!exportReportingChunk) {
+                    vscode.window.showWarningMessage('Export reporting feature is not available. The required module failed to load.');
+                    logger.warn('generateReport command executed but exportReporting chunk is unavailable');
+                    return;
+                }
+                
+                const reportingManager = await getExportReportingManager();
+                if (!reportingManager) {
+                    vscode.window.showWarningMessage('Reporting system unavailable.');
+                    return;
+                }
+                await reportingManager.showReportDialog();
                 logger.info('Report generation started');
             } catch (error) {
                 logger.error('Failed to generate report', error);
@@ -820,6 +644,14 @@ async function activate(context) {
                     vscode.window.showInformationMessage('Explorer Dates API is disabled via settings.');
                     return;
                 }
+                
+                // Verify chunk availability before proceeding
+                const extensionApiChunk = await featureFlags.extensionApi();
+                if (!extensionApiChunk) {
+                    vscode.window.showWarningMessage('Extension API feature is not available. The required module failed to load.');
+                    logger.warn('showApiInfo command executed but extensionApi chunk is unavailable');
+                    return;
+                }
 
                 const panel = vscode.window.createWebviewPanel(
                     'apiInfo',
@@ -828,7 +660,18 @@ async function activate(context) {
                     { enableScripts: true }
                 );
                 
-                panel.webview.html = getApiInformationHtml(apiFactory());
+                // Lazy load the diagnostics chunk for API info HTML generation
+                const diagnosticsChunk = await chunkLoader.loadChunk('diagnostics');
+                if (!diagnosticsChunk) {
+                    throw new Error('Diagnostics chunk failed to load');
+                }
+                diagnosticsChunk.ensureInitialized(context);
+                // Await the API factory to get resolved data, not a promise
+                const apiData = await apiFactory();
+                if (!apiData) {
+                    throw new Error('API factory returned null - extension API may be disabled');
+                }
+                panel.webview.html = await diagnosticsChunk.getApiInformationHtml(apiData);
                 logger.info('API information panel opened');
             } catch (error) {
                 logger.error('Failed to show API information', error);
@@ -867,13 +710,35 @@ async function activate(context) {
         context.subscriptions.push(statusBarConfigWatcher);
         
         logger.info('Explorer Dates: Date decorations ready');
+
+        // Initialize runtime chunk management system
+        try {
+            const { registerRuntimeCommands } = require('./src/commands/runtimeCommands');
+            const { runtimeManager, teamPersistenceManager } = registerRuntimeCommands(context);
+            
+            // Schedule auto-suggestion check after activation (3-second delay)
+            setTimeout(async () => {
+                try {
+                    await runtimeManager.checkAutoSuggestion();
+                    await teamPersistenceManager.validateTeamConfiguration();
+                } catch (error) {
+                    logger.debug('Runtime system auto-suggestion failed:', error);
+                }
+            }, AUTO_SUGGESTION_DELAY_MS);
+            
+            logger.info('Runtime chunk management system initialized');
+        } catch (error) {
+            logger.error('Failed to initialize runtime chunk management:', error);
+        }
+        
+        // Return API factory if enabled so VS Code exposes it to dependent extensions
+        if (apiEnabled) {
+            return apiFactory;
+        }
         
     } catch (error) {
         const errorMessage = `${l10n ? l10n.getString('activationError') : 'Explorer Dates failed to activate'}: ${error.message}`;
-        console.error('Explorer Dates: Failed to activate:', error);
-        if (logger) {
-            logger.error('Extension activation failed', error);
-        }
+        getActiveLogger().error('Extension activation failed', error);
         vscode.window.showErrorMessage(errorMessage);
         throw error;
     }
@@ -884,26 +749,17 @@ async function activate(context) {
  */
 async function deactivate() {
     try {
-        if (logger) {
-            logger.info('Explorer Dates extension is being deactivated');
-        } else {
-            console.log('Explorer Dates extension is being deactivated');
-        }
+        getActiveLogger().info('Explorer Dates extension is being deactivated');
         
         // Clean up resources
         if (fileDateProvider && typeof fileDateProvider.dispose === 'function') {
             await fileDateProvider.dispose();
         }
         
-        if (logger) {
-            logger.info('Explorer Dates extension deactivated successfully');
-        }
+        getActiveLogger().info('Explorer Dates extension deactivated successfully');
     } catch (error) {
         const errorMessage = 'Explorer Dates: Error during deactivation';
-        console.error(errorMessage, error);
-        if (logger) {
-            logger.error(errorMessage, error);
-        }
+        getActiveLogger().error(errorMessage, error);
     }
 }
 

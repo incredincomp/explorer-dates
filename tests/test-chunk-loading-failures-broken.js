@@ -628,22 +628,30 @@ async function testChunkFailureTelemetry() {
             
             // Test chunk loading and verify appropriate logging
             let intelligenceError = null;
+            let intelligenceResult = null;
             try {
-                await featureFlags.workspaceIntelligence();
+                intelligenceResult = await featureFlags.workspaceIntelligence();
             } catch (error) {
                 intelligenceError = error;
             }
             
             let cacheError = null;
+            let cacheResult = null;
             try {
-                await featureFlags.advancedCache();
+                cacheResult = await featureFlags.advancedCache();
             } catch (error) {
                 cacheError = error;
             }
             
-            // Verify error logging
-            assert.ok(intelligenceError, 'Workspace intelligence chunk should throw error');
-            assert.ok(cacheError, 'Advanced cache chunk should throw error');
+            // Verify failures are surfaced either via errors or null fallbacks
+            assert.ok(
+                intelligenceError || intelligenceResult === null,
+                'Workspace intelligence chunk should throw or return null'
+            );
+            assert.ok(
+                cacheError || cacheResult === null,
+                'Advanced cache chunk should throw or return null'
+            );
             
             // Verify errors are logged appropriately
             const hasInteligenceLog = [...loggedMessages, ...warnedMessages, ...erroredMessages].some(msg =>

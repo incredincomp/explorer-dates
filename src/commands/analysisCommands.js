@@ -1,24 +1,52 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
 const { getFileName, getRelativePath } = require('../utils/pathUtils');
+const { ensureDate } = require('../utils/dateHelpers');
 
 function registerAnalysisCommands({
     context,
     fileDateProvider,
     logger,
-    generators
+    chunkLoader
 }) {
-    const {
-        generateWorkspaceActivityHTML,
-        generatePerformanceAnalyticsHTML,
-        generateDiagnosticsHTML,
-        generateDiagnosticsWebview
-    } = generators;
-
     const subscriptions = [];
+
+    // Lazy load diagnostics module using the chunk loader
+    async function loadDiagnosticsGenerators() {
+        try {
+            const diagnosticsChunk = await chunkLoader.loadChunk('diagnostics');
+            if (!diagnosticsChunk) {
+                throw new Error('Diagnostics chunk not available');
+            }
+            
+            // Ensure template store is initialized if we have context
+            if (context) {
+                diagnosticsChunk.ensureInitialized(context);
+            }
+            return {
+                generateWorkspaceActivityHTML: diagnosticsChunk.generateWorkspaceActivityHTML,
+                generatePerformanceAnalyticsHTML: diagnosticsChunk.generatePerformanceAnalyticsHTML,
+                generateDiagnosticsHTML: diagnosticsChunk.generateDiagnosticsHTML,
+                generateDiagnosticsWebview: diagnosticsChunk.generateDiagnosticsWebview
+            };
+        } catch (error) {
+            throw new Error(`Failed to load diagnostics generators: ${error.message}`);
+        }
+    }
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showWorkspaceActivity', async () => {
         try {
+            // Check if analysis commands feature is still enabled
+            const vscodeConfig = vscode.workspace.getConfiguration('explorerDates');
+            const analysisCommandsEnabled = vscodeConfig.get('enableAnalysisCommands', true);
+            
+            if (!analysisCommandsEnabled) {
+                vscode.window.showInformationMessage('Analysis commands are disabled. Enable explorerDates.enableAnalysisCommands to use this feature.');
+                return;
+            }
+            
+            const { generateWorkspaceActivityHTML } = await loadDiagnosticsGenerators();
+            
             const panel = vscode.window.createWebviewPanel(
                 'workspaceActivity',
                 'Workspace File Activity',
@@ -42,7 +70,7 @@ function registerAnalysisCommands({
                     if (isFile) {
                         files.push({
                             path: getRelativePath(workspaceFolder.uri.fsPath || workspaceFolder.uri.path, fileUri.fsPath || fileUri.path),
-                            modified: stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime),
+                            modified: ensureDate(stat.mtime),
                             size: stat.size
                         });
                     }
@@ -52,7 +80,7 @@ function registerAnalysisCommands({
             }
 
             files.sort((a, b) => b.modified.getTime() - a.modified.getTime());
-            panel.webview.html = generateWorkspaceActivityHTML(files.slice(0, 50));
+            panel.webview.html = await generateWorkspaceActivityHTML(files.slice(0, 50));
             logger.info('Workspace activity panel opened');
         } catch (error) {
             logger.error('Failed to show workspace activity', error);
@@ -62,6 +90,8 @@ function registerAnalysisCommands({
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showPerformanceAnalytics', async () => {
         try {
+            const { generatePerformanceAnalyticsHTML } = await loadDiagnosticsGenerators();
+            
             const panel = vscode.window.createWebviewPanel(
                 'performanceAnalytics',
                 'Explorer Dates Performance Analytics',
@@ -70,7 +100,7 @@ function registerAnalysisCommands({
             );
 
             const metrics = fileDateProvider ? fileDateProvider.getMetrics() : {};
-            panel.webview.html = generatePerformanceAnalyticsHTML(metrics);
+            panel.webview.html = await generatePerformanceAnalyticsHTML(metrics);
             logger.info('Performance analytics panel opened');
         } catch (error) {
             logger.error('Failed to show performance analytics', error);
@@ -109,6 +139,8 @@ function registerAnalysisCommands({
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.runDiagnostics', async () => {
         try {
+            const { generateDiagnosticsHTML } = await loadDiagnosticsGenerators();
+            
             const config = vscode.workspace.getConfiguration('explorerDates');
             const activeEditor = vscode.window.activeTextEditor;
 
@@ -167,7 +199,7 @@ function registerAnalysisCommands({
                 { enableScripts: true }
             );
 
-            panel.webview.html = generateDiagnosticsHTML(diagnosticResults);
+            panel.webview.html = await generateDiagnosticsHTML(diagnosticResults);
             logger.info('Diagnostics panel opened', diagnosticResults);
         } catch (error) {
             logger.error('Failed to run diagnostics', error);
@@ -177,6 +209,8 @@ function registerAnalysisCommands({
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.testDecorations', async () => {
         try {
+            const { generateDiagnosticsWebview } = await loadDiagnosticsGenerators();
+            
             logger.info('🔍 Starting comprehensive decoration diagnostics...');
 
             const { DecorationDiagnostics } = require('../decorationDiagnostics');
@@ -190,7 +224,7 @@ function registerAnalysisCommands({
                 { enableScripts: true }
             );
 
-            panel.webview.html = generateDiagnosticsWebview(results);
+            panel.webview.html = await generateDiagnosticsWebview(results);
 
             const criticalIssues = [];
             const warnings = [];

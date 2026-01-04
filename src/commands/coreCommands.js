@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
 const { getFileName, getRelativePath } = require('../utils/pathUtils');
+const { ensureDate } = require('../utils/dateHelpers');
 
 const isWeb = process.env.VSCODE_WEB === 'true';
 let childProcess = null;
@@ -51,7 +52,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showMetrics', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.showMetrics', async () => {
         try {
             if (fileDateProvider) {
                 const metrics = fileDateProvider.getMetrics();
@@ -79,7 +80,17 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                         `Average Batch Time: ${metrics.batchProcessor.averageBatchTime.toFixed(2)}ms`;
                 }
 
-                vscode.window.showInformationMessage(message, { modal: true });
+                const choice = await vscode.window.showInformationMessage(
+                    message, 
+                    { modal: true },
+                    'View Rich Analytics'
+                );
+
+                if (choice === 'View Rich Analytics') {
+                    // Lazy load the rich analytics view
+                    await vscode.commands.executeCommand('explorerDates.showPerformanceAnalytics');
+                }
+
                 logger.info('Metrics displayed', metrics);
             }
         } catch (error) {
@@ -167,7 +178,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             }
 
             const stat = await fileSystem.stat(targetUri);
-            const dateString = (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)).toLocaleString();
+            const dateString = ensureDate(stat.mtime).toLocaleString();
 
             await vscode.env.clipboard.writeText(dateString);
             vscode.window.showInformationMessage(`Copied to clipboard: ${dateString}`);
@@ -192,8 +203,8 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             const stat = await fileSystem.stat(targetUri);
             const fileName = getFileName(targetUri.fsPath || targetUri.path);
             const fileSize = fileDateProvider?._formatFileSize(stat.size, 'auto') || `${stat.size} bytes`;
-            const modified = (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)).toLocaleString();
-            const created = (stat.birthtime instanceof Date ? stat.birthtime : new Date(stat.birthtime || stat.mtime)).toLocaleString();
+            const modified = ensureDate(stat.mtime).toLocaleString();
+            const created = ensureDate(stat.birthtime || stat.mtime).toLocaleString();
 
             const details = `File: ${fileName}\n` +
                 `Size: ${fileSize}\n` +

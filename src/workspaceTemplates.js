@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { GLOBAL_STATE_KEYS } = require('./constants');
 
@@ -114,7 +114,7 @@ class WorkspaceTemplatesManager {
                     'explorerDates.smartExclusions': true,
                     'explorerDates.progressiveLoading': true,
                     'explorerDates.persistentCache': true,
-                    'explorerDates.enableReporting': true
+                    'explorerDates.enableExportReporting': true
                 }
             },
             'minimal': {

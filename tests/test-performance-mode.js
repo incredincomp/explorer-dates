@@ -157,12 +157,37 @@ async function verifyStatusBarIntegrationDisabled() {
     });
 }
 
+async function verifyPerformanceMetricsReporting() {
+    await scenario('Performance metrics include derived timing data', {
+        'explorerDates.performanceMode': false,
+        'explorerDates.showDateDecorations': true
+    }, async () => {
+        const provider = new FileDateDecorationProvider();
+        try {
+            provider._metrics.gitBlameCalls = 2;
+            provider._metrics.gitBlameTimeMs = 5;
+            provider._metrics.fileStatCalls = 4;
+            provider._metrics.fileStatTimeMs = 20;
+            const metrics = provider.getMetrics();
+            assert.strictEqual(metrics.performanceTiming.avgGitBlameMs, '2.5', 'Average git blame timing should be derived');
+            assert.strictEqual(metrics.performanceTiming.avgFileStatMs, '5.0', 'Average file stat timing should be derived');
+            assert.strictEqual(metrics.performanceTiming.gitBlameCalls, 2, 'Git blame calls should be reported');
+            assert.strictEqual(metrics.performanceTiming.fileStatCalls, 4, 'File stat calls should be reported');
+            assert.ok(Object.prototype.hasOwnProperty.call(metrics.cacheDebugging, 'cacheNamespace'),
+                'Cache namespace should be included for diagnostics even if null');
+        } finally {
+            await provider.dispose();
+        }
+    });
+}
+
 async function main() {
     try {
         await verifyPerformanceModeSkipsWatchers();
         await verifyRuntimeToggle();
         await verifyGitAndAdvancedSystemsDisabled();
         await verifyStatusBarIntegrationDisabled();
+        await verifyPerformanceMetricsReporting();
         console.log('🎉 Performance mode coverage completed successfully');
     } catch (error) {
         console.error('❌ Performance mode tests failed:', error);

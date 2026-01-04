@@ -8,6 +8,38 @@ const { createExtensionContext } = mockHelpers;
 const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
 const { registerRuntimeCommands } = require('../src/commands/runtimeCommands');
 
+const baseExplorerConfig = Object.fromEntries(
+    Object.entries(mockInstall.configValues)
+        .filter(([key]) => key.startsWith('explorerDates.'))
+        .map(([key, value]) => [key, value])
+);
+
+function resetExplorerConfig(overrides = {}) {
+    const stores = [
+        { store: mockInstall.configValues, baseline: baseExplorerConfig },
+        { store: mockInstall.workspaceConfigValues, baseline: {} },
+        { store: mockInstall.workspaceFolderConfigValues, baseline: {} }
+    ];
+
+    for (const { store, baseline } of stores) {
+        for (const key of Object.keys(store)) {
+            if (key.startsWith('explorerDates.')) {
+                delete store[key];
+            }
+        }
+        if (baseline && Object.keys(baseline).length) {
+            Object.entries(baseline).forEach(([key, value]) => {
+                store[key] = value;
+            });
+        }
+    }
+
+    Object.entries(overrides).forEach(([key, value]) => {
+        const normalizedKey = key.includes('.') ? key : `explorerDates.${key}`;
+        mockInstall.configValues[normalizedKey] = value;
+    });
+}
+
 async function disposeContext(context) {
     if (!context?.subscriptions) return;
     for (const disposable of context.subscriptions) {
@@ -25,6 +57,7 @@ async function disposeContext(context) {
  */
 async function testShowPresetComparison() {
     console.log('Testing showPresetComparison QuickPick flows...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
     
@@ -127,6 +160,7 @@ async function testShowPresetComparison() {
  */
 async function testPresetComparisonBrowseFlow() {
     console.log('Testing showPresetComparison browse flow...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
     
@@ -174,6 +208,7 @@ async function testPresetComparisonBrowseFlow() {
  */
 async function testShowAllPresets() {
     console.log('Testing showAllPresets QuickPick rendering...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
     
@@ -260,6 +295,7 @@ async function testShowAllPresets() {
  */
 async function testShowChunkStatus() {
     console.log('Testing showChunkStatus QuickPick rendering...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     
     // Register runtime commands to get access to showChunkStatusQuickPick
@@ -349,6 +385,7 @@ async function testShowChunkStatus() {
  */
 async function testCommandIntegration() {
     console.log('Testing command integration and error handling...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     
     const { vscode } = mockInstall;
@@ -413,6 +450,7 @@ async function testCommandIntegration() {
  */
 async function testPresetUIEdgeCases() {
     console.log('Testing preset UI edge cases...');
+    resetExplorerConfig();
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
     

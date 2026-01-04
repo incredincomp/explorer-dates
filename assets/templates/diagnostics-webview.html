@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Comprehensive Decoration Diagnostics</title>
+<style>
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background-color:var(--vscode-editor-background);padding:20px;line-height:1.6}
+.header{margin-bottom:30px;padding-bottom:15px;border-bottom:2px solid var(--vscode-panel-border)}
+.test-section{margin-bottom:25px;padding:20px;border:1px solid var(--vscode-panel-border);border-radius:8px}
+.test-ok{background-color:rgba(0,255,0,0.1);border-left:4px solid var(--vscode-terminal-ansiGreen)}
+.test-warning{background-color:rgba(255,255,0,0.1);border-left:4px solid var(--vscode-terminal-ansiYellow)}
+.test-error{background-color:rgba(255,0,0,0.1);border-left:4px solid var(--vscode-terminal-ansiRed)}
+.status-ok{color:var(--vscode-terminal-ansiGreen);font-weight:bold}
+.status-warning{color:var(--vscode-terminal-ansiYellow);font-weight:bold}
+.status-error{color:var(--vscode-terminal-ansiRed);font-weight:bold}
+.issue-critical{color:var(--vscode-terminal-ansiRed);font-weight:bold;background-color:rgba(255,0,0,0.2);padding:5px;border-radius:3px;margin:5px 0}
+.issue-warning{color:var(--vscode-terminal-ansiYellow);background-color:rgba(255,255,0,0.2);padding:5px;border-radius:3px;margin:5px 0}
+pre{background-color:var(--vscode-textCodeBlock-background);padding:15px;border-radius:4px;overflow-x:auto;font-size:.9em}
+.summary{background-color:var(--vscode-textBlockQuote-background);border-left:4px solid var(--vscode-textBlockQuote-border);padding:15px;margin:20px 0}
+.file-test{display:inline-block;margin:5px;padding:8px 12px;background-color:var(--vscode-badge-background);color:var(--vscode-badge-foreground);border-radius:4px;font-family:monospace;font-size:.9em}
+.badge-test{display:inline-block;margin:3px;padding:4px 8px;background-color:var(--vscode-button-background);color:var(--vscode-button-foreground);border-radius:3px;font-family:monospace;font-size:.8em}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🔍 Comprehensive Decoration Diagnostics</h1>
+<p><strong>VS Code:</strong> {{VS_CODE_VERSION}} | <strong>Extension:</strong> {{EXTENSION_VERSION}}</p>
+<p><strong>Generated:</strong> {{GENERATED_AT}}</p>
+</div>
+{{TEST_SECTIONS}}
+{{SUMMARY_BLOCK}}
+</body>
+</html>

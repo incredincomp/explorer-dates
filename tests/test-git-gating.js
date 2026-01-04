@@ -3,10 +3,9 @@
  * Run this with: node test-git-gating.js
  */
 
-const { createMockVscode } = require('./tests/helpers/mockVscode');
-const { getFeatureConfig } = require('./src/featureFlags');
+// Set up mock vscode FIRST before requiring any modules
+const { createMockVscode } = require('./helpers/mockVscode');
 
-// Set up mock vscode for tests
 const mockInstall = createMockVscode({
     explorerDates: {
         'showGitInfo': 'none',
@@ -16,6 +15,9 @@ const mockInstall = createMockVscode({
     }
 });
 const { vscode } = mockInstall;
+
+// Now safe to require modules that depend on vscode
+const { getFeatureConfig } = require('../src/featureFlags');
 
 // Test git insights conditional loading logic
 function testGitGatingLogic() {
@@ -85,7 +87,7 @@ function testChunkPaths() {
     
     try {
         // Test git insights chunk path
-        const gitInsightsChunk = require('./src/chunks/gitInsights-chunk.js');
+        const gitInsightsChunk = require('../src/chunks/gitInsights-chunk.js');
         console.log('✅ Git insights chunk entry point loads successfully');
         
         // Check export structure
@@ -123,7 +125,7 @@ function testBundleSizeImpact() {
         
         filesToMeasure.forEach(file => {
             try {
-                const stats = fs.statSync(path.join(__dirname, file));
+                const stats = fs.statSync(path.join(__dirname, '..', file));
                 totalSize += stats.size;
                 console.log(`  ${file}: ${Math.round(stats.size / 1024 * 100) / 100}KB`);
             } catch (error) {

@@ -110,4 +110,492 @@ function setupTimerStubs() {
             pendingTimers.clear();
             timerStubs.clear();
         }
-    };\n}\n\nfunction restoreTimers() {\n    if (originalSetTimeout) {\n        global.setTimeout = originalSetTimeout;\n    }\n    if (originalClearTimeout) {\n        global.clearTimeout = originalClearTimeout;\n    }\n    timerStubs.clear();\n}\n\n/**\n * Test debounce timer fires exactly once with deterministic timing\n */\nasync function testDeterministicDebounceTimer() {\n    console.log('Testing deterministic debounce timer...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        const mockInstall = mockHelpers.createMockVscode();\n        const { vscode } = mockInstall;\n        const context = createExtensionContext();\n        \n        let promptCount = 0;\n        const capturedPrompts = [];\n        \n        vscode.window.showInformationMessage = async (message, ...args) => {\n            promptCount++;\n            capturedPrompts.push({ message, args, timestamp: Date.now() });\n            return 'Reload Later';\n        };\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager = new RuntimeConfigManager(context);\n        \n        // Simulate rapid configuration changes\n        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);\n        runtimeManager._queueRestartPrompt(['enableExportReporting']);\n        runtimeManager._queueRestartPrompt(['enableExtensionApi']);\n        \n        // Verify timer was set but not fired\n        assert.strictEqual(promptCount, 0, 'Should not show prompt immediately');\n        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have one pending timer');\n        \n        // Simulate more rapid changes before timer fires\n        runtimeManager._queueRestartPrompt(['enableWorkspaceTemplates']);\n        \n        // Should still have only one timer (previous cancelled, new one created)\n        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should still have one pending timer after additional changes');\n        \n        // Fast-forward time to trigger debounce\n        const executedTimers = await timerControl.tickAsync(3000); // 3 seconds\n        \n        assert.strictEqual(executedTimers, 1, 'Should execute exactly one timer');\n        assert.strictEqual(promptCount, 1, 'Should show exactly one prompt after debounce');\n        \n        // Verify prompt contains all settings\n        const prompt = capturedPrompts[0];\n        assert.ok(prompt.message.includes('4 settings'), 'Prompt should mention all 4 settings');\n        assert.ok(prompt.message.includes('Analysis Commands'), 'Should include Analysis Commands');\n        assert.ok(prompt.message.includes('Workspace Templates'), 'Should include Workspace Templates');\n        \n        await disposeContext(context);\n        runtimeManager._configWatcher?.dispose?.();\n        mockInstall.dispose();\n        \n        console.log('✅ Deterministic debounce timer test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\n/**\n * Test timer cleanup on extension teardown\n */\nasync function testTimerCleanupOnTeardown() {\n    console.log('Testing timer cleanup on extension teardown...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        const mockInstall = mockHelpers.createMockVscode();\n        const { vscode } = mockInstall;\n        const context = createExtensionContext();\n        \n        vscode.window.showInformationMessage = async (...args) => 'Reload Later';\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager = new RuntimeConfigManager(context);\n        \n        // Queue a restart prompt to create timer\n        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);\n        \n        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have pending timer');\n        \n        // Get the timer ID for verification\n        const pendingTimers = timerControl.getAllPendingTimers();\n        const timerId = pendingTimers[0].id;\n        \n        // Simulate extension deactivation\n        await disposeContext(context);\n        \n        // Manually call dispose if RuntimeConfigManager has it\n        if (typeof runtimeManager.dispose === 'function') {\n            runtimeManager.dispose();\n        }\n        \n        // Check if timer was properly cleaned up\n        const wasCleanedUp = !timerControl.hasPendingTimer(timerId);\n        \n        if (wasCleanedUp) {\n            console.log('✅ Timer properly cleaned up during extension teardown');\n        } else {\n            console.log('⚠️  Timer cleanup may need enhancement - timer still pending after dispose');\n            \n            // Verify timer doesn't execute after disposal\n            const executedCount = await timerControl.tickAsync(3000);\n            \n            if (executedCount === 0) {\n                console.log('✅ Timer didn\\'t execute after dispose (alternative cleanup method)');\n            } else {\n                console.log('❌ Timer executed after dispose - potential memory leak');\n                assert.fail('Timer should be cleaned up on extension teardown');\n            }\n        }\n        \n        mockInstall.dispose();\n        console.log('✅ Timer cleanup on teardown test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\n/**\n * Test queued settings persistence across VS Code sessions\n */\nasync function testQueuedSettingsPersistence() {\n    console.log('Testing queued settings persistence across sessions...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        // Session 1: Queue settings and simulate VS Code restart before timer fires\n        const mockInstall1 = mockHelpers.createMockVscode();\n        const context1 = createExtensionContext();\n        \n        mockInstall1.vscode.window.showInformationMessage = async (...args) => 'Reload Later';\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager1 = new RuntimeConfigManager(context1);\n        \n        // Queue restart prompts\n        runtimeManager1._queueRestartPrompt(['enableAnalysisCommands', 'enableExportReporting']);\n        \n        // Verify pending restart was stored in global state\n        let pendingRestart = context1.globalState.get('explorerDates.pendingRestart', []);\n        assert.strictEqual(pendingRestart.length, 2, 'Should store pending restart settings');\n        assert.ok(pendingRestart.includes('enableAnalysisCommands'), 'Should include Analysis Commands');\n        assert.ok(pendingRestart.includes('enableExportReporting'), 'Should include Export Reporting');\n        \n        // Simulate abrupt shutdown (timer doesn't fire)\n        await disposeContext(context1);\n        mockInstall1.dispose();\n        \n        console.log('✅ Session 1: Settings queued and persisted');\n        \n        // Session 2: Restart VS Code and verify settings are restored\n        const mockInstall2 = mockHelpers.createMockVscode();\n        const context2 = createExtensionContext();\n        \n        // Copy global state from session 1 to session 2 (simulate persistence)\n        await context2.globalState.update('explorerDates.pendingRestart', pendingRestart);\n        \n        let promptCount = 0;\n        let restoredPromptMessage = '';\n        \n        mockInstall2.vscode.window.showInformationMessage = async (message, ...args) => {\n            promptCount++;\n            restoredPromptMessage = message;\n            return 'Reload Now'; // User finally chooses to reload\n        };\n        \n        const runtimeManager2 = new RuntimeConfigManager(context2);\n        \n        // Check if manager detects persisted restart settings on initialization\n        const persistedSettings = context2.globalState.get('explorerDates.pendingRestart', []);\n        assert.strictEqual(persistedSettings.length, 2, 'Settings should persist across sessions');\n        \n        // Simulate initialization check for pending restart\n        if (persistedSettings.length > 0) {\n            await runtimeManager2._showBatchedRestartPrompt();\n        }\n        \n        // Verify restored prompt\n        if (promptCount > 0) {\n            assert.ok(restoredPromptMessage.includes('2 settings'), 'Restored prompt should mention persisted settings');\n            assert.ok(restoredPromptMessage.includes('Analysis Commands'), 'Should include persisted setting names');\n            console.log('✅ Session 2: Persisted settings restored and prompted');\n        } else {\n            console.log('ℹ️  Automatic restoration of pending restart may need implementation');\n        }\n        \n        // Verify settings are cleared after restoration\n        const finalPendingRestart = context2.globalState.get('explorerDates.pendingRestart', []);\n        assert.strictEqual(finalPendingRestart.length, 0, 'Should clear pending restart after showing prompt');\n        \n        await disposeContext(context2);\n        mockInstall2.dispose();\n        \n        console.log('✅ Session persistence test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\n/**\n * Test timer cancellation and replacement\n */\nasync function testTimerCancellationAndReplacement() {\n    console.log('Testing timer cancellation and replacement...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        const mockInstall = mockHelpers.createMockVscode();\n        const { vscode } = mockInstall;\n        const context = createExtensionContext();\n        \n        let promptCount = 0;\n        vscode.window.showInformationMessage = async (...args) => {\n            promptCount++;\n            return 'Reload Later';\n        };\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager = new RuntimeConfigManager(context);\n        \n        // Queue first restart prompt\n        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);\n        \n        const firstTimers = timerControl.getAllPendingTimers();\n        assert.strictEqual(firstTimers.length, 1, 'Should have one pending timer');\n        const firstTimerId = firstTimers[0].id;\n        \n        // Queue another restart prompt before first timer fires\n        runtimeManager._queueRestartPrompt(['enableExportReporting']);\n        \n        // Verify first timer was cancelled and replaced\n        assert.strictEqual(timerControl.hasPendingTimer(firstTimerId), false, 'First timer should be cancelled');\n        \n        const secondTimers = timerControl.getAllPendingTimers();\n        assert.strictEqual(secondTimers.length, 1, 'Should still have one pending timer');\n        assert.notStrictEqual(secondTimers[0].id, firstTimerId, 'Should be a new timer');\n        \n        // Fire the replacement timer\n        const executedCount = await timerControl.tickAsync(3000);\n        \n        assert.strictEqual(executedCount, 1, 'Should execute replacement timer');\n        assert.strictEqual(promptCount, 1, 'Should show exactly one prompt');\n        \n        // Verify both settings were included in the final prompt\n        const pendingRestart = context.globalState.get('explorerDates.pendingRestart', []);\n        assert.ok(pendingRestart.includes('enableAnalysisCommands'), 'Should include first setting');\n        assert.ok(pendingRestart.includes('enableExportReporting'), 'Should include second setting');\n        \n        await disposeContext(context);\n        runtimeManager._configWatcher?.dispose?.();\n        mockInstall.dispose();\n        \n        console.log('✅ Timer cancellation and replacement test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\n/**\n * Test multiple restart prompts within debounce window\n */\nasync function testMultiplePromptsWithinDebounceWindow() {\n    console.log('Testing multiple restart prompts within debounce window...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        const mockInstall = mockHelpers.createMockVscode();\n        const { vscode } = mockInstall;\n        const context = createExtensionContext();\n        \n        const executionLog = [];\n        vscode.window.showInformationMessage = async (message, ...args) => {\n            executionLog.push({ type: 'prompt', message, timestamp: Date.now() });\n            return 'Reload Later';\n        };\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager = new RuntimeConfigManager(context);\n        \n        // Simulate rapid-fire configuration changes\n        const changeTimestamps = [];\n        \n        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);\n        changeTimestamps.push(Date.now());\n        \n        await timerControl.tickAsync(500); // 0.5 seconds - still within debounce\n        \n        runtimeManager._queueRestartPrompt(['enableExportReporting']);\n        changeTimestamps.push(Date.now());\n        \n        await timerControl.tickAsync(800); // 0.8 more seconds - still within debounce\n        \n        runtimeManager._queueRestartPrompt(['enableExtensionApi']);\n        changeTimestamps.push(Date.now());\n        \n        // Still no prompt should have been shown\n        assert.strictEqual(executionLog.length, 0, 'No prompts should fire during debounce period');\n        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have one pending timer');\n        \n        // Now let the debounce timer fire\n        await timerControl.tickAsync(3000); // Full debounce period\n        \n        // Verify final prompt contains all settings\n        assert.strictEqual(executionLog.length, 1, 'Should show exactly one prompt after debounce');\n        const finalPrompt = executionLog[0];\n        assert.ok(finalPrompt.message.includes('3 settings'), 'Should mention all 3 settings');\n        \n        // Verify all settings were accumulated\n        const pendingRestart = context.globalState.get('explorerDates.pendingRestart', []);\n        assert.strictEqual(pendingRestart.length, 3, 'Should accumulate all settings');\n        assert.ok(pendingRestart.includes('enableAnalysisCommands'), 'Should include first setting');\n        assert.ok(pendingRestart.includes('enableExportReporting'), 'Should include second setting'); \n        assert.ok(pendingRestart.includes('enableExtensionApi'), 'Should include third setting');\n        \n        await disposeContext(context);\n        runtimeManager._configWatcher?.dispose?.();\n        mockInstall.dispose();\n        \n        console.log('✅ Multiple prompts within debounce window test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\n/**\n * Test edge case: timer fires during extension deactivation\n */\nasync function testTimerFiresDuringDeactivation() {\n    console.log('Testing timer fires during extension deactivation...');\n    \n    const timerControl = setupTimerStubs();\n    \n    try {\n        const mockInstall = mockHelpers.createMockVscode();\n        const { vscode } = mockInstall;\n        const context = createExtensionContext();\n        \n        let promptCount = 0;\n        let promptError = null;\n        \n        vscode.window.showInformationMessage = async (message, ...args) => {\n            promptCount++;\n            // Check if VS Code APIs are still available during deactivation\n            try {\n                // Simulate accessing VS Code API during deactivation\n                const config = vscode.workspace.getConfiguration('explorerDates');\n                return 'Reload Later';\n            } catch (error) {\n                promptError = error;\n                throw error;\n            }\n        };\n        \n        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');\n        const runtimeManager = new RuntimeConfigManager(context);\n        \n        // Queue restart prompt\n        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);\n        \n        // Start deactivation process (but don't wait for completion)\n        const deactivationPromise = disposeContext(context);\n        \n        // Fire timer during deactivation\n        await timerControl.tickAsync(2500); // Fire timer during disposal\n        \n        // Complete deactivation\n        await deactivationPromise;\n        \n        // Verify behavior during deactivation\n        if (promptCount > 0) {\n            if (promptError) {\n                console.log('ℹ️  Timer fired during deactivation but was handled gracefully');\n            } else {\n                console.log('✅ Timer fired during deactivation without errors');\n            }\n        } else {\n            console.log('✅ Timer was cancelled during deactivation');\n        }\n        \n        // Either outcome is acceptable as long as no unhandled errors occur\n        assert.ok(true, 'Extension should handle timer firing during deactivation without crashing');\n        \n        mockInstall.dispose();\n        \n        console.log('✅ Timer fires during deactivation test passed');\n        \n    } finally {\n        timerControl.clear();\n        restoreTimers();\n    }\n}\n\nasync function disposeContext(context) {\n    if (!context?.subscriptions) return;\n    \n    for (const disposable of context.subscriptions) {\n        try {\n            disposable?.dispose?.();\n        } catch {\n            // Ignore errors from disposals in tests\n        }\n    }\n    context.subscriptions.length = 0;\n}\n\nasync function main() {\n    console.log('🧪 Starting improved restart batching tests with deterministic timers...\\n');\n    \n    try {\n        await testDeterministicDebounceTimer();\n        await testTimerCleanupOnTeardown();\n        await testQueuedSettingsPersistence();\n        await testTimerCancellationAndReplacement();\n        await testMultiplePromptsWithinDebounceWindow();\n        await testTimerFiresDuringDeactivation();\n        \n        console.log('\\n✅ All improved restart batching tests passed!');\n        console.log('🎯 Medium priority testing gap closed: Timer tests now deterministic');\n        console.log('\\n📊 Test Coverage Summary:');\n        console.log('   ✅ Deterministic timer control (no wall-clock dependency)');\n        console.log('   ✅ Timer cleanup on extension teardown');\n        console.log('   ✅ Settings persistence across VS Code sessions');\n        console.log('   ✅ Timer cancellation and replacement');\n        console.log('   ✅ Multiple changes within debounce window');\n        console.log('   ✅ Edge case: timer fires during deactivation');\n        console.log('\\n🚀 Restart batching is now fully tested without flakiness');\n        \n    } catch (error) {\n        console.error('\\n❌ Improved restart batching tests failed:', error);\n        console.error('\\n💡 This indicates timer handling may have concurrency issues');\n        process.exitCode = 1;\n    } finally {\n        restoreTimers();\n    }\n}\n\nif (require.main === module) {\n    main();\n}\n\nmodule.exports = {\n    testDeterministicDebounceTimer,\n    testTimerCleanupOnTeardown,\n    testQueuedSettingsPersistence,\n    testTimerCancellationAndReplacement,\n    testMultiplePromptsWithinDebounceWindow,\n    testTimerFiresDuringDeactivation,\n    setupTimerStubs,\n    restoreTimers\n};
+    };
+}
+
+function restoreTimers() {
+    if (originalSetTimeout) {
+        global.setTimeout = originalSetTimeout;
+    }
+    if (originalClearTimeout) {
+        global.clearTimeout = originalClearTimeout;
+    }
+    timerStubs.clear();
+}
+
+/**
+ * Test debounce timer fires exactly once with deterministic timing
+ */
+async function testDeterministicDebounceTimer() {
+    console.log('Testing deterministic debounce timer...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        const mockInstall = mockHelpers.createMockVscode();
+        const { vscode } = mockInstall;
+        const context = createExtensionContext();
+        
+        let promptCount = 0;
+        const capturedPrompts = [];
+        
+        vscode.window.showInformationMessage = async (message, ...args) => {
+            promptCount++;
+            capturedPrompts.push({ message, args, timestamp: Date.now() });
+            return 'Reload Later';
+        };
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager = new RuntimeConfigManager(context);
+        
+        // Simulate rapid configuration changes
+        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);
+        runtimeManager._queueRestartPrompt(['enableExportReporting']);
+        runtimeManager._queueRestartPrompt(['enableExtensionApi']);
+        
+        // Verify timer was set but not fired
+        assert.strictEqual(promptCount, 0, 'Should not show prompt immediately');
+        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have one pending timer');
+        
+        // Simulate more rapid changes before timer fires
+        runtimeManager._queueRestartPrompt(['enableWorkspaceTemplates']);
+        
+        // Should still have only one timer (previous cancelled, new one created)
+        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should still have one pending timer after additional changes');
+        
+        // Fast-forward time to trigger debounce
+        const executedTimers = await timerControl.tickAsync(3000); // 3 seconds
+        
+        assert.strictEqual(executedTimers, 1, 'Should execute exactly one timer');
+        assert.strictEqual(promptCount, 1, 'Should show exactly one prompt after debounce');
+        
+        // Verify prompt contains all settings
+        const prompt = capturedPrompts[0];
+        assert.ok(prompt.message.includes('4 settings'), 'Prompt should mention all 4 settings');
+        assert.ok(prompt.message.includes('Analysis Commands'), 'Should include Analysis Commands');
+        assert.ok(prompt.message.includes('Workspace Templates'), 'Should include Workspace Templates');
+        
+        await disposeContext(context);
+        runtimeManager._configWatcher?.dispose?.();
+        mockInstall.dispose();
+        
+        console.log('✅ Deterministic debounce timer test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+/**
+ * Test timer cleanup on extension teardown
+ */
+async function testTimerCleanupOnTeardown() {
+    console.log('Testing timer cleanup on extension teardown...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        const mockInstall = mockHelpers.createMockVscode();
+        const { vscode } = mockInstall;
+        const context = createExtensionContext();
+        
+        vscode.window.showInformationMessage = async (...args) => 'Reload Later';
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager = new RuntimeConfigManager(context);
+        
+        // Queue a restart prompt to create timer
+        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);
+        
+        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have pending timer');
+        
+        // Get the timer ID for verification
+        const pendingTimers = timerControl.getAllPendingTimers();
+        const timerId = pendingTimers[0].id;
+        
+        // Simulate extension deactivation
+        await disposeContext(context);
+        
+        // Manually call dispose if RuntimeConfigManager has it
+        if (typeof runtimeManager.dispose === 'function') {
+            runtimeManager.dispose();
+        }
+        
+        // Check if timer was properly cleaned up
+        const wasCleanedUp = !timerControl.hasPendingTimer(timerId);
+        
+        if (wasCleanedUp) {
+            console.log('✅ Timer properly cleaned up during extension teardown');
+        } else {
+            console.log('⚠️  Timer cleanup may need enhancement - timer still pending after dispose');
+            
+            // Verify timer doesn't execute after disposal
+            const executedCount = await timerControl.tickAsync(3000);
+            
+            if (executedCount === 0) {
+                console.log('✅ Timer didn\'t execute after dispose (alternative cleanup method)');
+            } else {
+                console.log('❌ Timer executed after dispose - potential memory leak');
+                assert.fail('Timer should be cleaned up on extension teardown');
+            }
+        }
+        
+        mockInstall.dispose();
+        console.log('✅ Timer cleanup on teardown test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+/**
+ * Test queued settings persistence across VS Code sessions
+ */
+async function testQueuedSettingsPersistence() {
+    console.log('Testing queued settings persistence across sessions...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        // Session 1: Queue settings and simulate VS Code restart before timer fires
+        const mockInstall1 = mockHelpers.createMockVscode();
+        const context1 = createExtensionContext();
+        
+        mockInstall1.vscode.window.showInformationMessage = async (...args) => 'Reload Later';
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager1 = new RuntimeConfigManager(context1);
+        
+        // Queue restart prompts
+        runtimeManager1._queueRestartPrompt(['enableAnalysisCommands', 'enableExportReporting']);
+        
+        // Verify pending restart was stored in global state
+        let pendingRestart = context1.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(pendingRestart.length, 2, 'Should store pending restart settings');
+        assert.ok(pendingRestart.includes('enableAnalysisCommands'), 'Should include Analysis Commands');
+        assert.ok(pendingRestart.includes('enableExportReporting'), 'Should include Export Reporting');
+        
+        // Simulate abrupt shutdown (timer doesn't fire)
+        await disposeContext(context1);
+        mockInstall1.dispose();
+        
+        console.log('✅ Session 1: Settings queued and persisted');
+        
+        // Session 2: Restart VS Code and verify settings are restored
+        const mockInstall2 = mockHelpers.createMockVscode();
+        const context2 = createExtensionContext();
+        
+        // Copy global state from session 1 to session 2 (simulate persistence)
+        await context2.globalState.update('explorerDates.pendingRestart', pendingRestart);
+        
+        let promptCount = 0;
+        let restoredPromptMessage = '';
+        
+        mockInstall2.vscode.window.showInformationMessage = async (message, ...args) => {
+            promptCount++;
+            restoredPromptMessage = message;
+            return 'Reload Now'; // User finally chooses to reload
+        };
+        
+        const runtimeManager2 = new RuntimeConfigManager(context2);
+        
+        // Check if manager detects persisted restart settings on initialization
+        const persistedSettings = context2.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(persistedSettings.length, 2, 'Settings should persist across sessions');
+        
+        // Simulate initialization check for pending restart
+        if (persistedSettings.length > 0) {
+            await runtimeManager2._showBatchedRestartPrompt();
+        }
+        
+        // Verify restored prompt
+        if (promptCount > 0) {
+            assert.ok(restoredPromptMessage.includes('2 settings'), 'Restored prompt should mention persisted settings');
+            assert.ok(restoredPromptMessage.includes('Analysis Commands'), 'Should include persisted setting names');
+            console.log('✅ Session 2: Persisted settings restored and prompted');
+        } else {
+            console.log('ℹ️  Automatic restoration of pending restart may need implementation');
+        }
+        
+        // Verify settings are cleared after restoration
+        const finalPendingRestart = context2.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(finalPendingRestart.length, 0, 'Should clear pending restart after showing prompt');
+        
+        await disposeContext(context2);
+        mockInstall2.dispose();
+        
+        console.log('✅ Session persistence test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+/**
+ * Test timer cancellation and replacement
+ */
+async function testTimerCancellationAndReplacement() {
+    console.log('Testing timer cancellation and replacement...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        const mockInstall = mockHelpers.createMockVscode();
+        const { vscode } = mockInstall;
+        const context = createExtensionContext();
+        
+        let promptCount = 0;
+        vscode.window.showInformationMessage = async (...args) => {
+            promptCount++;
+            return 'Reload Later';
+        };
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager = new RuntimeConfigManager(context);
+        
+        // Queue first restart prompt
+        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);
+        
+        const firstTimers = timerControl.getAllPendingTimers();
+        assert.strictEqual(firstTimers.length, 1, 'Should have one pending timer');
+        const firstTimerId = firstTimers[0].id;
+        
+        // Queue another restart prompt before first timer fires
+        runtimeManager._queueRestartPrompt(['enableExportReporting']);
+        
+        // Verify first timer was cancelled and replaced
+        assert.strictEqual(timerControl.hasPendingTimer(firstTimerId), false, 'First timer should be cancelled');
+        
+        const secondTimers = timerControl.getAllPendingTimers();
+        assert.strictEqual(secondTimers.length, 1, 'Should still have one pending timer');
+        assert.notStrictEqual(secondTimers[0].id, firstTimerId, 'Should be a new timer');
+        
+        // Verify both settings were queued before timer fires
+        const queuedBeforeDebounce = context.globalState.get('explorerDates.pendingRestart', []);
+        assert.ok(queuedBeforeDebounce.includes('enableAnalysisCommands'), 'Should queue first setting');
+        assert.ok(queuedBeforeDebounce.includes('enableExportReporting'), 'Should queue second setting');
+        
+        // Fire the replacement timer
+        const executedCount = await timerControl.tickAsync(3000);
+        
+        assert.strictEqual(executedCount, 1, 'Should execute replacement timer');
+        assert.strictEqual(promptCount, 1, 'Should show exactly one prompt');
+        
+        // Pending restart should be cleared after prompt shows
+        const pendingAfterPrompt = context.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(pendingAfterPrompt.length, 0, 'Pending restart should clear after prompt');
+        
+        await disposeContext(context);
+        runtimeManager._configWatcher?.dispose?.();
+        mockInstall.dispose();
+        
+        console.log('✅ Timer cancellation and replacement test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+/**
+ * Test multiple restart prompts within debounce window
+ */
+async function testMultiplePromptsWithinDebounceWindow() {
+    console.log('Testing multiple restart prompts within debounce window...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        const mockInstall = mockHelpers.createMockVscode();
+        const { vscode } = mockInstall;
+        const context = createExtensionContext();
+        
+        const executionLog = [];
+        vscode.window.showInformationMessage = async (message, ...args) => {
+            executionLog.push({ type: 'prompt', message, timestamp: Date.now() });
+            return 'Reload Later';
+        };
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager = new RuntimeConfigManager(context);
+        
+        // Simulate rapid-fire configuration changes
+        const changeTimestamps = [];
+        
+        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);
+        changeTimestamps.push(Date.now());
+        
+        await timerControl.tickAsync(500); // 0.5 seconds - still within debounce
+        
+        runtimeManager._queueRestartPrompt(['enableExportReporting']);
+        changeTimestamps.push(Date.now());
+        
+        await timerControl.tickAsync(800); // 0.8 more seconds - still within debounce
+        
+        runtimeManager._queueRestartPrompt(['enableExtensionApi']);
+        changeTimestamps.push(Date.now());
+        
+        // Still no prompt should have been shown
+        assert.strictEqual(executionLog.length, 0, 'No prompts should fire during debounce period');
+        assert.strictEqual(timerControl.getPendingCount(), 1, 'Should have one pending timer');
+        
+        // Verify all settings were accumulated before prompt fires
+        const queuedBeforePrompt = context.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(queuedBeforePrompt.length, 3, 'Should accumulate all settings');
+        assert.ok(queuedBeforePrompt.includes('enableAnalysisCommands'), 'Should include first setting');
+        assert.ok(queuedBeforePrompt.includes('enableExportReporting'), 'Should include second setting'); 
+        assert.ok(queuedBeforePrompt.includes('enableExtensionApi'), 'Should include third setting');
+        
+        // Now let the debounce timer fire
+        await timerControl.tickAsync(3000); // Full debounce period
+        
+        // Verify final prompt contains all settings
+        assert.strictEqual(executionLog.length, 1, 'Should show exactly one prompt after debounce');
+        const finalPrompt = executionLog[0];
+        assert.ok(finalPrompt.message.includes('3 settings'), 'Should mention all 3 settings');
+        
+        // After prompt, pending restart should be cleared
+        const pendingAfterPrompt = context.globalState.get('explorerDates.pendingRestart', []);
+        assert.strictEqual(pendingAfterPrompt.length, 0, 'Should clear pending restart after prompt');
+        
+        await disposeContext(context);
+        runtimeManager._configWatcher?.dispose?.();
+        mockInstall.dispose();
+        
+        console.log('✅ Multiple prompts within debounce window test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+/**
+ * Test edge case: timer fires during extension deactivation
+ */
+async function testTimerFiresDuringDeactivation() {
+    console.log('Testing timer fires during extension deactivation...');
+    
+    const timerControl = setupTimerStubs();
+    
+    try {
+        const mockInstall = mockHelpers.createMockVscode();
+        const { vscode } = mockInstall;
+        const context = createExtensionContext();
+        
+        let promptCount = 0;
+        let promptError = null;
+        
+        vscode.window.showInformationMessage = async (message, ...args) => {
+            promptCount++;
+            // Check if VS Code APIs are still available during deactivation
+            try {
+                // Simulate accessing VS Code API during deactivation
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                return 'Reload Later';
+            } catch (error) {
+                promptError = error;
+                throw error;
+            }
+        };
+        
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const runtimeManager = new RuntimeConfigManager(context);
+        
+        // Queue restart prompt
+        runtimeManager._queueRestartPrompt(['enableAnalysisCommands']);
+        
+        // Start deactivation process (but don't wait for completion)
+        const deactivationPromise = disposeContext(context);
+        
+        // Fire timer during deactivation
+        await timerControl.tickAsync(2500); // Fire timer during disposal
+        
+        // Complete deactivation
+        await deactivationPromise;
+        
+        // Verify behavior during deactivation
+        if (promptCount > 0) {
+            if (promptError) {
+                console.log('ℹ️  Timer fired during deactivation but was handled gracefully');
+            } else {
+                console.log('✅ Timer fired during deactivation without errors');
+            }
+        } else {
+            console.log('✅ Timer was cancelled during deactivation');
+        }
+        
+        // Either outcome is acceptable as long as no unhandled errors occur
+        assert.ok(true, 'Extension should handle timer firing during deactivation without crashing');
+        
+        mockInstall.dispose();
+        
+        console.log('✅ Timer fires during deactivation test passed');
+        
+    } finally {
+        timerControl.clear();
+        restoreTimers();
+    }
+}
+
+async function disposeContext(context) {
+    if (!context?.subscriptions) return;
+    
+    for (const disposable of context.subscriptions) {
+        try {
+            disposable?.dispose?.();
+        } catch {
+            // Ignore errors from disposals in tests
+        }
+    }
+    context.subscriptions.length = 0;
+}
+
+async function main() {
+    console.log('🧪 Starting improved restart batching tests with deterministic timers...\\n');
+    
+    try {
+        await testDeterministicDebounceTimer();
+        await testTimerCleanupOnTeardown();
+        await testQueuedSettingsPersistence();
+        await testTimerCancellationAndReplacement();
+        await testMultiplePromptsWithinDebounceWindow();
+        await testTimerFiresDuringDeactivation();
+        
+        console.log('\\n✅ All improved restart batching tests passed!');
+        console.log('🎯 Medium priority testing gap closed: Timer tests now deterministic');
+        console.log('\\n📊 Test Coverage Summary:');
+        console.log('   ✅ Deterministic timer control (no wall-clock dependency)');
+        console.log('   ✅ Timer cleanup on extension teardown');
+        console.log('   ✅ Settings persistence across VS Code sessions');
+        console.log('   ✅ Timer cancellation and replacement');
+        console.log('   ✅ Multiple changes within debounce window');
+        console.log('   ✅ Edge case: timer fires during deactivation');
+        console.log('\\n🚀 Restart batching is now fully tested without flakiness');
+        
+    } catch (error) {
+        console.error('\\n❌ Improved restart batching tests failed:', error);
+        console.error('\\n💡 This indicates timer handling may have concurrency issues');
+        process.exitCode = 1;
+    } finally {
+        restoreTimers();
+    }
+}
+
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    testDeterministicDebounceTimer,
+    testTimerCleanupOnTeardown,
+    testQueuedSettingsPersistence,
+    testTimerCancellationAndReplacement,
+    testMultiplePromptsWithinDebounceWindow,
+    testTimerFiresDuringDeactivation,
+    setupTimerStubs,
+    restoreTimers
+};

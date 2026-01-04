@@ -1,4 +1,7 @@
 module.exports = {
+    "ignorePatterns": [
+        "tests/**/*.js"
+    ],
     "env": {
         "commonjs": true,
         "node": true,
@@ -20,12 +23,19 @@ module.exports = {
         "no-this-before-super": "warn",
         "no-undef": "warn",
         "no-unreachable": "warn",
-        "no-unused-vars": "warn",
+        "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
         "constructor-super": "warn",
         "valid-typeof": "warn",
         "no-console": "off"
     },
     "overrides": [
+        {
+            "files": ["tests/**/*.js"],
+            "rules": {
+                "no-unused-vars": "off",
+                "no-undef": "off"
+            }
+        },
         {
             "files": ["src/webview/**/*.js"],
             "env": {

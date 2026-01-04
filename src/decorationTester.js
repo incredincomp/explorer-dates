@@ -10,7 +10,7 @@ const { getFileName } = require('./utils/pathUtils');
  * Test VS Code's decoration rendering system
  */
 async function testVSCodeDecorationRendering() {
-    const logger = require('./logger').getLogger();
+    const logger = require('./utils/logger').getLogger();
     
     logger.info('🎨 Testing VS Code decoration rendering...');
     
@@ -30,7 +30,6 @@ async function testVSCodeDecorationRendering() {
             decoration.color = new vscode.ThemeColor('charts.red');
             
             logger.info(`🧪 Test provider returning decoration for: ${fileName}`);
-            console.log(`🧪 TEST DECORATION: ${fileName} → "TEST"`);
             
             return decoration;
         }
@@ -62,7 +61,7 @@ async function testVSCodeDecorationRendering() {
  * Test direct FileDecoration API
  */
 async function testFileDecorationAPI() {
-    const logger = require('./logger').getLogger();
+    const logger = require('./utils/logger').getLogger();
     
     logger.info('🔧 Testing FileDecoration API...');
     

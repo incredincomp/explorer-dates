@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2026-01-03T23:54:34.926Z",
+  "defaultProfile": "test",
+  "profiles": {
+    "test": {
+      "name": "Test Profile",
+      "settings": {
+        "explorerDates.enableWorkspaceTemplates": true
+      }
+    }
+  },
+  "metadata": {
+    "extensionVersion": "1.2.2"
+  }
+}

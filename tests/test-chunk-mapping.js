@@ -20,6 +20,7 @@ const mockSetup = createMockVscode({
 
 const { 
     validateAllChunks, 
+    validateBuiltChunks,
     loadChunkForTesting, 
     loadAllChunksForTesting,
     getAllChunkNames 
@@ -109,6 +110,27 @@ async function testChunkLoading() {
         
     } catch (error) {
         addResult('Chunk loading test', false, error.message);
+    }
+}
+
+async function testBuiltArtifacts() {
+    console.log('\n🧱 Testing built chunk artifacts...');
+    try {
+        const nodeArtifacts = validateBuiltChunks('node');
+        addResult('Node built chunks resolve', nodeArtifacts.success, 
+            `${nodeArtifacts.loadedCount}/${nodeArtifacts.totalCount}`);
+        if (!nodeArtifacts.success) {
+            console.log('   ❌ Node chunk failures:', nodeArtifacts.errors);
+        }
+
+        const webArtifacts = validateBuiltChunks('web');
+        addResult('Web built chunks resolve', webArtifacts.success, 
+            `${webArtifacts.loadedCount}/${webArtifacts.totalCount}`);
+        if (!webArtifacts.success) {
+            console.log('   ❌ Web chunk failures:', webArtifacts.errors);
+        }
+    } catch (error) {
+        addResult('Built chunk artifact test', false, error.message);
     }
 }
 
@@ -239,6 +261,7 @@ async function runAllTests() {
     
     await testSharedChunkMapping();
     await testChunkLoading();
+    await testBuiltArtifacts();
     await testFederationConfigSync();
     await testExtensionIntegration();
     await testJestCompatibility();

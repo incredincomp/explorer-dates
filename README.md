@@ -26,6 +26,7 @@
 
 ### Performance & Customization
 - **Intelligent Performance**: Smart caching, configurable exclusions, and file watching
+- **Incremental Indexing**: Background indexer with worker-backed digestion keeps metadata fresh without blocking the UI
 - **Flexible Configuration**: 15+ settings to customize display, performance, and behavior
 - **Debugging Tools**: Built-in logging, performance metrics, and troubleshooting commands
 
@@ -86,6 +87,53 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
   - Git-only commands automatically hide when the web host cannot expose repository metadata.
 - Remote environments (Codespaces, Dev Containers, Remote Tunnels) leverage the same web bundle, so Explorer Dates stays lightweight even when running over the network.
 
+## v1.3.0 Architecture & Bundle Size
+
+### Module Federation System
+
+Explorer Dates v1.3.0 uses a modern module federation architecture that dramatically reduces the initial bundle size while providing all the features you need:
+
+**Bundle Structure:**
+- **Core Bundle**: ~99KB (essential features: file decorations, basic commands, performance monitoring)
+- **Optional Chunks**: ~281KB total (advanced features loaded on demand)
+  - Onboarding System: ~34KB (welcome wizard, feature tour)
+  - Export & Reporting: ~17KB (file modification reports, analytics)
+  - Workspace Templates: ~14KB (configuration templates, team profiles)
+  - Extension API: ~15KB (third-party extension integration)
+  - Advanced Cache: ~5KB (enhanced caching algorithms)
+  - Analysis Commands: ~8KB (diagnostic and debugging tools)
+  - Workspace Intelligence: ~12KB (smart exclusions, large workspace detection)
+  - Incremental Workers: ~19KB (background file processing)
+
+**Feature Gating Benefits:**
+- **Disable unused features**: Save 36% bundle size by disabling onboarding + reporting
+- **Team standardization**: Consistent configurations across development teams
+- **Performance optimization**: Only load features you actually use
+- **Progressive enhancement**: Features activate based on workspace characteristics
+
+**Configuration:**
+To disable features and reduce bundle size, add these to your settings:
+```json
+{
+  "explorerDates.enableOnboardingSystem": false,     // Save ~34KB
+  "explorerDates.enableExportReporting": false,      // Save ~17KB
+  "explorerDates.enableWorkspaceTemplates": false,   // Save ~14KB
+  "explorerDates.enableExtensionApi": false,         // Save ~15KB
+  "explorerDates.enableIncrementalWorkers": false    // Save ~19KB
+}
+```
+
+### Team Configuration Management
+
+v1.3.0 introduces comprehensive team configuration support:
+
+- **Team Profiles**: Share standardized configurations across your team
+- **Conflict Resolution**: Intelligent merging when team configs conflict with user preferences
+- **Export/Import**: JSON-based configuration sharing with validation
+- **Settings Migration**: Automatic migration from legacy settings with conflict detection
+
+See [Upgrade Guide](./DOCS/UPGRADE_GUIDE.md) for detailed setup instructions.
+
 ## Configuration
 
 **Quick Setup**: Most users only need to configure the first 2-3 settings below. See [SETTINGS_GUIDE.md](./DOCS/SETTINGS_GUIDE.md) for detailed configuration examples.
@@ -97,6 +145,19 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 | `showDateDecorations` | `true`/`false` | `true` | Enable/disable all date decorations |
 | `dateDecorationFormat` | `smart`, `relative-short`, `relative-long`, `absolute-short`, `absolute-long` | `smart` | How dates are displayed |
 | `colorScheme` | `none`, `recency`, `file-type`, `subtle`, `vibrant`, `custom` | `none` | Color coding for decorations |
+
+### Feature Control Settings (v1.3.0)
+
+| Setting | Options | Default | Bundle Impact | Description |
+|---------|---------|---------|--------------|-------------|
+| `enableOnboardingSystem` | `true`/`false` | `true` | ~34KB | Welcome wizard and feature tour |
+| `enableExportReporting` | `true`/`false` | `true` | ~17KB | File modification reports and analytics |
+| `enableWorkspaceTemplates` | `true`/`false` | `true` | ~14KB | Configuration templates and team profiles |
+| `enableExtensionApi` | `true`/`false` | `true` | ~15KB | API for third-party extension integration |
+| `enableAdvancedCache` | `true`/`false` | `true` | ~5KB | Enhanced caching algorithms |
+| `enableAnalysisCommands` | `true`/`false` | `true` | ~8KB | Diagnostic and debugging commands |
+| `enableWorkspaceIntelligence` | `true`/`false` | `true` | ~12KB | Smart exclusions and workspace analysis |
+| `enableIncrementalWorkers` | `true`/`false` | `false` | ~19KB | Background file processing workers |
 
 ### Display Enhancements
 
@@ -159,6 +220,7 @@ To use custom colors for file decorations:
 | Setting | Options | Default | Description |
 |---------|---------|---------|-------------|
 | `performanceMode` | `true`/`false` | `false` | **Minimal performance mode**: disables all features except basic date/time tooltips on files. Disables Git info, auto-updates, status bar, progressive loading, and advanced caching. Recommended for large projects or low-resource systems. |
+| `featureLevel` | `auto`, `full`, `enhanced`, `standard`, `minimal` | `auto` | Progressive tuning that keeps Explorer Dates fast without forcing performance mode. `auto` adapts based on workspace size; `full` keeps every feature enabled; `enhanced` trims background tooltips/Git hits; `standard` prefers lightweight tooltips and trims file-size badges; `minimal` keeps only essentials for massive repos. |
 
 **When to use Performance Mode:**
 - Large projects with thousands of files
@@ -179,6 +241,48 @@ To use custom colors for file decorations:
 ### Memory Management
 
 Explorer Dates is optimized for low memory usage, using smart caching and pooling to keep heap growth minimal. For most users, no configuration is needed.
+
+**Hierarchical Cache Buckets**
+- The in-memory decoration cache now groups entries by parent folder, so a single trim removes entire cold directories instead of churning file-by-file. This keeps lookups O(1) while preventing 150K-file monorepos from fragmenting the cache.
+
+**Viewport-Aware Decorations**
+- Files you are actively viewing get the full experience (Git badges, colors, rich tooltips). Files outside the current viewport fall back to lightweight badges/tooltips so Explorer stays responsive even when VS Code asks for thousands of decorations at once.
+
+**Progressive Feature Levels**
+- The new `featureLevel` setting (default `auto`) chooses between Full → Enhanced → Standard → Minimal profiles based on workspace size. Each profile selectively disables expensive features (e.g., Git blame, rich tooltips, color math) for background files while keeping everything enabled for the files you are actually working on.
+
+**Background Indexer & Web Workers**
+- A cancellable incremental indexer now walks each workspace folder in the background and stores stat metadata. VS Code can request thousands of decorations without hammering the file system because most background requests reuse those cached stats.
+- On VS Code desktop the indexer runs inside a dedicated `worker_threads` helper; on the web build the same logic is executed inside a lightweight WebWorker. Both versions stream delta updates from file watchers so the index stays in sync with your edits within a few hundred milliseconds.
+- Workspace folder changes (adding/removing repos) automatically restart the indexer, purge orphaned entries, and re-run the large-workspace detector so Explorer Dates keeps the correct scale without manual reloads.
+
+**Automatic Large Workspace Detection**
+- Explorer Dates automatically detects workspaces with **50,000+ files** during startup
+- When detected, you'll receive a prompt with options:
+  - **Enable Performance Mode**: Automatically enables minimal-overhead mode
+  - **Keep Current Settings**: Continue with current configuration
+  - **Don't Ask Again**: Suppress future warnings for this workspace
+- This proactive detection prevents performance issues before they occur
+- Set `explorerDates.forceEnableForLargeWorkspaces: true` to manually suppress the warning
+
+**Adaptive File Watching (New)**
+- Smart watchers analyze your workspace layout and only subscribe to high-signal folders like `src/`, `app/`, `packages/`, etc.
+- Dynamic watchers shadow the directories of files you open or edit and automatically expire after a few idle minutes, so the watcher set always reflects your active working set.
+- Watcher events are automatically throttled (100ms normal, 250ms large workspaces, 600ms extreme/150K+) to avoid thrashing the decoration pipeline.
+- Tune the behavior via:
+  - `explorerDates.smartFileWatching` (toggle adaptive mode, fallback to `**/*` watcher when disabled)
+  - `explorerDates.smartWatcherMaxPatterns` (cap the number of base patterns per workspace folder)
+  - `explorerDates.smartWatcherExtensions` (prioritized file extensions)
+- Large-workspace detection automatically re-calibrates the watcher strategy when a repo crosses the 50K files threshold, so you keep badges without flipping performance mode.
+
+**Activity Tracking Guardrail**
+- Workspace activity tracking now defaults to **3,000 files** and automatically evicts the oldest entries when the cap is exceeded.
+- Adjust via `explorerDates.maxTrackedActivityFiles` (set to `0` to disable tracking entirely; range 500–20,000).
+- Matches your existing exclusion rules, so folders like `node_modules/` or patterns such as `**/*.log` never enter the cache.
+- The activity watcher is disabled automatically on the web build or when the cap is `0`, preventing VS Code idle-memory creep.
+- Hybrid filtering prefers explicit VS Code user events (saves/creates/deletes) and only falls back to the filesystem watcher for files that are currently open or were touched recently, so automated build churn is ignored by default.
+- Tracking is automatically suppressed when `performanceMode` is enabled or `EXPLORER_DATES_LIGHTWEIGHT_MODE=1`, so lightweight profiles stay completely idle.
+- Activity reports now include a source breakdown (user vs watcher) so you can confirm whether entries were driven by real edits or background automation.
 
 **v1.2.5 Memory Enhancements:**
 - **Decoration Pooling**: Reuses `FileDecoration` objects instead of allocating new ones per request (99.9% cache hit rate)
@@ -269,26 +373,42 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.2.5 (Latest)
+### Version 1.3.0 (Latest)
 
-**Memory Optimization Release**
+**Module Federation & Team Configuration Release**
 
-Explorer Dates now includes major memory optimizations through:
+Explorer Dates v1.3.0 introduces a modern module federation architecture with comprehensive team collaboration features:
 
-- **Decoration Pooling**: Reusable `FileDecoration` objects reduce allocation churn by 94-95% in normal workloads
-- **Flyweight Caching**: Efficient string caching for badges and tooltips eliminates per-iteration allocations
-- **Memory Shedding** (Opt-in): Adaptive guardrail monitors heap usage and stretches refresh intervals under memory pressure
-- **Lightweight Mode** (Opt-in): Optional performance-focused profile with 24% memory reduction by disabling Git, colors, accessibility features, decoration pooling, and flyweight caches. Caches are auto-purged every few hundred decorations so Node 18/Ubuntu runners stay under the tightened heap guardrails.
+#### **Architecture Revolution**
+- **Module Federation**: Dynamic chunk loading reduces base bundle from 267KB to ~99KB core + 281KB optional features
+- **Feature Gating**: Disable features you don't use to save bundle size (up to 36% reduction possible)
+- **Cross-Platform Bundles**: Dedicated Node.js and web bundles with platform-specific optimizations
+- **Smart Loading**: Features load only when needed, with graceful fallback when disabled
 
-**Benchmarks:**
-- Extreme stress test (2000 iterations, 0ms delay): **0.53 MB** heap delta (95% improvement from previous 28.68 MB)
-- Production usage (600 iterations, 5ms delay): **4.68 MB** heap delta (no regression)
-- All optimizations come with full test coverage and CI/CD guards
+#### **Team Collaboration & Configuration**
+- **Team Configuration Profiles**: Share standardized Explorer Dates configurations across your team
+- **Conflict Resolution**: Intelligent merge strategies when team configs conflict with user preferences
+- **Configuration Templates**: Built-in presets for different development scenarios (minimal, balanced, enterprise)
+- **Settings Migration**: Automatic migration from legacy settings with intelligent conflict detection
+- **Runtime Optimization**: Suggest optimal configurations based on workspace characteristics
 
-**For Users:**
-- No configuration changes needed; pooling and flyweights are enabled by default and invisible
-- Advanced users can opt into memory shedding (`EXPLORER_DATES_MEMORY_SHEDDING=1`) or lightweight mode for additional savings
-- See [Memory Management](#memory-management) section below for details
+#### **Enhanced Performance & Reliability**
+- **Comprehensive Testing**: 40+ test suites covering feature gating, chunk loading, memory isolation, and edge cases
+- **Memory Optimizations**: Advanced pooling and flyweight caching from v1.2.5 retained and enhanced
+- **Error Resilience**: Graceful handling of missing chunks, corrupted configurations, and network failures
+- **Bundle Verification**: Automated testing ensures all builds are production-ready
+
+#### **Developer Experience**
+- **Configuration Validation**: Real-time validation of all settings with helpful error messages
+- **Preset System**: One-click application of optimized configurations for different use cases
+- **Chunk Status Monitoring**: Visibility into which features are loaded and their impact on bundle size
+- **Advanced Diagnostics**: Enhanced debugging tools for configuration and performance analysis
+
+**Migration Notes:**
+- All existing configurations are automatically migrated
+- New feature flags default to enabled for backward compatibility
+- Teams can disable unused features to optimize bundle size
+- See [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for detailed migration information
 
 ### Version 1.2.2
 

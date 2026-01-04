@@ -29,17 +29,48 @@ const sharedOptions = {
   format: 'cjs',
   minify: production,
   minifyWhitespace: true,
-  minifyIdentifiers: false,
+  minifyIdentifiers: production, // Enable identifier minification in production
   minifySyntax: true,
   sourcemap: !production,
   sourcesContent: false,
   logLevel: 'warning',
-  keepNames: true,
+  keepNames: !production, // Disable keepNames in production for smaller bundles
   treeShaking: true,
   legalComments: 'none',
+  allowOverwrite: true, // Allow overwriting existing files
   drop: production ? ['console', 'debugger'] : [],
+  dropLabels: production ? ['DEV', 'DEBUG', 'TEST'] : [], // Drop labeled development blocks
+  ignoreAnnotations: false, // Respect pure annotations
+  metafile: production, // Generate metafile for analysis
+  mangleProps: production ? /^_/ : undefined, // Mangle private properties in production
+  reserveProps: production ? /^(activate|deactivate|provideFileDecoration|dispose|exports)$/ : undefined,
+  mangleQuoted: production ? true : false, // Also mangle quoted properties
+  pure: production ? [
+    'console.log', 'console.debug', 'console.trace', 'console.info', 
+    'logger.debug', 'logger.trace', 'performance.mark', 'performance.measure'
+  ] : [], // Mark console calls as pure for removal
+  define: production ? {
+    'process.env.NODE_ENV': '"production"',
+    'process.env.DEBUG': 'false',
+    'process.env.DEVELOPMENT': 'false',
+    '__DEV__': 'false',
+    'DEBUG': 'false'
+  } : {
+    'process.env.NODE_ENV': '"development"',
+    '__DEV__': 'true'
+  },
+  // More aggressive tree shaking  
   plugins: [esbuildProblemMatcherPlugin],
-  external: ['vscode']
+  external: [
+    'vscode', // VS Code API
+    'fs', 'path', 'util', 'child_process', 'os', 'crypto', 'stream', 'events', // Node.js modules
+    'worker_threads', 'cluster', 'net', 'http', 'https', 'url', 'querystring', // Additional Node.js modules
+    './chunks/onboarding-chunk', './chunks/reporting-chunk', './chunks/templates-chunk',
+    './chunks/analysis-chunk', './chunks/advancedCache-chunk', './chunks/batchProcessor-chunk',
+    './chunks/workspaceIntelligence', './chunks/extension-api-chunk', './chunks/ui-adapters',
+    './chunks/gitInsights-chunk', './chunks/incrementalWorkers', './chunks/smartWatcherFallback-chunk',
+    './chunks/diagnostics-chunk' // Mark chunks as external to prevent double bundling
+  ]
 };
 
 const builds = [
@@ -70,8 +101,29 @@ async function buildAll() {
     const contexts = await Promise.all(builds.map(config => esbuild.context(config)));
     await Promise.all(contexts.map(ctx => ctx.watch()));
   } else {
+    // Build main bundles
     for (const config of builds) {
-      await esbuild.build(config);
+      const result = await esbuild.build(config);
+      
+      // Report bundle size
+      if (production) {
+        try {
+          const fs = require('fs');
+          const stats = fs.statSync(config.outfile);
+          const sizeKB = Math.round(stats.size / 1024);
+          console.log(`📦 ${config.outfile}: ${sizeKB}KB`);
+          
+          if (result.metafile) {
+            // Basic analysis without full output
+            const analysis = await esbuild.analyzeMetafile(result.metafile, { verbose: false });
+            const lines = analysis.split('\n').slice(0, 10); // Only show top 10 lines
+            console.log(`📊 Top imports for ${config.outfile}:`);
+            lines.forEach(line => line.trim() && console.log(`  ${line}`));
+          }
+        } catch {
+          // Silent fallback if analysis fails
+        }
+      }
     }
   }
 }

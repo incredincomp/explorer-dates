@@ -1,6 +1,29 @@
-# Command Palette Reference
+# Explorer Dates v1.3.0 - Command Palette Reference
 
 Use **Ctrl+Shift+P / Cmd+Shift+P** and type the phrases below to access every Explorer Dates command. Each entry matches the title registered in `package.json`.
+
+## 🆕 New Commands in v1.3.0
+
+### Team Configuration
+| Command Palette Entry | Identifier | What it does |
+| --- | --- | --- |
+| `Explorer Dates: Validate Team Configuration` | `explorerDates.validateTeamConfig` | Validates team configuration files and checks for conflicts |
+
+### Bundle Optimization  
+| Command Palette Entry | Identifier | What it does |
+| --- | --- | --- |
+| `Explorer Dates: Show Chunk Status` | `explorerDates.showChunkStatus` | Shows loaded features and their bundle size impact |
+| `Explorer Dates: Optimize Bundle Size` | `explorerDates.optimizeBundle` | Provides personalized bundle optimization recommendations |
+| `Explorer Dates: Apply Configuration Preset` | `explorerDates.applyPreset` | Applies built-in presets (minimal, balanced, enterprise, etc.) |
+| `Explorer Dates: Suggest Optimal Configuration` | `explorerDates.suggestOptimalPreset` | AI-powered configuration suggestions based on usage patterns |
+| `Explorer Dates: Configure Runtime Chunks` | `explorerDates.configureRuntime` | Advanced chunk loading configuration |
+
+### Enhanced Configuration
+| Command Palette Entry | Identifier | What it does |
+| --- | --- | --- |
+| `Explorer Dates: Validate Configuration` | `explorerDates.validateConfiguration` | Comprehensive configuration validation with detailed errors |
+| `Explorer Dates: Preview Configuration` | `explorerDates.previewConfiguration` | Preview configuration changes before applying |
+| `Explorer Dates: Clear Configuration Preview` | `explorerDates.clearPreview` | Exit configuration preview mode |
 
 ## Everyday Commands
 

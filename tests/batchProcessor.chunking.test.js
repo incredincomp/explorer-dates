@@ -1,142 +1,118 @@
+#!/usr/bin/env node
+
 /**
- * Test suite for BatchProcessor dynamic chunking functionality
+ * BatchProcessor chunking tests executed as a vanilla Node script.
+ * This avoids relying on mocha/jest globals that are not available in CI.
  */
 
 const assert = require('assert');
 const { createMockVscode } = require('./helpers/mockVscode');
 
-// Install VS Code mock before requiring modules that depend on it
 const mockSetup = createMockVscode();
 const vscode = require('vscode');
 const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
-describe('BatchProcessor Dynamic Chunking', function() {
-    let provider;
+async function runTest(name, testFn) {
+    const provider = new FileDateDecorationProvider();
+    try {
+        await testFn(provider);
+        console.log(`✅ ${name}`);
+    } catch (error) {
+        console.error(`❌ ${name}:`, error);
+        mockSetup.dispose();
+        process.exitCode = 1;
+        throw error;
+    } finally {
+        provider.dispose?.();
+    }
+}
 
-    beforeEach(function() {
-        provider = new FileDateDecorationProvider();
-    });
-
-    afterEach(function() {
-        if (provider && typeof provider.dispose === 'function') {
-            provider.dispose();
+async function testProgressiveLoadingDisabled() {
+    await runTest('Does not load BatchProcessor when progressive loading disabled', async provider => {
+        const originalGet = vscode.workspace.getConfiguration;
+        vscode.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => (key === 'progressiveLoading' ? false : defaultValue)
+        });
+        
+        try {
+            await provider._applyProgressiveLoadingSetting();
+            assert.strictEqual(provider._batchProcessor, null);
+            assert.strictEqual(provider._progressiveLoadingEnabled, false);
+        } finally {
+            vscode.workspace.getConfiguration = originalGet;
         }
     });
 
-    describe('Progressive Loading Disabled', function() {
-        it('should not load BatchProcessor when progressive loading is disabled', async function() {
-            // Mock configuration to disable progressive loading
-            const originalGet = vscode.workspace.getConfiguration;
-            vscode.workspace.getConfiguration = () => ({
-                get: (key, defaultValue) => {
-                    if (key === 'progressiveLoading') return false;
-                    return defaultValue;
-                }
-            });
-
+    await runTest('Disposes BatchProcessor when progressive loading toggled off', async provider => {
+        const originalGet = vscode.workspace.getConfiguration;
+        const config = value => () => ({
+            get: (key, defaultValue) => (key === 'progressiveLoading' ? value : defaultValue)
+        });
+        
+        try {
+            vscode.workspace.getConfiguration = config(true);
             await provider._applyProgressiveLoadingSetting();
-
-            // BatchProcessor should not be loaded
+            assert.notStrictEqual(provider._batchProcessor, null);
+            
+            vscode.workspace.getConfiguration = config(false);
+            await provider._applyProgressiveLoadingSetting();
             assert.strictEqual(provider._batchProcessor, null);
             assert.strictEqual(provider._progressiveLoadingEnabled, false);
-
-            // Restore original implementation
+        } finally {
             vscode.workspace.getConfiguration = originalGet;
-        });
-
-        it('should clean up existing BatchProcessor when progressive loading is disabled', async function() {
-            // First, enable progressive loading and load BatchProcessor
-            const originalGet = vscode.workspace.getConfiguration;
-            vscode.workspace.getConfiguration = () => ({
-                get: (key, defaultValue) => {
-                    if (key === 'progressiveLoading') return true;
-                    return defaultValue;
-                }
-            });
-
-            await provider._applyProgressiveLoadingSetting();
-
-            // Should have BatchProcessor loaded
-            assert.notStrictEqual(provider._batchProcessor, null);
-
-            // Now disable progressive loading
-            vscode.workspace.getConfiguration = () => ({
-                get: (key, defaultValue) => {
-                    if (key === 'progressiveLoading') return false;
-                    return defaultValue;
-                }
-            });
-
-            await provider._applyProgressiveLoadingSetting();
-
-            // BatchProcessor should be cleaned up
-            assert.strictEqual(provider._batchProcessor, null);
-            assert.strictEqual(provider._progressiveLoadingEnabled, false);
-
-            // Restore original implementation
-            vscode.workspace.getConfiguration = originalGet;
-        });
+        }
     });
+}
 
-    describe('Performance Mode', function() {
-        it('should not load BatchProcessor in performance mode', async function() {
-            provider._performanceMode = true;
-
-            const result = await provider._loadBatchProcessorIfNeeded();
-
-            assert.strictEqual(result, null);
-            assert.strictEqual(provider._batchProcessor, null);
-        });
+async function testPerformanceMode() {
+    await runTest('Skips BatchProcessor while in performance mode', async provider => {
+        provider._performanceMode = true;
+        const result = await provider._loadBatchProcessorIfNeeded();
+        assert.strictEqual(result, null);
+        assert.strictEqual(provider._batchProcessor, null);
     });
+}
 
-    describe('Dynamic Loading', function() {
-        it('should load BatchProcessor only when needed', async function() {
-            // Initially should be null
-            assert.strictEqual(provider._batchProcessor, null);
-            assert.strictEqual(provider._batchProcessorModule, null);
-
-            // Load BatchProcessor
-            const result = await provider._loadBatchProcessorIfNeeded();
-
-            // Should now have BatchProcessor instance
-            assert.notStrictEqual(result, null);
-            assert.notStrictEqual(provider._batchProcessor, null);
-            assert.notStrictEqual(provider._batchProcessorModule, null);
-        });
-
-        it('should reuse existing BatchProcessor instance', async function() {
-            // Load BatchProcessor first time
-            const firstResult = await provider._loadBatchProcessorIfNeeded();
-            const firstInstance = provider._batchProcessor;
-
-            // Load BatchProcessor second time
-            const secondResult = await provider._loadBatchProcessorIfNeeded();
-            const secondInstance = provider._batchProcessor;
-
-            // Should return the same instance
-            assert.strictEqual(firstResult, secondResult);
-            assert.strictEqual(firstInstance, secondInstance);
-        });
+async function testDynamicLoading() {
+    await runTest('Lazily loads BatchProcessor when needed', async provider => {
+        assert.strictEqual(provider._batchProcessor, null);
+        assert.strictEqual(provider._batchProcessorModule, null);
+        
+        const result = await provider._loadBatchProcessorIfNeeded();
+        assert.notStrictEqual(result, null);
+        assert.notStrictEqual(provider._batchProcessor, null);
+        assert.notStrictEqual(provider._batchProcessorModule, null);
     });
-
-    describe('Bundle Size Benefits', function() {
-        it('should verify BatchProcessor is not in base bundle when disabled', function() {
-            // This test verifies that when progressive loading is disabled,
-            // the BatchProcessor code should not be included in the initial bundle load
-            
-            // In a real scenario, this would be tested by checking that:
-            // 1. The base bundle size is smaller when BatchProcessor is not loaded
-            // 2. The BatchProcessor chunk is only loaded when progressiveLoading=true
-            
-            // For this unit test, we verify the lazy loading behavior
-            assert.strictEqual(provider._batchProcessor, null, 
-                'BatchProcessor should not be loaded initially');
-            assert.strictEqual(provider._batchProcessorModule, null, 
-                'BatchProcessor module should not be loaded initially');
-        });
+    
+    await runTest('Reuses existing BatchProcessor instance', async provider => {
+        const first = await provider._loadBatchProcessorIfNeeded();
+        const second = await provider._loadBatchProcessorIfNeeded();
+        assert.strictEqual(first, second);
+        assert.strictEqual(provider._batchProcessor, first);
     });
+}
 
-    after(function() {
+async function testBundleSizeBenefits() {
+    await runTest('BatchProcessor excluded from base bundle until needed', async provider => {
+        assert.strictEqual(provider._batchProcessor, null);
+        assert.strictEqual(provider._batchProcessorModule, null);
+    });
+}
+
+async function main() {
+    try {
+        await testProgressiveLoadingDisabled();
+        await testPerformanceMode();
+        await testDynamicLoading();
+        await testBundleSizeBenefits();
+        console.log('🎯 BatchProcessor chunking tests completed');
+    } catch {
+        // runTest already sets exit code/logs
+    } finally {
         mockSetup.dispose();
-    });
-});
+    }
+}
+
+if (require.main === module) {
+    main();
+}

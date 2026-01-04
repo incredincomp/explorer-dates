@@ -5,13 +5,16 @@ const Module = require('module');
 
 const FORCE_WORKSPACE_FS_ENV = 'EXPLORER_DATES_FORCE_VSCODE_FS';
 const TEST_MODE_ENV = 'EXPLORER_DATES_TEST_MODE';
+const CHUNK_TIMEOUT_ENV = 'EXPLORER_DATES_CHUNK_TIMEOUT';
+const GLOBAL_VSCODE_SYMBOL = '__explorerDatesVscode';
 const originalModuleLoad = Module._load;
 let sharedVscodeMock = null;
 let hookInstalled = false;
 let activeMockUsers = 0;
 const originalEnvSnapshot = {
     [FORCE_WORKSPACE_FS_ENV]: process.env[FORCE_WORKSPACE_FS_ENV],
-    [TEST_MODE_ENV]: process.env[TEST_MODE_ENV]
+    [TEST_MODE_ENV]: process.env[TEST_MODE_ENV],
+    [CHUNK_TIMEOUT_ENV]: process.env[CHUNK_TIMEOUT_ENV]
 };
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
@@ -158,79 +161,135 @@ function createDefaultConfig(customValues = {}) {
     };
 }
 
-function createConfiguration(configValues, appliedUpdates) {
+function createConfiguration(
+    configValues,
+    appliedUpdates,
+    workspaceConfigValues = {},
+    workspaceFolderConfigValues = {}
+) {
+    const hasOwn = (store, key) => Object.prototype.hasOwnProperty.call(store, key);
+    const getValue = (fullKey, defaultValue) => {
+        if (hasOwn(workspaceFolderConfigValues, fullKey)) {
+            return workspaceFolderConfigValues[fullKey];
+        }
+        if (hasOwn(workspaceConfigValues, fullKey)) {
+            return workspaceConfigValues[fullKey];
+        }
+        if (hasOwn(configValues, fullKey)) {
+            return configValues[fullKey];
+        }
+        return defaultValue;
+    };
+    const setValue = (store, key, value) => {
+        if (value === undefined) {
+            delete store[key];
+        } else {
+            store[key] = value;
+        }
+    };
+    const interpretTarget = (target) => {
+        if (target === 2 || target === 'workspace') {
+            return 'workspace';
+        }
+        if (target === 3 || target === 'workspaceFolder') {
+            return 'workspaceFolder';
+        }
+        return 'global';
+    };
+    const applyUpdate = (fullKey, value, targetLabel) => {
+        if (targetLabel === 'workspaceFolder') {
+            setValue(workspaceFolderConfigValues, fullKey, value);
+        } else if (targetLabel === 'workspace') {
+            setValue(workspaceConfigValues, fullKey, value);
+        } else {
+            setValue(configValues, fullKey, value);
+        }
+        appliedUpdates.push({ key: fullKey, value, target: targetLabel });
+    };
+
     return function getConfiguration(section, _scope) {
         if (!section) {
             return {
                 get(key, defaultValue) {
-                    return configValues[key] ?? defaultValue;
+                    return getValue(key, defaultValue);
                 },
                 inspect(key) {
-                    // Mock VS Code's configuration inspection API
-                    const value = configValues[key];
-                    const hasWorkspaceValue = configValues.hasOwnProperty(key);
-                    const hasGlobalValue = false; // Simplified for testing
-                    
+                    const globalValue = hasOwn(configValues, key) ? configValues[key] : undefined;
+                    const workspaceValue = hasOwn(workspaceConfigValues, key)
+                        ? workspaceConfigValues[key]
+                        : undefined;
+                    const workspaceFolderValue = hasOwn(workspaceFolderConfigValues, key)
+                        ? workspaceFolderConfigValues[key]
+                        : undefined;
+
                     return {
-                        key: key,
+                        key,
                         defaultValue: PACKAGE_DEFAULTS[key],
-                        globalValue: hasGlobalValue ? value : undefined,
-                        workspaceValue: hasWorkspaceValue ? value : undefined,
-                        workspaceFolderValue: undefined
+                        globalValue,
+                        workspaceValue,
+                        workspaceFolderValue
                     };
                 },
-                async update(key, value) {
-                    configValues[key] = value;
-                    appliedUpdates.push({ key, value });
+                async update(key, value, target) {
+                    const targetLabel = interpretTarget(target);
+                    applyUpdate(key, value, targetLabel);
                 }
             };
         }
 
-        if (section === 'explorerDates') {
-            return {
-                inspect() {
-                    const inspected = {};
-                    for (const [fullKey, value] of Object.entries(configValues)) {
-                        if (fullKey.startsWith('explorerDates.')) {
-                            const trimmed = fullKey.replace('explorerDates.', '');
-                            inspected[trimmed] = { workspaceValue: value };
-                        }
-                    }
-                    return inspected;
-                },
-                get(key, defaultValue) {
-                    const fullKey = `explorerDates.${key}`;
-                    return Object.prototype.hasOwnProperty.call(configValues, fullKey)
-                        ? configValues[fullKey]
-                        : defaultValue;
-                },
-                has(key) {
-                    const fullKey = `explorerDates.${key}`;
-                    return Object.prototype.hasOwnProperty.call(configValues, fullKey);
-                },
-                async update(key, value) {
-                    const fullKey = `explorerDates.${key}`;
-                    configValues[fullKey] = value;
-                    appliedUpdates.push({ key: fullKey, value });
-                }
-            };
-        }
+        const buildSectionKey = (key) => (section ? `${section}.${key}` : key);
 
         return {
+            inspect(key) {
+                if (section === 'explorerDates') {
+                    const fullKey = `explorerDates.${key}`;
+                    const globalValue = hasOwn(configValues, fullKey) ? configValues[fullKey] : undefined;
+                    const workspaceValue = hasOwn(workspaceConfigValues, fullKey)
+                        ? workspaceConfigValues[fullKey]
+                        : undefined;
+                    const workspaceFolderValue = hasOwn(workspaceFolderConfigValues, fullKey)
+                        ? workspaceFolderConfigValues[fullKey]
+                        : undefined;
+                    return {
+                        key: fullKey,
+                        defaultValue: PACKAGE_DEFAULTS[fullKey],
+                        globalValue,
+                        workspaceValue,
+                        workspaceFolderValue
+                    };
+                }
+                const fullKey = buildSectionKey(key);
+                const globalValue = hasOwn(configValues, fullKey) ? configValues[fullKey] : undefined;
+                const workspaceValue = hasOwn(workspaceConfigValues, fullKey)
+                    ? workspaceConfigValues[fullKey]
+                    : undefined;
+                const workspaceFolderValue = hasOwn(workspaceFolderConfigValues, fullKey)
+                    ? workspaceFolderConfigValues[fullKey]
+                    : undefined;
+                return {
+                    key: fullKey,
+                    defaultValue: undefined,
+                    globalValue,
+                    workspaceValue,
+                    workspaceFolderValue
+                };
+            },
             get(key, defaultValue) {
-                const fullKey = `${section}.${key}`;
-                return Object.prototype.hasOwnProperty.call(configValues, fullKey)
-                    ? configValues[fullKey]
-                    : defaultValue;
+                const fullKey = buildSectionKey(key);
+                return getValue(fullKey, defaultValue);
             },
             has(key) {
-                const fullKey = `${section}.${key}`;
-                return Object.prototype.hasOwnProperty.call(configValues, fullKey);
+                const fullKey = buildSectionKey(key);
+                return (
+                    hasOwn(configValues, fullKey) ||
+                    hasOwn(workspaceConfigValues, fullKey) ||
+                    hasOwn(workspaceFolderConfigValues, fullKey)
+                );
             },
-            async update(key, value) {
-                const fullKey = `${section}.${key}`;
-                configValues[fullKey] = value;
-                appliedUpdates.push({ key: fullKey, value });
+            async update(key, value, target) {
+                const fullKey = buildSectionKey(key);
+                const targetLabel = interpretTarget(target);
+                applyUpdate(fullKey, value, targetLabel);
             }
         };
     };
@@ -531,6 +590,20 @@ function createMockVscode(options = {}) {
     
     // Process explorerDates configuration from options
     const configValues = createDefaultConfig(options.config || {});
+    const workspaceConfigValues = {};
+    if (options.workspaceConfig) {
+        for (const [key, value] of Object.entries(options.workspaceConfig)) {
+            const normalizedKey = key.includes('.') ? key : `explorerDates.${key}`;
+            workspaceConfigValues[normalizedKey] = value;
+        }
+    }
+    const workspaceFolderConfigValues = {};
+    if (options.workspaceFolderConfig) {
+        for (const [key, value] of Object.entries(options.workspaceFolderConfig)) {
+            const normalizedKey = key.includes('.') ? key : `explorerDates.${key}`;
+            workspaceFolderConfigValues[normalizedKey] = value;
+        }
+    }
     if (options.explorerDates) {
         for (const [key, value] of Object.entries(options.explorerDates)) {
             configValues[`explorerDates.${key}`] = value;
@@ -588,14 +661,20 @@ function createMockVscode(options = {}) {
         }
     };
 
-    const configuration = createConfiguration(configValues, appliedUpdates);
+    const configuration = createConfiguration(
+        configValues,
+        appliedUpdates,
+        workspaceConfigValues,
+        workspaceFolderConfigValues
+    );
 
     const registeredProviders = [];
 
     const mock = {
         ConfigurationTarget: {
             Global: 1,
-            Workspace: 2
+            Workspace: 2,
+            WorkspaceFolder: 3
         },
         StatusBarAlignment: {
             Left: 1,
@@ -686,7 +765,7 @@ function createMockVscode(options = {}) {
         },
         window: {
             activeColorTheme: {
-                kind: 2
+                kind: options.themeKind || 2
             },
             activeTextEditor: null,
             onDidChangeActiveColorTheme() {
@@ -889,6 +968,20 @@ function createMockVscode(options = {}) {
 
     mock.workspace.fs = createFileSystemApi(mock, { mockDirectoryContents });
 
+    // Theme change helpers so tests can simulate VS Code notifications
+    const themeEmitter = new mock.EventEmitter();
+    mock.window.onDidChangeActiveColorTheme = themeEmitter.event;
+    mock.fireThemeChange = (kind = mock.window.activeColorTheme.kind) => {
+        if (typeof kind === 'number') {
+            mock.window.activeColorTheme.kind = kind;
+        } else if (kind && typeof kind.kind === 'number') {
+            mock.window.activeColorTheme.kind = kind.kind;
+        }
+        themeEmitter.fire({ kind: mock.window.activeColorTheme.kind });
+    };
+    const fireThemeChange = mock.fireThemeChange;
+    mock.getThemeListenerCount = () => themeEmitter._listeners.size;
+
     function resetLogs() {
         infoLog.length = 0;
         errorLog.length = 0;
@@ -952,10 +1045,20 @@ function createMockVscode(options = {}) {
         }
         actualVscodeMock = sharedVscodeMock;
     }
+    try {
+        globalThis[GLOBAL_VSCODE_SYMBOL] = actualVscodeMock;
+    } catch {
+        // ignore if global scope unavailable
+    }
     activeMockUsers++;
 
     process.env[FORCE_WORKSPACE_FS_ENV] = '1';
     process.env[TEST_MODE_ENV] = '1';
+    if (Object.prototype.hasOwnProperty.call(options, 'chunkTimeout')) {
+        process.env[CHUNK_TIMEOUT_ENV] = String(options.chunkTimeout);
+    } else if (!process.env[CHUNK_TIMEOUT_ENV]) {
+        process.env[CHUNK_TIMEOUT_ENV] = '15000';
+    }
 
     const dispose = () => {
         activeMockUsers = Math.max(0, activeMockUsers - 1);
@@ -966,6 +1069,11 @@ function createMockVscode(options = {}) {
         }
         
         if (activeMockUsers === 0) {
+            try {
+                delete globalThis[GLOBAL_VSCODE_SYMBOL];
+            } catch {
+                // ignore
+            }
             if (originalEnvSnapshot[FORCE_WORKSPACE_FS_ENV] === undefined) {
                 delete process.env[FORCE_WORKSPACE_FS_ENV];
             } else {
@@ -978,6 +1086,12 @@ function createMockVscode(options = {}) {
                 process.env[TEST_MODE_ENV] = originalEnvSnapshot[TEST_MODE_ENV];
             }
 
+            if (originalEnvSnapshot[CHUNK_TIMEOUT_ENV] === undefined) {
+                delete process.env[CHUNK_TIMEOUT_ENV];
+            } else {
+                process.env[CHUNK_TIMEOUT_ENV] = originalEnvSnapshot[CHUNK_TIMEOUT_ENV];
+            }
+
             uninstallModuleHook();
         }
     };
@@ -988,6 +1102,8 @@ function createMockVscode(options = {}) {
         errorLog,
         appliedUpdates,
         configValues,
+        workspaceConfigValues,
+        workspaceFolderConfigValues,
         contexts,
         commandRegistry,
         sampleWorkspace,
@@ -998,6 +1114,8 @@ function createMockVscode(options = {}) {
         triggerWorkspaceFoldersChange,
         addWorkspaceFolder,
         removeWorkspaceFolder,
+        fireThemeChange,
+        getThemeListenerCount: () => (actualVscodeMock.getThemeListenerCount ? actualVscodeMock.getThemeListenerCount() : 0),
         InMemoryMemento,
         VSCodeUri,
         dispose
@@ -1090,6 +1208,42 @@ function loadChunkForTesting(chunkName, options = {}) {
     }
 }
 
+const CHUNK_BUILD_DIRS = {
+    node: ['dist', 'chunks'],
+    web: ['dist', 'web-chunks']
+};
+
+function getBuiltChunkPath(chunkName, target = 'node') {
+    const dirSegments = CHUNK_BUILD_DIRS[target];
+    if (!dirSegments) {
+        throw new Error(`Unknown chunk target: ${target}`);
+    }
+    return path.join(workspaceRoot, ...dirSegments, `${chunkName}.js`);
+}
+
+function loadBuiltChunkForTesting(chunkName, options = {}) {
+    const { target = 'node', suppressLoadErrors = true } = options;
+    const chunkPath = getBuiltChunkPath(chunkName, target);
+    const originalWebFlag = process.env.VSCODE_WEB;
+    if (target === 'web') {
+        process.env.VSCODE_WEB = 'true';
+    }
+    try {
+        delete require.cache[chunkPath];
+        return require(chunkPath);
+    } catch (error) {
+        if (!suppressLoadErrors) {
+            throw error;
+        }
+        console.warn(`Failed to load ${target} chunk ${chunkName}:`, error.message);
+        return null;
+    } finally {
+        if (target === 'web') {
+            process.env.VSCODE_WEB = originalWebFlag;
+        }
+    }
+}
+
 function validateAllChunks() {
     const { CHUNK_MAP } = require('../../src/shared/chunkMap');
     const results = {
@@ -1116,7 +1270,36 @@ function validateAllChunks() {
             results.errors[chunkName] = error.message;
         }
     }
-    
+
+    return results;
+}
+
+function validateBuiltChunks(target = 'node') {
+    const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+    const chunkNames = Object.keys(CHUNK_MAP);
+    const results = {
+        target,
+        success: true,
+        loadedCount: 0,
+        totalCount: chunkNames.length,
+        errors: {}
+    };
+
+    for (const chunkName of chunkNames) {
+        try {
+            const chunk = loadBuiltChunkForTesting(chunkName, { target, suppressLoadErrors: false });
+            if (chunk) {
+                results.loadedCount++;
+            } else {
+                results.success = false;
+                results.errors[chunkName] = 'Failed to load (returned null)';
+            }
+        } catch (error) {
+            results.success = false;
+            results.errors[chunkName] = error.message;
+        }
+    }
+
     return results;
 }
 
@@ -1151,7 +1334,9 @@ module.exports = {
     workspaceRoot,
     // Chunk testing utilities
     loadChunkForTesting,
+    loadBuiltChunkForTesting,
     validateAllChunks,
+    validateBuiltChunks,
     loadAllChunksForTesting,
     getAllChunkNames,
     // Enhanced isolation utilities  

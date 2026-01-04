@@ -5,7 +5,12 @@ function registerOnboardingCommands({ context, logger, getOnboardingManager }) {
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showFeatureTour', async () => {
         try {
-            await getOnboardingManager().showFeatureTour();
+            const manager = await getOnboardingManager();
+            if (!manager) {
+                vscode.window.showWarningMessage('Onboarding system unavailable.');
+                return;
+            }
+            await manager.showFeatureTour();
             logger.info('Feature tour opened');
         } catch (error) {
             logger.error('Failed to show feature tour', error);
@@ -15,7 +20,12 @@ function registerOnboardingCommands({ context, logger, getOnboardingManager }) {
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showQuickSetup', async () => {
         try {
-            await getOnboardingManager().showQuickSetupWizard();
+            const manager = await getOnboardingManager();
+            if (!manager) {
+                vscode.window.showWarningMessage('Onboarding system unavailable.');
+                return;
+            }
+            await manager.showQuickSetupWizard();
             logger.info('Quick setup wizard opened');
         } catch (error) {
             logger.error('Failed to show quick setup wizard', error);
@@ -25,8 +35,13 @@ function registerOnboardingCommands({ context, logger, getOnboardingManager }) {
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showWhatsNew', async () => {
         try {
+            const manager = await getOnboardingManager();
+            if (!manager) {
+                vscode.window.showWarningMessage('Onboarding system unavailable.');
+                return;
+            }
             const extensionVersion = context.extension.packageJSON.version;
-            await getOnboardingManager().showWhatsNew(extensionVersion);
+            await manager.showWhatsNew(extensionVersion);
             logger.info('What\'s new panel opened');
         } catch (error) {
             logger.error('Failed to show what\'s new', error);

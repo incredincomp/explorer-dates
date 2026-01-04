@@ -4,246 +4,513 @@ This document provides AI coding agents with essential context for working on th
 
 ## Extension Overview
 
-Explorer Dates is a VS Code extension that displays file modification timestamps as badges in the Explorer view using VS Code's native `FileDecorationProvider` API. The extension emphasizes performance, user experience, and proper integration with VS Code's theming system.
+Explorer Dates is a VS Code extension that displays file modification timestamps as badges in the Explorer view using VS Code's native `FileDecorationProvider` API. The extension uses **module federation architecture** with feature flags for optimal bundle sizing and performance.
 
 ## Core Architecture Patterns
 
-### FileDecorationProvider Pattern
+### Module Federation & Feature Flags System
+- **Primary Pattern**: Chunks loaded dynamically based on feature flags in `src/featureFlags.js`
+- **Build Strategy**: `esbuild-federation.js` creates separate chunks, `esbuild.js` creates main bundle
+- **Feature Loading**: Uses `loadFeatureModule()` pattern to lazy-load components
+- **API Export**: Maintains synchronous compatibility with `context.exports = apiFactory` (function, not call result)
+
+```javascript
+// Feature flag pattern used throughout
+const featureFlags = require('./src/featureFlags');
+const chunk = await featureFlags.exportReporting(); // Returns module or null
+```
+
+### FileDecorationProvider Pattern  
 - **Primary Class**: `FileDateDecorationProvider` in `src/fileDateDecorationProvider.js`
 - **Key Constraint**: VS Code limits file decoration badges to 2 characters maximum
 - **Core Method**: `provideFileDecoration(uri, token)` - returns `vscode.FileDecoration` objects
 - **Event System**: Uses `vscode.EventEmitter` for `onDidChangeFileDecorations` to trigger UI updates
 - **Threading**: All file operations are async/await with cancellation token support
 
-### Multi-Layer Caching Strategy
+### Dynamic Import System
 ```javascript
-// Cache structure used throughout the codebase
-this._decorationCache = new Map(); // filePath -> { decoration, timestamp }
-this._cacheTimeout = 30000; // 30 seconds default
-this._maxCacheSize = 10000; // Maximum entries
+// Standard pattern for chunk loading in extension.js
+const dynamicImports = {
+    async loadAnalysisCommands() {
+        return featureFlags.analysisCommands();
+    },
+    async loadExportReporting(context) {
+        const chunk = await featureFlags.exportReporting();
+        return chunk?.createExportReportingManager?.(context) || null;
+    }
+};
 ```
 
-**Cache Management Patterns:**
-- Cache keys are always `uri.fsPath` (absolute file paths)
-- Cache entries include timestamp for expiration checking
-- `_manageCacheSize()` method prevents memory leaks
-- Preview mode bypasses cache entirely for live updates
+### Advanced Chunk Loading Patterns
 
-### Component Initialization Pattern
+#### Conditional Chunk Loading with Graceful Degradation
 ```javascript
-// Standard initialization in extension.js
-const provider = new FileDateDecorationProvider();
-const disposable = vscode.window.registerFileDecorationProvider(provider);
-context.subscriptions.push(disposable);
-context.subscriptions.push(provider); // Important: dispose the provider too
+// Pattern from FileDateDecorationProvider.initializeAdvancedSystems()
+async initializeAdvancedSystems(context) {
+    const AdvancedCacheModule = await featureFlags.advancedCache();
+    if (AdvancedCacheModule) {
+        const { AdvancedCache } = AdvancedCacheModule;
+        this._advancedCache = new AdvancedCache(context);
+        await this._advancedCache.initialize();
+    } else {
+        this._logger.info('Advanced cache disabled by feature flag');
+        this._advancedCache = null; // Graceful fallback
+    }
+}
+```
+
+#### Factory Pattern for Chunk Managers
+```javascript
+// Pattern from extension.js dynamic imports
+function ensureOnboardingManager(context) {
+    if (!onboardingManagerPromise) {
+        onboardingManagerPromise = dynamicImports.loadOnboarding(context);
+    }
+    return onboardingManagerPromise; // Singleton pattern with lazy loading
+}
+
+// Usage with error handling
+try {
+    const onboardingManager = await ensureOnboardingManager(context);
+    if (onboardingManager && await onboardingManager.shouldShowOnboarding()) {
+        setTimeout(() => onboardingManager.showWelcomeMessage(), 5000);
+    }
+} catch (error) {
+    logger.warn('Onboarding system unavailable:', error.message);
+}
+```
+
+#### Lazy Command Registration Pattern
+```javascript
+// Pattern for deferred command registration based on chunks
+const registerAnalysisCommandsLazy = async () => {
+    const analysisCommands = await dynamicImports.loadAnalysisCommands();
+    if (!analysisCommands) {
+        vscode.window.showWarningMessage('Analysis commands unavailable.');
+        return null;
+    }
+    return analysisCommands.registerAnalysisCommands({
+        context, fileDateProvider, logger, chunkLoader
+    });
+};
+
+// Registration only happens when feature is enabled
+if (featureConfig.get('enableAnalysisCommands', true)) {
+    await registerAnalysisCommandsLazy();
+}
+```
+
+### Settings Migration Pattern
+```javascript
+// Migration function for backward compatibility (extension.js)
+async function migrateReportingSettings() {
+    const config = vscode.workspace.getConfiguration('explorerDates');
+    const legacy = config.inspect('enableReporting');
+    const current = config.inspect('enableExportReporting');
+    
+    if (legacy?.workspaceValue !== undefined && current?.workspaceValue === undefined) {
+        await config.update('enableExportReporting', legacy.workspaceValue, 
+                          vscode.ConfigurationTarget.Workspace);
+    }
+}
 ```
 
 ## Key Development Patterns
 
-### Configuration Watching
+### Chunk Registration Pattern
 ```javascript
-// Pattern used in FileDateDecorationProvider
-_setupConfigurationWatcher() {
-    vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('explorerDates')) {
-            // Update internal settings
-            // Call this.refreshAll() if UI-affecting changes
-        }
-    });
+// Registration happens during activation when feature enabled
+const analysisEnabled = featureConfig.get('enableAnalysisCommands', true);
+if (analysisEnabled) {
+    await registerAnalysisCommandsLazy();
 }
 ```
 
-### File System Watching
+### Service Singleton Pattern  
 ```javascript
-// Pattern for responsive decoration updates
-_setupFileWatcher() {
-    const watcher = vscode.workspace.createFileSystemWatcher('**/*');
-    watcher.onDidChange((uri) => this.refreshDecoration(uri));
-    watcher.onDidCreate((uri) => this.refreshDecoration(uri));
-    watcher.onDidDelete((uri) => this.clearDecoration(uri));
-}
-```
-
-### Error Handling Strategy
-- Silent failures for inaccessible files (return `undefined`)
-- Detailed logging for debugging with `this._logger.error()`
-- Performance metrics tracking in `this._metrics` object
-- Graceful degradation when Git integration fails
-
-### Badge Priority System
-The extension implements a `badgePriority` setting with these options:
-- `'time'` (default): Show modification timestamp
-- `'author'`: Show author initials from Git blame
-- `'size'`: Show file size indicators
-
-Pattern for badge generation:
-```javascript
-// In _formatDateBadge() method
-if (badgePriority === 'author' && gitBlame?.authorInitials) {
-    badge = gitBlame.authorInitials; // Max 2 chars
-} else if (badgePriority === 'size') {
-    badge = this._formatSizeBadge(stat.size);
-} else {
-    badge = this._formatDateBadge(mtime, format, timestampFormat);
-}
-```
-
-## Theme Integration Patterns
-
-### Selection-Aware Colors
-The extension enhances visibility when files are selected in Explorer:
-```javascript
-// In themeIntegration.js
-const isHighlighted = config.get('enhanceSelectionVisibility', true);
-if (isHighlighted) {
-    // Use list.highlightForeground, list.warningForeground for contrast
-    decoration.color = new vscode.ThemeColor('list.highlightForeground');
-}
-```
-
-### Color Coding System
-```javascript
-// Time-based color coding in _getColorByRecency()
-if (diffHours < 1) return new vscode.ThemeColor('charts.green');
-if (diffHours < 24) return new vscode.ThemeColor('charts.yellow');
-return new vscode.ThemeColor('charts.red');
-```
-
-## Bundle Configuration
-
-The extension uses esbuild for production bundling:
-
-**Entry Points:**
-- Source: `extension.js` (JavaScript entry point)
-- Bundled: `./dist/extension.js` (referenced in package.json)
-
-**Build Commands:**
-```bash
-npm run compile       # Development build via esbuild.js
-npm run package-bundle # Production build, minified via esbuild.js --production
-npm run watch         # Development watch mode via esbuild.js --watch
-```
-
-**esbuild Configuration:**
-- Uses `esbuild.js` script with custom problem matcher plugin
-- Bundles CommonJS modules for Node.js platform
-- Excludes `vscode` module as external dependency
-- **Important**: The `main` field in package.json points to `./dist/extension.js` for bundled distribution.
-
-## Component Architecture
-
-### Modular Service Pattern
-```javascript
-// Services are imported as singletons
-const { getLogger } = require('./src/logger');
-const { getLocalization } = require('./src/localization');
+// Services are imported as singletons from utils/
+const { getLogger } = require('./src/utils/logger');
+const { getLocalization } = require('./src/utils/localization');
 
 // Initialize in constructor
 this._logger = getLogger();
 this._l10n = getLocalization();
 ```
 
-### Command Registration Pattern
-```javascript
-// Standard command registration in extension.js activate()
-const commandName = vscode.commands.registerCommand('explorerDates.commandName', (args) => {
-    // Command implementation
-});
-context.subscriptions.push(commandName);
+### Error Handling Strategy
+- **Chunk Loading**: Silent failures with null returns, graceful degradation
+- **File Operations**: Return `undefined` for inaccessible files, detailed logging
+- **API Calls**: Wrap async operations in try/catch with logger.error()
+
+## Bundle & Build Architecture
+
+### Multi-Target Build System
+```bash
+npm run compile           # Development build (esbuild.js)
+npm run package-bundle    # Production: core + chunks (sequential)
+npm run package:core      # Main extension bundle only  
+npm run package-chunks    # Module federation chunks only
+npm run watch            # Development watch mode
 ```
 
-### Accessibility Integration
-- `AccessibilityManager` detects screen readers and adjusts tooltip behavior
-- Rich tooltips disabled in high contrast mode to prevent visual conflicts
-- Enhanced tooltips with emoji formatting when accessibility permits
+### Bundle Structure
+- **Main Bundle**: `dist/extension.js` (~99KB) - core functionality only
+- **Web Bundle**: `dist/extension.web.js` - browser-compatible version
+- **Federation Chunks**: `dist/chunks/*.js` (~281KB total) - optional features
+- **External Dependencies**: Chunks marked as external in esbuild config
 
-### Onboarding System
-- WebviewPanel-based setup wizard with live preview functionality
-- Preview commands: `explorerDates.previewConfiguration` and `explorerDates.clearPreview`
-- Simplified preset system (3 presets) to avoid overwhelming users
-- Gentle notifications for existing users during updates
+## Web vs Node.js Bundle Patterns
 
-## Performance Considerations
+### Platform Detection & Adaptation
+```javascript
+// Pattern used throughout extension.js and FileDateDecorationProvider
+const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+const isWebEnvironment = typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
 
-### File System Operations
-- Always use `fs.promises` for async file operations
-- Implement cancellation token checking: `if (token?.isCancellationRequested) return;`
-- Cache file stats to avoid repeated disk access
-- Use file system watchers instead of polling
+// Conditional Node.js module loading
+let nodeFs = null;
+let nodePath = null;
+try {
+    nodeFs = require('fs'); // Only available in Node.js
+} catch {
+    nodeFs = null; // Graceful fallback for web
+}
 
-### Memory Management
-- Implement cache size limits with automatic cleanup
-- Clear caches on configuration changes that affect output
-- Dispose of all event listeners and watchers in `dispose()` method
+// Web-specific text decoder fallback
+const webTextDecoder = typeof TextDecoder === 'function' 
+    ? new TextDecoder('utf-8') 
+    : null;
+```
 
-### Git Integration
-- Git blame operations are async and may fail silently
-- Cache Git blame results with file path as key
-- Graceful fallback when Git is unavailable or file is not in repository
+### File System Abstraction
+```javascript
+// Pattern from filesystem/FileSystemAdapter.js
+class FileSystemAdapter {
+    constructor() {
+        this._isWeb = vscode.env.uiKind === vscode.UIKind.Web;
+        this._fs = this._isWeb ? vscode.workspace.fs : require('fs').promises;
+    }
+    
+    async readFile(uri) {
+        if (this._isWeb) {
+            // Use VS Code's virtual file system API
+            const data = await vscode.workspace.fs.readFile(uri);
+            return webTextDecoder ? webTextDecoder.decode(data) : data.toString();
+        } else {
+            // Direct Node.js file system access
+            return await this._fs.readFile(uri.fsPath, 'utf8');
+        }
+    }
+}
+```
 
-## Testing Patterns
+### Git Integration Differences
+```javascript
+// Web environment has limited Git capabilities
+if (isWeb) {
+    await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', false);
+    this._logger.info('Git features disabled in web environment');
+} else {
+    // Full Git blame and author detection available
+    await this._maybeLoadGitInsights();
+}
+```
 
-### Debug Configuration
-- Extension supports VS Code Insiders for testing
-- Comprehensive logging available via "Explorer Dates: Open Logs" command
-- Performance metrics accessible via "Explorer Dates: Show Performance Metrics"
+### Bundle Entry Point Configuration
+```json
+// package.json configuration
+{
+    "main": "./dist/extension.js",      // Node.js entry point
+    "browser": "./dist/extension.web.js" // Web entry point
+}
+```
 
-### Preview System
-- Live preview mode bypasses all caching for immediate feedback
-- Preview settings stored separately from actual configuration
-- Preview commands registered separately to avoid conflicts
+### Build Target Differences
+```javascript
+// esbuild.js configurations
+const builds = [
+    {
+        entryPoints: ['extension.js'],
+        platform: 'node',
+        target: 'node16',
+        outfile: 'dist/extension.js',
+        define: { 'process.env.VSCODE_WEB': '"false"' }
+    },
+    {
+        entryPoints: ['extension.js'], 
+        platform: 'browser',
+        target: 'es2020',
+        outfile: 'dist/extension.web.js',
+        define: { 'process.env.VSCODE_WEB': '"true"' }
+    }
+];
+```
 
-## Common Extension Points
+### Import Resolution Priority
+```javascript
+// Pattern in createDefaultLoader (featureFlags.js)
+// 1. Try chunk resolver (module federation)
+// 2. Fall back to direct require (development)
+if (chunkResolver && typeof chunkResolver === 'function') {
+    const chunk = await chunkResolver(chunkName);
+    if (chunk) return chunk;
+}
+return require(sourcePath);  // Fallback
+```
 
-### Adding New Badge Types
-1. Extend `badgePriority` enum in package.json configuration
-2. Add case in `provideFileDecoration()` method badge generation
-3. Implement helper method following `_formatSizeBadge()` pattern
-4. Ensure 2-character limit compliance
+## Testing & Debug Patterns
 
-### Configuration Changes
-1. Add setting to package.json configuration section
-2. Update configuration watcher in `_setupConfigurationWatcher()`
-3. Add cache invalidation if setting affects display
-4. Update onboarding presets if user-facing
+### Mock System Integration
+- **Test Helper**: `tests/helpers/mockVscode.js` provides comprehensive VS Code API mock
+- **Usage Pattern**: Always call `createMockVscode()` before importing extension modules
+- **Configuration**: Pass test-specific config via `config` or `explorerDates` options
 
-### New Commands
-1. Register in `extension.js` activate() function
-2. Add to package.json contributes.commands section
-3. Follow error handling pattern with try/catch and logging
-4. Add to context.subscriptions for proper disposal
+```javascript
+// Correct test setup pattern
+const { createMockVscode, createExtensionContext } = require('./tests/helpers/mockVscode');
+const mock = createMockVscode({ config: { 'explorerDates.enableApi': true }});
+const { activate } = require('./extension.js'); // Import after mock setup
+```
+
+### Test Command Patterns
+```bash
+npm run test:feature-gates    # Feature flag functionality
+npm run test:verify-bundle    # Bundle integrity verification  
+npm run test:suite           # Full test suite
+npm run test:memory          # Memory leak detection
+```
+
+## Advanced Testing & Debugging Workflows
+
+### Test Environment Setup
+```javascript
+// Critical: Mock must be created BEFORE importing extension modules
+const { createMockVscode, createExtensionContext } = require('./tests/helpers/mockVscode');
+const mock = createMockVscode({
+    config: {
+        'explorerDates.enableExtensionApi': true,
+        'explorerDates.enableExportReporting': false // Test disabled features
+    },
+    sampleWorkspace: '/path/to/test/workspace'
+});
+
+// Import AFTER mock setup to ensure proper module resolution
+const { activate } = require('./extension.js');
+const context = createExtensionContext();
+```
+
+### Feature Flag Testing Scenarios
+```javascript
+// Test pattern for feature-disabled scenarios
+async function testFeatureDisabled() {
+    const mock = createMockVscode({
+        explorerDates: { enableReporting: false }
+    });
+    
+    const { activate } = require('./extension.js');
+    await activate(createExtensionContext());
+    
+    // Verify command throws appropriate error
+    try {
+        await vscode.commands.executeCommand('explorerDates.generateReport');
+        throw new Error('Expected command to fail when feature disabled');
+    } catch (error) {
+        assert(error.message.includes('disabled'), 'Should mention feature is disabled');
+    }
+    
+    mock.dispose(); // Always cleanup
+}
+```
+
+### Memory Leak Testing Pattern
+```bash
+# Run with garbage collection exposure for memory testing
+node --expose-gc tests/test-memory-soak.js
+
+# Environment variables for memory testing
+EXPLORER_DATES_MEMORY_SHEDDING=1 \
+EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2 \
+node --expose-gc tests/test-memory-soak.js
+```
+
+### Bundle Analysis Workflow
+```bash
+# 1. Build production bundles
+npm run package-bundle
+
+# 2. Verify bundle sizes and external dependencies
+npm run test:verify-bundle
+
+# 3. Analyze chunk loading in development
+DEBUG_CHUNKS=1 npm run compile
+
+# 4. Test federation loading
+npm run test:chunk-mapping
+```
+
+### Debugging Live Extension Issues
+```javascript
+// Enable detailed logging for specific components
+const logger = require('./src/utils/logger').getLogger();
+logger.setLevel('debug'); // In development console
+
+// Access internal metrics for performance debugging
+vscode.commands.executeCommand('explorerDates.showMetrics');
+
+// Force cache clear for decoration issues
+vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
+
+// Open raw log output for detailed analysis
+vscode.commands.executeCommand('explorerDates.openLogs');
+```
+
+## Configuration & Feature Management
+
+### Unified Settings System
+- **Primary Settings**: Use `enableExportReporting` (consolidated from legacy `enableReporting`)
+- **Migration**: Legacy settings automatically migrated during activation
+- **Feature Gates**: Each major component has corresponding `enable*` setting in package.json
+
+### Configuration Watching
+```javascript
+// Standard pattern for config-aware components
+vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration('explorerDates')) {
+        // Update internal settings, invalidate caches if needed
+        this.refreshAll({ reason: 'configuration-change' });
+    }
+});
+```
 
 ## File Structure Context
 
 ```
+extension.js                    # Main entry, federation orchestration
 src/
-├── fileDateDecorationProvider.js  # Core FileDecorationProvider implementation
-├── logger.js                      # Centralized logging service
-├── localization.js                # i18n support with fallbacks
-├── onboarding.js                  # WebviewPanel-based setup wizard
-├── themeIntegration.js           # VS Code theme color integration
-├── accessibility.js              # Screen reader and contrast support
-├── advancedCache.js              # Enhanced caching strategies
-├── batchProcessor.js             # Batch operation handling
-├── smartExclusion.js             # File exclusion logic
-└── workspaceTemplates.js         # Workspace setup templates
+├── featureFlags.js            # Feature gating & chunk loading
+├── fileDateDecorationProvider.js # Core decoration logic
+├── moduleFederation.js        # Federation configuration
+├── commands/                  # Command implementations by feature
+├── utils/                     # Shared utilities (logger, l10n, etc.)
+├── filesystem/                # Cross-platform file operations
+├── chunks/                    # Chunk source files for federation
+└── workers/                   # Background processing modules
+dist/
+├── extension.js              # Main bundle (~99KB)
+├── extension.web.js          # Web-compatible bundle
+└── chunks/                   # Federation chunks (~281KB total)
 ```
 
-## Dependencies and APIs
+## Common Extension Points
 
-### Required VS Code APIs
-- `vscode.window.registerFileDecorationProvider()` - Core decoration API
-- `vscode.workspace.createFileSystemWatcher()` - File change detection
-- `vscode.workspace.onDidChangeConfiguration()` - Settings monitoring
-- `vscode.commands.registerCommand()` - Command registration
-- `vscode.ThemeColor()` - Theme-aware colors
+### Adding New Commands
+1. Create command in appropriate `src/commands/*.js` file
+2. Register in chunk's command export function
+3. Add to package.json `contributes.commands` 
+4. Ensure proper feature flag gating in registration
 
-### Node.js APIs
-- `fs.promises` for async file operations
-- `path` for cross-platform path handling  
-- `child_process.exec` for Git command execution
-- Standard event patterns with EventEmitter
-- CommonJS module system (`require`/`module.exports`)
-- jsconfig.json for JavaScript IntelliSense with ES2022 target
+### Adding New Chunks
+1. Create source in `src/chunks/` or dedicated module
+2. Add entry in `src/featureFlags.js` feature loading
+3. Configure in `src/moduleFederation.js` if complex
+4. Add feature flag to package.json configuration
 
-This extension represents a modern VS Code extension with proper JavaScript patterns, comprehensive testing, and production-ready bundling using esbuild. Focus on maintaining the existing architectural patterns when making modifications or additions.
+### API Compatibility
+- **Synchronous Export**: Always export function reference, not call result: `context.exports = apiFactory`  
+- **Async Version**: Provide `context.exportsAsync` for future async consumers
+- **Backward Compatibility**: Maintain function signature, cache internally
+
+## Performance Optimization Strategies
+
+### Bundle Size Optimization
+```javascript
+// Calculated savings from feature flags (featureFlags.js)
+function calculateSavings(config) {
+    const baseSize = 267; // Original bundle size in KB
+    let totalSavings = 0;
+    
+    if (!config.enableOnboarding) totalSavings += 34;
+    if (!config.enableExportReporting) totalSavings += 17;
+    if (!config.enableExtensionApi) totalSavings += 15;
+    if (!config.enableWorkspaceTemplates) totalSavings += 14;
+    // Result: ~99KB core + 281KB optional chunks
+}
+```
+
+### Memory Management Patterns
+```javascript
+// Cache size management in FileDateDecorationProvider
+class FileDateDecorationProvider {
+    constructor() {
+        this._decorationCache = new Map();
+        this._maxCacheSize = 10000;
+        this._cacheTimeout = 480000; // 8 minutes
+    }
+    
+    _manageCacheSize() {
+        if (this._decorationCache.size > this._maxCacheSize) {
+            const entries = Array.from(this._decorationCache.entries());
+            const toDelete = entries.slice(0, Math.floor(this._maxCacheSize * 0.2));
+            toDelete.forEach(([key]) => this._decorationCache.delete(key));
+        }
+    }
+}
+```
+
+### Lazy Loading Performance
+```javascript
+// Viewport-based decoration loading
+_shouldProcessInBackground(uri) {
+    const isInViewport = this._isFileInViewport(uri.fsPath);
+    return !isInViewport && this._featureProfile.applyBackgroundLimits;
+}
+
+// Progressive loading for large workspaces  
+if (this._workspaceFileCount > 10000) {
+    this._featureLevel = 'essential'; // Reduced feature set
+    this._logger.info('Large workspace detected, using essential features');
+}
+```
+
+### Background Processing Optimization
+```javascript
+// BatchProcessor pattern for expensive operations
+class BatchProcessor {
+    constructor() {
+        this._queue = [];
+        this._processing = false;
+        this._batchSize = 50;
+    }
+    
+    async processBatch() {
+        if (this._processing) return;
+        this._processing = true;
+        
+        const batch = this._queue.splice(0, this._batchSize);
+        await Promise.all(batch.map(item => this._processItem(item)));
+        
+        this._processing = false;
+        if (this._queue.length > 0) {
+            setTimeout(() => this.processBatch(), 100); // Yield to UI
+        }
+    }
+}
+```
+
+### Smart Exclusion Performance
+```javascript
+// File exclusion patterns to reduce decoration overhead
+const DEFAULT_EXCLUSIONS = [
+    '**/node_modules/**',
+    '**/.git/**', 
+    '**/dist/**',
+    '**/*.min.js'
+];
+
+// Efficient exclusion testing with compiled patterns
+this._compiledExclusions = exclusions.map(pattern => 
+    new RegExp(pattern.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*'))
+);
+```
+
+This extension represents a modern VS Code extension with module federation, feature flags, and production-ready chunking. Always maintain the lazy-loading patterns and ensure feature flags properly gate functionality.

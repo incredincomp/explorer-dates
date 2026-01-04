@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Explorer Dates API</title>
+<style>
+body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background-color:var(--vscode-editor-background);padding:20px;line-height:1.6}
+.header{margin-bottom:30px;padding-bottom:15px;border-bottom:1px solid var(--vscode-panel-border)}
+.api-section{margin-bottom:30px;padding:20px;background-color:var(--vscode-editor-background);border:1px solid var(--vscode-panel-border);border-radius:8px}
+.method{background-color:var(--vscode-textCodeBlock-background);padding:15px;margin:10px 0;border-radius:4px;font-family:monospace}
+.method-name{font-weight:bold;color:var(--vscode-textLink-foreground)}
+.example{background-color:var(--vscode-textCodeBlock-background);padding:15px;margin:10px 0;border-radius:4px;font-family:monospace;border-left:4px solid var(--vscode-charts-blue)}
+code{background-color:var(--vscode-textCodeBlock-background);padding:2px 4px;border-radius:2px;font-family:monospace}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🔌 Explorer Dates Extension API</h1>
+<p>Version: {{VERSION}} | API Version: {{API_VERSION}}</p>
+</div>
+<div class="api-section">
+<h2>📋 Core Functions</h2>
+<div class="method">
+<div class="method-name">getFileDecorations(filePaths: string[])</div>
+<p>Get decoration information for specified files</p>
+</div>
+<div class="method">
+<div class="method-name">refreshDecorations(filePaths?: string[])</div>
+<p>Refresh decorations for all files or specific files</p>
+</div>
+</div>
+<div class="api-section">
+<h2>💡 Usage Example</h2>
+<div class="example">const explorerDatesApi = vscode.extensions.getExtension('your-publisher.explorer-dates')?.exports;<br><br>explorerDatesApi.onDecorationChanged((data) => {<br>&nbsp;&nbsp;console.log('Decorations changed:', data);<br>});</div>
+</div>
+</body>
+</html>

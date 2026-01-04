@@ -4,7 +4,7 @@
   "description": "See file modification dates right in VS Code Explorer with intuitive time badges",
   "publisher": "incredincomp",
   "license": "SEE LICENSE IN LICENSE",
-  "version": "1.2.6",
+  "version": "1.3.0",
   "engines": {
     "vscode": "^1.105.0"
   },
@@ -53,6 +53,31 @@
       {
         "command": "explorerDates.applyCustomColors",
         "title": "Apply Custom Colors",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.migrateSettings",
+        "title": "Migrate Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.validateConfiguration",
+        "title": "Validate Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.cleanLegacySettings",
+        "title": "Clean Legacy Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showMigrationHistory",
+        "title": "Show Migration History",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.exportConfiguration",
+        "title": "Export Configuration",
         "category": "Explorer Dates"
       },
       {
@@ -174,6 +199,41 @@
         "command": "explorerDates.clearPreview",
         "title": "Clear Configuration Preview (Internal)",
         "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.applyPreset",
+        "title": "Apply Configuration Preset",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.configureRuntime",
+        "title": "Configure Runtime Chunks",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.suggestOptimalPreset",
+        "title": "Suggest Optimal Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showChunkStatus",
+        "title": "Show Chunk Status",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.optimizeBundle",
+        "title": "Optimize Bundle Size",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.resetToDefaults",
+        "title": "Reset Settings to Defaults",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.validateTeamConfig",
+        "title": "Validate Team Configuration",
+        "category": "Explorer Dates"
       }
     ],
     "keybindings": [
@@ -264,7 +324,15 @@
       "commandPalette": [
         {
           "command": "explorerDates.showWorkspaceActivity",
-          "when": "workspaceFolderCount > 0"
+          "when": "workspaceFolderCount > 0 && config.explorerDates.enableAnalysisCommands"
+        },
+        {
+          "command": "explorerDates.showPerformanceAnalytics",
+          "when": "workspaceFolderCount > 0 && config.explorerDates.enableAnalysisCommands"
+        },
+        {
+          "command": "explorerDates.debugCache",
+          "when": "config.explorerDates.enableAnalysisCommands"
         },
         {
           "command": "explorerDates.copyFileDate",
@@ -324,6 +392,102 @@
           "type": "boolean",
           "default": false,
           "description": "Enable minimal performance mode: disables all features except basic date/time tooltips on files (no Git info, no auto-updates, no status bar, no progressive loading). Recommended for large projects or low-resource systems.",
+          "scope": "window"
+        },
+        "explorerDates.forceEnableForLargeWorkspaces": {
+          "type": "boolean",
+          "default": false,
+          "description": "Suppress the automatic large workspace warning (50,000+ files). Set to true to keep current settings without being prompted to enable performance mode.",
+          "scope": "window"
+        },
+        "explorerDates.featureLevel": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "full",
+            "enhanced",
+            "standard",
+            "minimal"
+          ],
+          "default": "auto",
+          "description": "Choose how aggressively Explorer Dates optimizes itself. Auto adapts to workspace size; Full keeps every feature enabled, Enhanced/Standard progressively disable costly features, Minimal keeps tooltips lightweight without forcing performanceMode.",
+          "scope": "window"
+        },
+        "explorerDates.smartFileWatching": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use adaptive file watching that focuses on code folders and currently open files. Disable to fall back to VS Code's global watcher.",
+          "scope": "window"
+        },
+        "explorerDates.smartWatcherMaxPatterns": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "Maximum number of base watcher patterns to register per workspace. Lower values reduce overhead in extremely large repositories.",
+          "scope": "window"
+        },
+        "explorerDates.smartWatcherExtensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "mjs",
+            "cjs",
+            "mts",
+            "cts",
+            "vue",
+            "py",
+            "go",
+            "rb",
+            "rs",
+            "java",
+            "kt",
+            "swift",
+            "cs",
+            "cpp",
+            "c",
+            "php",
+            "scala",
+            "sql",
+            "md",
+            "mdx",
+            "json",
+            "jsonc",
+            "yml",
+            "yaml",
+            "toml",
+            "ini",
+            "txt",
+            "html",
+            "css",
+            "scss"
+          ],
+          "description": "File extensions that smart file watching prioritizes (omit the leading dot).",
+          "scope": "window"
+        },
+        "explorerDates.enableSmartWatcherFallbacks": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "enum": [
+            true,
+            false,
+            "auto"
+          ],
+          "default": "auto",
+          "description": "Enable fallback file watching for platforms with unreliable native watchers. 'auto' enables fallbacks only on problematic platforms (WSL, Docker, remote), 'true' always enables, 'false' disables fallbacks.",
+          "enumDescriptions": [
+            "Always enable fallback watchers (may impact performance)",
+            "Never use fallback watchers (may miss file changes on some platforms)",
+            "Auto-detect problematic platforms and enable fallbacks only when needed (recommended)"
+          ],
           "scope": "window"
         },
         "explorerDates.showDateDecorations": {
@@ -642,7 +806,7 @@
         "explorerDates.enableWorkspaceTemplates": {
           "type": "boolean",
           "default": true,
-          "description": "Enable workspace template management for saving and sharing configurations",
+          "description": "Enable workspace template management system (disable to reduce bundle size by ~14KB)",
           "scope": "window"
         },
         "explorerDates.templateSyncPath": {
@@ -667,6 +831,8 @@
           "type": "boolean",
           "default": true,
           "description": "Enable file modification reporting and analytics features",
+          "markdownDescription": "**DEPRECATED:** This setting is deprecated. Use `explorerDates.enableExportReporting` instead.",
+          "deprecationMessage": "This setting is deprecated. Use 'explorerDates.enableExportReporting' instead. The extension will automatically migrate your setting.",
           "scope": "window"
         },
         "explorerDates.reportFormats": {
@@ -695,6 +861,14 @@
           "description": "Number of days to track file activity for reporting (1-365)",
           "scope": "window"
         },
+        "explorerDates.maxTrackedActivityFiles": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 0,
+          "maximum": 20000,
+          "description": "Maximum number of files to retain in the activity cache (set to 0 to disable tracking entirely).",
+          "scope": "window"
+        },
         "explorerDates.timeTrackingIntegration": {
           "type": "string",
           "enum": [
@@ -712,8 +886,49 @@
             "Clockify specific format"
           ],
           "scope": "window"
-        }
-      }
+        },
+        "explorerDates.enableOnboardingSystem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable onboarding system and welcome wizard (disable to reduce bundle size by ~34KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableExportReporting": {
+          "type": "boolean", 
+          "default": true,
+          "description": "Enable file activity export and reporting features (disable to reduce bundle size by ~17KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableAnalysisCommands": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable analysis and diagnostic commands (disable to reduce bundle size by ~8KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableAdvancedCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable advanced caching system for better performance (disable to reduce bundle size by ~5KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableWorkspaceIntelligence": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace intelligence features including incremental indexing and smart exclusions (disable to reduce bundle size by ~12KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableIncrementalWorkers": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable incremental background workers for progressive file processing (disable to reduce bundle size by ~19KB)",
+          "scope": "window"
+        },
+        "explorerDates.enableProgressiveAnalysis": {
+          "type": "boolean",
+          "default": null,
+          "description": "Enable progressive analysis with WASM-accelerated file indexing. When null (default), automatically enables for large workspaces. Set explicitly to true/false to override auto-detection.",
+          "scope": "window"
+        }      }
     }
   },
   "capabilities": {
@@ -731,26 +946,79 @@
   "homepage": "https://github.com/incredincomp/explorer-dates#readme",
   "icon": "icons/explorer-dates.png",
   "scripts": {
-    "lint": "eslint .",
+    "lint": "eslint src extension.js esbuild.js esbuild-federation.js",
     "test": "npm run test:suite",
-    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:performance-mode && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
+    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:incremental-workers-flag && npm run test:workspace-scale && npm run test:workspace-detection-heuristics && npm run test:smart-watchers && npm run test:smart-watcher-fallback && npm run test:viewport-gating && npm run test:feature-level-regrets && npm run test:indexer-fallback && npm run test:memory-shedding && npm run test:workspace-intelligence-chunk && npm run test:onboarding-assets-chunking && npm run test:wasm-profiling && npm run test:chunk-mapping && npm run test:web-bundle-smoke && npm run test:filesystem-errors && npm run test:git-integration-failures && npm run test:resource-cleanup && npm run test:configuration-edge-cases && npm run test:multi-workspace-scenarios && npm run test:vscode-api-edge-cases && npm run test:race-condition-scenarios && npm run test:performance-under-load && npm run test:cross-platform-compatibility && npm run test:performance-mode && npm run test:periodic-refresh && npm run test:memory-isolation && npm run test:memory-isolation-forced-miss && npm run test:memory-isolation-matrix && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:runtime-management && npm run test:preset-ui-flows && npm run test:quickpick-regressions && npm run test:restart-batching && npm run test:team-config-persistence && npm run test:chunk-loading-failures && npm run test:preset-application-paths && npm run test:restart-batching-deterministic && npm run test:mock-isolation && npm run test:feature-flags && npm run test:default-loaders && npm run test:git-gating && npm run test:settings-migration && npm run test:theme-integration && npm run test:real-workspace-exercise && npm run test:analyze-matrix && npm run test:batch-processor-chunking",
     "test:config": "node tests/verify-config.js",
     "test:config-scenarios": "node tests/test-configuration-scenarios.js",
     "test:feature-gates": "node tests/test-feature-gates.js",
+    "test:incremental-workers-flag": "node tests/test-incremental-workers-flag.js",
+    "test:workspace-scale": "node tests/test-workspace-scale.js",
+    "test:workspace-detection-heuristics": "node tests/test-workspace-detection-heuristics.js",
+    "test:smart-watchers": "node tests/test-smart-watchers.js",
+    "test:smart-watcher-fallback": "node tests/test-smart-watcher-fallback.js",
+    "test:viewport-gating": "node tests/test-viewport-gating.js",
+    "test:feature-level-regrets": "node tests/test-feature-level-regrets.js",
+    "test:filesystem-errors": "node tests/test-filesystem-errors.js",
+    "test:git-integration-failures": "node tests/test-git-integration-failures.js",
+    "test:resource-cleanup": "node tests/test-resource-cleanup.js",
+    "test:configuration-edge-cases": "node tests/test-configuration-edge-cases.js",
+    "test:multi-workspace-scenarios": "node tests/test-multi-workspace-scenarios.js",
+    "test:vscode-api-edge-cases": "node tests/test-vscode-api-edge-cases.js",
+    "test:race-condition-scenarios": "node tests/test-race-condition-scenarios.js",
+    "test:performance-under-load": "node tests/test-performance-under-load.js",
+    "test:cross-platform-compatibility": "node tests/test-cross-platform-compatibility.js",
+    "test:indexer-fallback": "node tests/test-indexer-fallback.js",
+    "test:memory-shedding": "node tests/test-memory-shedding.js",
+    "test:workspace-intelligence-chunk": "node tests/test-workspace-intelligence-chunk.js",
+    "test:onboarding-assets-chunking": "node tests/test-onboarding-assets-chunking.js",
+    "test:wasm-profiling": "node tests/test-wasm-profiling.js",
+    "test:chunk-mapping": "node tests/test-chunk-mapping.js",
+    "test:web-bundle-smoke": "node tests/test-web-bundle-smoke.js",
     "test:performance-mode": "node tests/test-performance-mode.js",
+    "test:performance-baselines": "node tests/test-performance-baselines.js",
+    "test:periodic-refresh": "node tests/test-periodic-refresh.js",
+    "test:memory-isolation": "node --expose-gc tests/test-memory-isolation.js",
+    "test:memory-isolation-forced-miss": "node --expose-gc tests/test-memory-isolation-forced-miss.js",
+    "test:memory-isolation-matrix": "node --expose-gc tests/test-memory-isolation-matrix.js",
     "test:flows": "node tests/exercise-flows.js",
     "test:bundle": "node tests/test-bundle.js",
     "test:verify-bundle": "node tests/verify-bundle.js",
+    "test:runtime-management": "node tests/test-runtime-management.js",
+    "test:preset-ui-flows": "node tests/test-preset-ui-flows.js",
+    "test:quickpick-regressions": "node tests/test-quickpick-regressions.js",
+    "test:restart-batching": "node tests/test-restart-batching.js",
+    "test:team-config-persistence": "node tests/test-team-config-persistence.js",
+    "test:chunk-loading-failures": "node tests/test-chunk-loading-failures.js",
+    "test:preset-application-paths": "node tests/test-preset-application-paths.js",
+    "test:restart-batching-deterministic": "node tests/test-restart-batching-deterministic.js",
+    "test:mock-isolation": "node tests/test-mock-isolation.js",
+    "test:feature-flags": "node tests/test-feature-flags.js",
+    "test:default-loaders": "node tests/test-default-loaders.js",
+    "test:git-gating": "node tests/test-git-gating.js",
+    "test:settings-migration": "node tests/test-settings-migration.js",
+    "test:theme-integration": "node tests/test-theme-integration.js",
+    "test:real-workspace-exercise": "node tests/test-real-workspace-exercise.js",
+    "test:analyze-matrix": "node tests/analyze-matrix.js",
+    "test:batch-processor-chunking": "node tests/batchProcessor.chunking.test.js",
     "test:memory": "node --expose-gc tests/test-memory-soak.js",
     "test:memory-fuzz": "node --expose-gc tests/test-memory-fuzz.js",
-    "test:memory-shedding": "EXPLORER_DATES_MEMORY_SHEDDING=1 EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2 node --expose-gc tests/test-memory-soak.js",
+    "test:memory-soak": "EXPLORER_DATES_MEMORY_SHEDDING=1 EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2 node --expose-gc tests/test-memory-soak.js",
     "test:memory-lightweight": "EXPLORER_DATES_LIGHTWEIGHT_MODE=1 node --expose-gc tests/test-memory-soak.js",
     "compile": "node esbuild.js",
+    "compile:federation": "node esbuild-federation.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
+    "watch:chunks": "node esbuild-federation.js --chunks --watch",
+    "watch:federation": "node esbuild-federation.js --watch",
     "vscode:prepublish": "npm run package-bundle",
     "package": "vsce package",
-    "package-bundle": "node esbuild.js --production",
+    "package:core": "node esbuild.js --production",
+    "package-bundle": "npm-run-all --sequential package:core package-chunks",
+    "package-bundle:federation": "node esbuild-federation.js --production",
+    "package-chunks": "node esbuild-federation.js --chunks --production",
+    "watch-chunks": "node esbuild-federation.js --chunks --watch",
+    "build:analysis": "npm run package-bundle && npm run package-chunks",
     "publish": "vsce publish"
   },
   "devDependencies": {
