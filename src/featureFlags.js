@@ -7,7 +7,7 @@ const { CHUNK_SIZES } = require('./presetDefinitions');
 const { getChunkSourcePath, getAllChunkNames } = require('./shared/chunkMap');
 let featureLogger = null;
 
-const DEFAULT_CHUNK_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_CHUNK_TIMEOUT || 5000);
+const DEFAULT_CHUNK_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_CHUNK_TIMEOUT || (process.env.NODE_ENV === 'test' ? 1000 : 5000));
 const NETWORK_ERROR_CODES = new Set(['ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH']);
 const BUILT_CHUNK_CACHE = new Map();
 const CHUNK_METHOD_ALIASES = {

@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { normalizePath, getRelativePath, getFileName } = require('./utils/pathUtils');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 /**
  * Smart Exclusion Pattern Manager
@@ -11,6 +12,7 @@ class SmartExclusionManager {
     constructor() {
         this._logger = getLogger();
         this._fs = fileSystem;
+        this._settings = getSettingsCoordinator();
         
         // Common build/cache folders that should be excluded
         this._commonExclusions = [
@@ -39,6 +41,8 @@ class SmartExclusionManager {
         // Pattern scoring for machine learning-like behavior
         this._patternScores = new Map();
         this._workspaceAnalysis = new Map();
+        this._exclusionsFileName = 'explorer-dates-exclusions.json';
+        this._legacyProfilesSetting = 'workspaceExclusionProfiles';
         
         this._logger.info('SmartExclusionManager initialized');
     }
@@ -47,31 +51,31 @@ class SmartExclusionManager {
      * Clean up duplicate exclusions for all workspaces
      */
     async cleanupAllWorkspaceProfiles() {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const profiles = config.get('workspaceExclusionProfiles', {}) || {};
-        let updated = false;
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        if (workspaceFolders.length === 0) {
+            this._logger.debug('No workspace folders available for exclusion cleanup');
+            return;
+        }
 
-        for (const [workspaceKey, exclusions] of Object.entries(profiles)) {
-            const list = Array.isArray(exclusions) ? exclusions : [];
-            const deduped = this._dedupeList(list);
-
-            if (!this._areListsEqual(list, deduped)) {
-                profiles[workspaceKey] = deduped;
-                updated = true;
-                this._logger.debug(`Deduped workspace exclusions for ${workspaceKey}`, {
-                    before: list.length,
-                    after: deduped.length
-                });
+        let migrated = 0;
+        for (const folder of workspaceFolders) {
+            try {
+                const rootUri = folder.uri;
+                const legacy = await this._migrateLegacyExclusions(folder.uri, rootUri);
+                if (legacy) {
+                    migrated++;
+                }
+            } catch (error) {
+                this._logger.warn(`Failed to migrate exclusions for ${folder.name}`, error);
             }
         }
 
-        if (updated) {
-            await config.update('workspaceExclusionProfiles', profiles, vscode.ConfigurationTarget.Global);
-            this._logger.info('Cleaned up duplicate workspace exclusions', {
-                workspaceCount: Object.keys(profiles).length
+        if (migrated > 0) {
+            this._logger.info('Migrated workspace exclusion profiles to workspace storage', {
+                workspaces: migrated
             });
         } else {
-            this._logger.debug('Workspace exclusion profiles already clean');
+            this._logger.debug('No legacy workspace exclusion profiles required migration');
         }
     }
 
@@ -297,55 +301,44 @@ class SmartExclusionManager {
      * Get workspace-specific exclusion profile
      */
     async getWorkspaceExclusions(workspaceUri) {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const profiles = config.get('workspaceExclusionProfiles', {});
-        const workspaceKey = this._getWorkspaceKey(workspaceUri);
-
-        const stored = profiles[workspaceKey] || [];
-        const deduped = this._dedupeList(stored);
-
-        if (deduped.length !== stored.length) {
-            profiles[workspaceKey] = deduped;
-            try {
-                await config.update(
-                    'workspaceExclusionProfiles',
-                    profiles,
-                    vscode.ConfigurationTarget.Global
-                );
-                this._logger.info(`Cleaned duplicate exclusions for ${workspaceKey}`, {
-                    before: stored.length,
-                    after: deduped.length
-                });
-            } catch (error) {
-                this._logger.warn(`Failed to persist cleaned exclusions for ${workspaceKey}`, error);
-            }
+        const rootUri = this._resolveWorkspaceRoot(workspaceUri);
+        if (!rootUri) {
+            this._logger.debug('No workspace root for exclusions lookup');
+            return [];
         }
 
-        return deduped;
+        const fileExclusions = await this._readWorkspaceExclusionsFile(rootUri);
+        if (fileExclusions) {
+            return fileExclusions;
+        }
+
+        const migrated = await this._migrateLegacyExclusions(workspaceUri, rootUri);
+        return migrated || [];
     }
 
     /**
      * Save workspace-specific exclusion profile
      */
     async saveWorkspaceExclusions(workspaceUri, exclusions) {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const profiles = config.get('workspaceExclusionProfiles', {});
-        const workspaceKey = this._getWorkspaceKey(workspaceUri);
-
-        const normalized = this._dedupeList(exclusions);
-        const previouslySaved = Array.isArray(profiles[workspaceKey])
-            ? this._areListsEqual(profiles[workspaceKey], normalized)
-            : false;
-
-        if (previouslySaved) {
-            this._logger.debug(`No workspace exclusion changes for ${workspaceKey}`);
+        const rootUri = this._resolveWorkspaceRoot(workspaceUri);
+        if (!rootUri) {
+            this._logger.warn('Cannot save workspace exclusions without a workspace root');
             return;
         }
 
-        profiles[workspaceKey] = normalized;
+        const normalized = this._dedupeList(exclusions);
+        const current = await this._readWorkspaceExclusionsFile(rootUri);
 
-        await config.update('workspaceExclusionProfiles', profiles, vscode.ConfigurationTarget.Global);
-        this._logger.info(`Saved workspace exclusions for ${workspaceKey}`, normalized);
+        if (current && this._areListsEqual(current, normalized)) {
+            this._logger.debug('Workspace exclusions already up to date', {
+                workspace: this._getWorkspaceKey(workspaceUri)
+            });
+            return;
+        }
+
+        await this._writeWorkspaceExclusionsFile(rootUri, normalized);
+        await this._removeLegacyProfile(workspaceUri);
+        this._logger.info(`Saved workspace exclusions for ${this._getWorkspaceKey(workspaceUri)}`, normalized);
     }
 
     /**
@@ -441,6 +434,107 @@ class SmartExclusionManager {
         } else {
             this._logger.info('User kept smart exclusions', { accepted: newExclusions });
         }
+    }
+
+    _resolveWorkspaceRoot(workspaceUri) {
+        if (workspaceUri) {
+            return workspaceUri;
+        }
+        return vscode.workspace.workspaceFolders?.[0]?.uri ?? null;
+    }
+
+    _getWorkspaceSettingsDir(rootUri) {
+        if (!rootUri) {
+            return null;
+        }
+        return vscode.Uri.joinPath(rootUri, '.vscode');
+    }
+
+    _getExclusionsFileUri(rootUri) {
+        const settingsDir = this._getWorkspaceSettingsDir(rootUri);
+        if (!settingsDir) {
+            return null;
+        }
+        return vscode.Uri.joinPath(settingsDir, this._exclusionsFileName);
+    }
+
+    async _readWorkspaceExclusionsFile(rootUri) {
+        const fileUri = this._getExclusionsFileUri(rootUri);
+        if (!fileUri) {
+            return null;
+        }
+
+        try {
+            const raw = await this._fs.readFile(fileUri, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                return this._dedupeList(parsed);
+            }
+            if (Array.isArray(parsed?.exclusions)) {
+                return this._dedupeList(parsed.exclusions);
+            }
+            return null;
+        } catch (error) {
+            if (error?.code === 'ENOENT' || error?.name === 'EntryNotFound' || error?.message?.includes('ENOENT')) {
+                return null;
+            }
+            this._logger.warn('Failed to read workspace exclusions file', { error: error.message });
+            return null;
+        }
+    }
+
+    async _writeWorkspaceExclusionsFile(rootUri, exclusions) {
+        const fileUri = this._getExclusionsFileUri(rootUri);
+        if (!fileUri) {
+            return;
+        }
+
+        const settingsDir = this._getWorkspaceSettingsDir(rootUri);
+        if (settingsDir) {
+            await this._fs.ensureDirectory(settingsDir);
+        }
+
+        const payload = {
+            version: 1,
+            updatedAt: new Date().toISOString(),
+            exclusions
+        };
+
+        await this._fs.writeFile(fileUri, JSON.stringify(payload, null, 2));
+    }
+
+    async _migrateLegacyExclusions(workspaceUri, rootUri) {
+        const workspaceKey = this._getWorkspaceKey(workspaceUri);
+        const profiles = this._settings.getValue(this._legacyProfilesSetting) || {};
+        const legacy = Array.isArray(profiles[workspaceKey]) ? this._dedupeList(profiles[workspaceKey]) : [];
+
+        if (!legacy.length) {
+            return null;
+        }
+
+        if (rootUri) {
+            await this._writeWorkspaceExclusionsFile(rootUri, legacy);
+            await this._removeLegacyProfile(workspaceUri);
+            this._logger.info(`Migrated workspace exclusions for ${workspaceKey} to workspace settings file`);
+            return legacy;
+        }
+
+        return legacy;
+    }
+
+    async _removeLegacyProfile(workspaceUri) {
+        const workspaceKey = this._getWorkspaceKey(workspaceUri);
+        const profiles = this._settings.getValue(this._legacyProfilesSetting) || {};
+
+        if (!(workspaceKey in profiles)) {
+            return;
+        }
+
+        delete profiles[workspaceKey];
+        await this._settings.updateSetting(this._legacyProfilesSetting, profiles, {
+            scope: 'user',
+            reason: 'workspace-exclusion-migration'
+        });
     }
 
     _dedupeList(values = []) {

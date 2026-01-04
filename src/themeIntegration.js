@@ -126,6 +126,7 @@ const vscode = new Proxy({}, {
     }
 });
 const { getLogger } = require('./utils/logger');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { getExtension } = require('./utils/pathUtils');
 
 /**
@@ -134,6 +135,7 @@ const { getExtension } = require('./utils/pathUtils');
 class ThemeIntegrationManager {
     constructor() {
         this._logger = getLogger();
+        this._settings = getSettingsCoordinator();
         this._currentThemeKind = vscode.window.activeColorTheme.kind;
         this._themeChangeListeners = [];
         this._themeChangeDisposable = null;
@@ -492,13 +494,15 @@ class ThemeIntegrationManager {
      */
     async autoConfigureForTheme() {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentColorScheme = config.get('colorScheme', 'none');
+            const currentColorScheme = this._settings.getValue('colorScheme') ?? 'none';
             
             // Only auto-configure if user hasn't set a specific preference
             if (currentColorScheme === 'none' || currentColorScheme === 'auto') {
                 const suggestedScheme = this.getSuggestedColorScheme();
-                await config.update('colorScheme', suggestedScheme, vscode.ConfigurationTarget.Global);
+                await this._settings.updateSetting('colorScheme', suggestedScheme, {
+                    scope: 'user',
+                    reason: 'theme-auto-config'
+                });
                 
                 this._logger.info(`Auto-configured color scheme for ${this._getThemeKindName(this._currentThemeKind)} theme: ${suggestedScheme}`);
                 

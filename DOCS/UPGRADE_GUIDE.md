@@ -280,6 +280,10 @@ Recommendation:  Use team setting for consistency
 | `Explorer Dates: Apply Team Configuration` | Apply team settings to current workspace |
 | `Explorer Dates: Show Team Configuration Conflicts` | View conflicts between team and user settings |
 | `Explorer Dates: Reset to Team Configuration` | Revert to original team settings |
+| `Explorer Dates: Organize Settings` | Move Explorer Dates settings to the correct scope and tidy Explorer Dates workspace files (runs automatically when drift is detected) |
+
+> **Automatic Housekeeping**  
+> v1.3.0+ automatically runs the organizer during activation/migrations whenever it finds Explorer Dates keys stored at the wrong scope or out-of-order `.vscode/explorer-dates-*.json` files. Use `Explorer Dates: Organize Settings` or `npm run format:settings` if you need to run it manually (for example, after importing an older project or when automation is disabled).
 
 ### File Format
 
@@ -625,6 +629,8 @@ Project-specific configuration:
 }
 ```
 
+> 💡 **Smart Exclusions Storage**: Auto-detected exclusion folders now live in `.vscode/explorer-dates-exclusions.json`. This workspace-local file (and any other `explorer-dates-*.json` you opt into) is automatically kept alphabetized so it can be safely committed for team-wide consistency.
+
 ### Synchronize Team Settings
 
 1. **Create team template**:
@@ -794,7 +800,7 @@ Each workspace root can have different settings:
 
 ## Version-Specific Changes
 
-### v1.3.0 (Current)
+### v1.3.0 (Released January 4, 2026)
 - ✅ Automatic settings migration
 - ✅ Enhanced onboarding system  
 - ✅ Feature flag system for bundle optimization

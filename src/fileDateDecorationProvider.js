@@ -309,6 +309,7 @@ class FileDateDecorationProvider {
         // Concurrency control for thread safety
         this._fileLocks = new Map();
         this._operationQueue = new Map();
+        this._globalConcurrencyQueue = [];
         this._maxConcurrentOperations = 20;
         this._activeOperations = 0;
         this._disposed = false;
@@ -1588,27 +1589,46 @@ class FileDateDecorationProvider {
     async _buildSmartWatcherTargets(workspaceFolders, options) {
         const targets = [];
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const excludedConfig = config.get('excludedFolders', []);
-        const excludedSet = new Set();
-        for (const folder of excludedConfig) {
-            if (!folder) {
-                continue;
+        const baseExcludedSet = this._buildBaseWatcherExclusions(config);
+
+        for (const folder of workspaceFolders) {
+            if (targets.length >= options.maxPatterns) {
+                break;
             }
-            const normalized = folder.toString?.() || folder;
-            if (!normalized) {
-                continue;
-            }
-            const trimmed = normalized.replace(/^\/+|\/+$/g, '');
-            if (!trimmed) {
-                continue;
-            }
-            excludedSet.add(trimmed.toLowerCase());
-            trimmed.split(/[\\/]/g).forEach((segment) => {
-                if (segment) {
-                    excludedSet.add(segment.toLowerCase());
-                }
+
+            const folderExcludedSet = await this._getWatcherExcludedSetForFolder(folder, baseExcludedSet);
+
+            // Root-level watcher for important files (counts as one pattern)
+            const rootPattern = new vscode.RelativePattern(folder, '*.{md,mdx,json,jsonc,yml,yaml,ts,tsx,js,jsx}');
+            targets.push({
+                pattern: rootPattern,
+                label: `root:${folder.name}`
             });
+
+            if (targets.length >= options.maxPatterns) {
+                break;
+            }
+
+            const remaining = options.maxPatterns - targets.length;
+            const folderTargets = await this._collectFolderWatcherPatterns(folder, {
+                excludedSet: folderExcludedSet,
+                extensions: options.extensions,
+                limit: remaining
+            });
+
+            targets.push(...folderTargets);
         }
+
+        return targets.slice(0, options.maxPatterns);
+    }
+
+    _buildBaseWatcherExclusions(config) {
+        const excludedSet = new Set();
+        const excludedConfig = config.get('excludedFolders', []);
+        for (const folder of excludedConfig) {
+            this._addExclusionValueToSet(excludedSet, folder);
+        }
+
         const hardExclusions = [
             'node_modules',
             '.git',
@@ -1626,37 +1646,86 @@ class FileDateDecorationProvider {
             'tmp',
             'temp',
             'coverage',
-            '.next'
+            '.next',
+            'logs',
+            'old-builds'
         ];
-        hardExclusions.forEach((entry) => excludedSet.add(entry));
+        hardExclusions.forEach((entry) => this._addExclusionValueToSet(excludedSet, entry));
+        return excludedSet;
+    }
 
-        for (const folder of workspaceFolders) {
-            if (targets.length >= options.maxPatterns) {
-                break;
-            }
-
-            // Root-level watcher for important files (counts as one pattern)
-            const rootPattern = new vscode.RelativePattern(folder, '*.{md,mdx,json,jsonc,yml,yaml,ts,tsx,js,jsx}');
-            targets.push({
-                pattern: rootPattern,
-                label: `root:${folder.name}`
-            });
-
-            if (targets.length >= options.maxPatterns) {
-                break;
-            }
-
-            const remaining = options.maxPatterns - targets.length;
-            const folderTargets = await this._collectFolderWatcherPatterns(folder, {
-                excludedSet,
-                extensions: options.extensions,
-                limit: remaining
-            });
-
-            targets.push(...folderTargets);
+    async _getWatcherExcludedSetForFolder(folder, baseExcludedSet) {
+        const merged = new Set(baseExcludedSet);
+        if (!folder || !this._workspaceIntelligence?.smartExclusion) {
+            return merged;
         }
 
-        return targets.slice(0, options.maxPatterns);
+        try {
+            const combined = await this._workspaceIntelligence.smartExclusion.getCombinedExclusions(folder.uri);
+            const smartFolders = combined?.folders || [];
+            const smartPatterns = combined?.patterns || [];
+
+            for (const folderPattern of smartFolders) {
+                this._addExclusionValueToSet(merged, folderPattern, { onlyRootSegment: true });
+            }
+            for (const pattern of smartPatterns) {
+                this._addExclusionValueToSet(merged, pattern, { onlyRootSegment: true });
+            }
+
+            if ((smartFolders.length || smartPatterns.length) && this._logger && merged.size > baseExcludedSet.size) {
+                this._logger.debug('Merged smart exclusion hints for watcher setup', {
+                    workspace: folder.name,
+                    totalExclusions: merged.size
+                });
+            }
+        } catch (error) {
+            this._logger.debug('Failed to merge smart exclusion data for watcher setup', error);
+        }
+
+        return merged;
+    }
+
+    _addExclusionValueToSet(targetSet, value, options = {}) {
+        if (!value) {
+            return;
+        }
+        const { onlyRootSegment = false } = options;
+        const asString = typeof value === 'string'
+            ? value
+            : (typeof value?.toString === 'function' ? value.toString() : '');
+        if (!asString || typeof asString !== 'string') {
+            return;
+        }
+        const normalized = asString.trim();
+        if (!normalized) {
+            return;
+        }
+
+        const sanitized = normalized
+            .replace(/\\/g, '/')
+            .replace(/\*\*/g, '')
+            .replace(/\*/g, '');
+        const segments = sanitized
+            .split('/')
+            .map((segment) => segment.trim())
+            .filter(Boolean);
+
+        if (!segments.length) {
+            if (normalized.includes('*') || normalized.includes('?')) {
+                return;
+            }
+            targetSet.add(normalized.toLowerCase());
+            return;
+        }
+
+        if (onlyRootSegment) {
+            targetSet.add(segments[0].toLowerCase());
+            return;
+        }
+
+        for (const segment of segments) {
+            targetSet.add(segment.toLowerCase());
+        }
     }
 
     async _collectFolderWatcherPatterns(folder, options) {
@@ -3287,22 +3356,38 @@ class FileDateDecorationProvider {
     }
 
     /**
+     * Acquire a global concurrency slot; callers must invoke the returned release function.
+     */
+    async _acquireGlobalSlot() {
+        if (this._activeOperations < this._maxConcurrentOperations) {
+            this._activeOperations++;
+            return () => this._releaseGlobalSlot();
+        }
+
+        return new Promise((resolve) => {
+            this._globalConcurrencyQueue.push(() => {
+                this._activeOperations++;
+                resolve(() => this._releaseGlobalSlot());
+            });
+        });
+    }
+
+    _releaseGlobalSlot() {
+        this._activeOperations = Math.max(0, this._activeOperations - 1);
+
+        while (this._globalConcurrencyQueue.length > 0 && this._activeOperations < this._maxConcurrentOperations) {
+            const next = this._globalConcurrencyQueue.shift();
+            next();
+        }
+    }
+
+    /**
      * Thread-safe wrapper for file operations
      * @param {string} filePath - The file path to lock
      * @param {Function} operation - The operation to perform
      * @returns {Promise<any>}
      */
     async _withFileLock(filePath, operation) {
-        // Check concurrent operation limit
-        if (this._activeOperations >= this._maxConcurrentOperations) {
-            this._logger.warn('🚫 Rejecting operation due to high concurrency', {
-                filePath,
-                activeOps: this._activeOperations,
-                maxOps: this._maxConcurrentOperations
-            });
-            return null;
-        }
-
         // Get or create lock for this file
         if (!this._fileLocks.has(filePath)) {
             this._fileLocks.set(filePath, Promise.resolve());
@@ -3310,15 +3395,12 @@ class FileDateDecorationProvider {
 
         const currentLock = this._fileLocks.get(filePath);
         const newLock = currentLock.then(async () => {
-            this._activeOperations++;
+            const release = await this._acquireGlobalSlot();
             try {
                 return await operation();
             } finally {
-                this._activeOperations--;
+                release();
             }
-        }).catch(error => {
-            this._activeOperations--;
-            throw error;
         });
 
         this._fileLocks.set(filePath, newLock);
@@ -3400,7 +3482,13 @@ class FileDateDecorationProvider {
         }
 
         const startTime = Date.now();
-        const filePath = uri?.fsPath;
+
+        if (!uri) {
+            this._logger.error('❌ Invalid URI provided to provideFileDecoration:', uri);
+            return undefined;
+        }
+
+        const filePath = uri.fsPath;
         
         if (!filePath) {
             return undefined;
@@ -3419,6 +3507,28 @@ class FileDateDecorationProvider {
             return null;
         }
 
+        const resolvedFilePath = getUriPath(uri);
+        if (!resolvedFilePath) {
+            this._logger.error('❌ Could not resolve path for URI in provideFileDecoration:', uri);
+            return undefined;
+        }
+
+        const fileLabel = describeFile(resolvedFilePath);
+        const normalizedFilePath = normalizePath(resolvedFilePath);
+        const scheme = uri.scheme || 'file';
+
+        if (scheme !== 'file') {
+            this._logger.debug(`⏭️ Skipping decoration for ${fileLabel} (unsupported scheme: ${scheme})`);
+            return undefined;
+        }
+
+        if (await this._isExcludedSimple(uri)) {
+            if (!this._performanceMode) {
+                this._logger.debug(`❌ File excluded: ${fileLabel}`);
+            }
+            return undefined;
+        }
+
         // Use file locking for thread safety
         return this._withFileLock(filePath, async () => {
             try {
@@ -3431,11 +3541,68 @@ class FileDateDecorationProvider {
                     return undefined;
                 }
 
-                // Performance mode check - fail fast under high load
-                if (this._activeOperations > this._maxConcurrentOperations * 0.8) {
+                // Reduce verbose logging in performance mode
+                if (!this._performanceMode) {
+                    this._logger.debug(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
+                    // Only log call context details at debug level to reduce noise
+                    this._logger.debug(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
+                }
+
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                const _get = (key, def) => {
+                    if (this._previewSettings && Object.prototype.hasOwnProperty.call(this._previewSettings, key)) {
+                        const previewValue = this._previewSettings[key];
+                        this._logger.debug(`🎭 Using preview value for ${key}: ${previewValue} (config has: ${config.get(key, def)})`);
+                        return previewValue;
+                    }
+                    return config.get(key, def);
+                };
+
+                if (this._previewSettings) {
+                    this._logger.infoWithOptions(this._stressLogOptions, `🎭 Processing ${fileLabel} in PREVIEW MODE with settings:`, () => this._previewSettings);
+                }
+
+                if (!_get('showDateDecorations', true)) {
+                    if (!this._performanceMode) {
+                        this._logger.debug(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
+                    }
+                    return undefined;
+                }
+
+                this._logger.debug(`🔍 Processing file: ${fileLabel}`);
+
+                const isViewportPriority = this._isViewportPriority(uri);
+                this._recordViewportActivity(uri, {
+                    reason: 'decoration-request',
+                    visible: normalizedFilePath ? this._viewportVisibleFiles.has(normalizedFilePath) : false
+                });
+                if (isViewportPriority) {
+                    this._metrics.viewportPriorityDecorations++;
+                } else {
+                    this._metrics.viewportBackgroundDecorations++;
+                }
+
+                const featureProfile = this._featureProfile || this._buildFeatureProfile(this._featureLevel);
+
+                const cacheKey = this._getCacheKey(uri);
+                if (!this._previewSettings) {
+                    const cachedDecoration = await this._getCachedDecoration(cacheKey, fileLabel);
+                    if (cachedDecoration) {
+                        return cachedDecoration;
+                    }
+                } else {
+                    this._logger.debug(`🔄 Skipping cache due to active preview settings for: ${fileLabel}`);
+                }
+
+                // Performance mode check - only downgrade when we're both saturated and queueing work
+                const queuedCount = this._globalConcurrencyQueue.length;
+                const isBacklogged = queuedCount >= this._maxConcurrentOperations; // only treat as backlog when queue rivals capacity
+                const isAtCapacity = this._activeOperations > this._maxConcurrentOperations * 0.8;
+                if (isAtCapacity && isBacklogged) {
                     this._logger.warn('⚡ High load detected, switching to fast mode', {
                         activeOps: this._activeOperations,
-                        threshold: this._maxConcurrentOperations * 0.8
+                        threshold: this._maxConcurrentOperations * 0.8,
+                        queued: queuedCount
                     });
                     return this._createMinimalDecoration(uri, startTime);
                 }
@@ -3443,319 +3610,240 @@ class FileDateDecorationProvider {
                 // Check for memory pressure periodically
                 this._checkMemoryPressure();
 
-            if (!uri) {
-                this._logger.error('❌ Invalid URI provided to provideFileDecoration:', uri);
-                return undefined;
-            }
+                this._metrics.cacheMisses++;
+                this._logger.debug(`❌ Cache miss for: ${fileLabel} (key: ${cacheKey.substring(0, 50)}...)`);
 
-            const filePath2 = getUriPath(uri);
-            if (!filePath2) {
-                this._logger.error('❌ Could not resolve path for URI in provideFileDecoration:', uri);
-                return undefined;
-            }
-            const fileLabel = describeFile(filePath2);
-            const normalizedFilePath = normalizePath(filePath2);
-            const scheme = uri.scheme || 'file';
-
-            if (scheme !== 'file') {
-                this._logger.debug(`⏭️ Skipping decoration for ${fileLabel} (unsupported scheme: ${scheme})`);
-                return undefined;
-            }
-
-            // Reduce verbose logging in performance mode
-            if (!this._performanceMode) {
-                this._logger.debug(`🔍 VSCODE REQUESTED DECORATION: ${fileLabel} (${filePath})`);
-                // Only log call context details at debug level to reduce noise
-                this._logger.debug(`📊 Call context: token=${!!token}, cancelled=${token?.isCancellationRequested}`);
-            }
-
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const _get = (key, def) => {
-                if (this._previewSettings && Object.prototype.hasOwnProperty.call(this._previewSettings, key)) {
-                    const previewValue = this._previewSettings[key];
-                    this._logger.debug(`🎭 Using preview value for ${key}: ${previewValue} (config has: ${config.get(key, def)})`);
-                    return previewValue;
+                if (token?.isCancellationRequested) {
+                    this._logger.debug(`Decoration cancelled for: ${filePath}`);
+                    return undefined;
                 }
-                return config.get(key, def);
-            };
 
-            if (this._previewSettings) {
-                this._logger.infoWithOptions(this._stressLogOptions, `🎭 Processing ${fileLabel} in PREVIEW MODE with settings:`, () => this._previewSettings);
-            }
-
-            if (!_get('showDateDecorations', true)) {
-                if (!this._performanceMode) {
-                    this._logger.debug(`❌ RETURNED UNDEFINED: Decorations disabled globally for ${fileLabel}`);
-                }
-                return undefined;
-            }
-
-            if (await this._isExcludedSimple(uri)) {
-                if (!this._performanceMode) {
-                    this._logger.debug(`❌ File excluded: ${fileLabel}`);
-                }
-                return undefined;
-            }
-
-            this._logger.debug(`🔍 Processing file: ${fileLabel}`);
-
-            const isViewportPriority = this._isViewportPriority(uri);
-            this._recordViewportActivity(uri, {
-                reason: 'decoration-request',
-                visible: normalizedFilePath ? this._viewportVisibleFiles.has(normalizedFilePath) : false
-            });
-            if (isViewportPriority) {
-                this._metrics.viewportPriorityDecorations++;
-            } else {
-                this._metrics.viewportBackgroundDecorations++;
-            }
-
-            const featureProfile = this._featureProfile || this._buildFeatureProfile(this._featureLevel);
-
-            const cacheKey = this._getCacheKey(uri);
-            if (!this._previewSettings) {
-                const cachedDecoration = await this._getCachedDecoration(cacheKey, fileLabel);
-                if (cachedDecoration) {
-                    return cachedDecoration;
-                }
-            } else {
-                this._logger.debug(`🔄 Skipping cache due to active preview settings for: ${fileLabel}`);
-            }
-
-            this._metrics.cacheMisses++;
-            this._logger.debug(`❌ Cache miss for: ${fileLabel} (key: ${cacheKey.substring(0, 50)}...)`);
-
-            if (token?.isCancellationRequested) {
-                this._logger.debug(`Decoration cancelled for: ${filePath}`);
-                return undefined;
-            }
-
-            let stat = null;
-            if (!isViewportPriority && this._workspaceIntelligence?.incrementalIndexer) {
-                const indexed = this._workspaceIntelligence.incrementalIndexer.getIndexedStat(filePath);
-                if (indexed) {
-                    stat = indexed;
-                    this._logger.debug(`Indexed stat hit for ${fileLabel}`);
-                }
-            }
-
-            const fileStatStartTime = Date.now();
-            if (!stat) {
-                try {
-                    stat = await this._fileSystem.stat(uri);
-                } catch (statError) {
-                    this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
-                    this._metrics.fileStatCalls++;
-
-                    if (this._isFileNotFoundError(statError)) {
-                        this._logger.debug(`⏭️ Skipping decoration for ${fileLabel}: file not found (${statError.message || statError})`);
-                        return undefined;
+                let stat = null;
+                if (!isViewportPriority && this._workspaceIntelligence?.incrementalIndexer) {
+                    const indexed = this._workspaceIntelligence.incrementalIndexer.getIndexedStat(filePath);
+                    if (indexed) {
+                        stat = indexed;
+                        this._logger.debug(`Indexed stat hit for ${fileLabel}`);
                     }
-
-                    throw statError;
                 }
-                if (this._workspaceIntelligence?.incrementalIndexer) {
-                    this._workspaceIntelligence.incrementalIndexer.primeFromStat(uri, stat);
+
+                const fileStatStartTime = Date.now();
+                if (!stat) {
+                    try {
+                        stat = await this._fileSystem.stat(uri);
+                    } catch (statError) {
+                        this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
+                        this._metrics.fileStatCalls++;
+
+                        if (this._isFileNotFoundError(statError)) {
+                            this._logger.debug(`⏭️ Skipping decoration for ${fileLabel}: file not found (${statError.message || statError})`);
+                            return undefined;
+                        }
+
+                        throw statError;
+                    }
+                    if (this._workspaceIntelligence?.incrementalIndexer) {
+                        this._workspaceIntelligence.incrementalIndexer.primeFromStat(uri, stat);
+                    }
                 }
-            }
-            this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
-            this._metrics.fileStatCalls++;
-            
-            const isRegularFile = typeof stat.isFile === 'function' ? stat.isFile() : true;
-            if (!isRegularFile) {
-                return undefined;
-            }
+                this._metrics.fileStatTimeMs += Date.now() - fileStatStartTime;
+                this._metrics.fileStatCalls++;
+                
+                const isRegularFile = typeof stat.isFile === 'function' ? stat.isFile() : true;
+                if (!isRegularFile) {
+                    return undefined;
+                }
 
-            const modifiedAt = ensureDate(stat.mtime);
-            const createdAt = ensureDate(stat.birthtime || stat.ctime || stat.mtime);
-            const normalizedStat = {
-                mtime: modifiedAt,
-                birthtime: createdAt,
-                size: stat.size
-            };
-            const diffMs = Date.now() - modifiedAt.getTime();
-
-            const dateFormat = _get('dateDecorationFormat', 'smart');
-            let colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
-            const highContrastMode = _get('highContrastMode', false);
-            let showFileSize = this._performanceMode ? false : _get('showFileSize', false);
-            const fileSizeFormat = _get('fileSizeFormat', 'auto');
-            let accessibilityMode = _get('accessibilityMode', false);
-            const fadeOldFiles = this._performanceMode ? false : _get('fadeOldFiles', false);
-            const fadeThreshold = _get('fadeThreshold', 30);
-            let rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
-            let badgePriority = this._performanceMode ? 'time' : _get('badgePriority', 'time');
-
-            if (!featureProfile.enableColors) {
-                colorScheme = 'none';
-            }
-            if (!featureProfile.enableFileSize) {
-                showFileSize = false;
-            }
-            if (!featureProfile.enableAccessibility) {
-                accessibilityMode = false;
-            }
-            if (!featureProfile.enableGit) {
-                rawShowGitInfo = 'none';
-            }
-
-            if (this._lightweightMode) {
-                colorScheme = 'none';
-                showFileSize = false;
-                accessibilityMode = false;
-                rawShowGitInfo = 'none';
-                badgePriority = 'time';
-            }
-
-            const applyBackgroundPolicy = !isViewportPriority && featureProfile.applyBackgroundLimits;
-            if (applyBackgroundPolicy) {
-                colorScheme = 'none';
-                showFileSize = false;
-                rawShowGitInfo = 'none';
-                if (badgePriority !== 'time') {
+                const modifiedAt = ensureDate(stat.mtime);
+                const createdAt = ensureDate(stat.birthtime || stat.ctime || stat.mtime);
+                const normalizedStat = {
+                    mtime: modifiedAt,
+                    birthtime: createdAt,
+                    size: stat.size
+                };
+                const diffMs = Date.now() - modifiedAt.getTime();
+    
+                const dateFormat = _get('dateDecorationFormat', 'smart');
+                let colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
+                const highContrastMode = _get('highContrastMode', false);
+                let showFileSize = this._performanceMode ? false : _get('showFileSize', false);
+                const fileSizeFormat = _get('fileSizeFormat', 'auto');
+                let accessibilityMode = _get('accessibilityMode', false);
+                const fadeOldFiles = this._performanceMode ? false : _get('fadeOldFiles', false);
+                const fadeThreshold = _get('fadeThreshold', 30);
+                let rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
+                let badgePriority = this._performanceMode ? 'time' : _get('badgePriority', 'time');
+    
+                if (!featureProfile.enableColors) {
+                    colorScheme = 'none';
+                }
+                if (!featureProfile.enableFileSize) {
+                    showFileSize = false;
+                }
+                if (!featureProfile.enableAccessibility) {
+                    accessibilityMode = false;
+                }
+                if (!featureProfile.enableGit) {
+                    rawShowGitInfo = 'none';
+                }
+    
+                if (this._lightweightMode) {
+                    colorScheme = 'none';
+                    showFileSize = false;
+                    accessibilityMode = false;
+                    rawShowGitInfo = 'none';
                     badgePriority = 'time';
                 }
-            }
-
-            const gitFeaturesRequested = (rawShowGitInfo !== 'none') || (badgePriority === 'author');
-            const gitFeaturesEnabled = gitFeaturesRequested &&
-                this._gitAvailable &&
-                !this._performanceMode &&
-                featureProfile.enableGit;
-            const showGitInfo = gitFeaturesEnabled ? rawShowGitInfo : 'none';
-            if (badgePriority === 'author' && !gitFeaturesEnabled) {
-                badgePriority = 'time';
-            }
-
-            const gitBlame = gitFeaturesEnabled ? await this._getGitBlameInfo(filePath, modifiedAt.getTime()) : null;
-
-            const badgeDetails = this._generateBadgeDetails({
-                filePath,
-                stat: normalizedStat,
-                diffMs,
-                dateFormat,
-                badgePriority,
-                showFileSize,
-                fileSizeFormat,
-                gitBlame,
-                showGitInfo
-            });
-
-            const fileExt = getExtension(filePath);
-            const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt);
-            const shouldUseAccessibleTooltips = accessibilityMode && this._accessibility?.shouldEnhanceAccessibility();
-            const tooltipPreference = isViewportPriority
-                ? (featureProfile.enableRichTooltips ? 'rich' : 'summary')
-                : (featureProfile.backgroundTooltipMode || 'off');
-            this._logger.debug(`🔍 Tooltip generation for ${fileLabel}: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, preference=${tooltipPreference}, previewMode=${!!this._previewSettings}`);
-
-            let tooltip;
-            if (tooltipPreference === 'rich') {
-                tooltip = await this._buildTooltipContent({
+    
+                const applyBackgroundPolicy = !isViewportPriority && featureProfile.applyBackgroundLimits;
+                if (applyBackgroundPolicy) {
+                    colorScheme = 'none';
+                    showFileSize = false;
+                    rawShowGitInfo = 'none';
+                    if (badgePriority !== 'time') {
+                        badgePriority = 'time';
+                    }
+                }
+    
+                const gitFeaturesRequested = (rawShowGitInfo !== 'none') || (badgePriority === 'author');
+                const gitFeaturesEnabled = gitFeaturesRequested &&
+                    this._gitAvailable &&
+                    !this._performanceMode &&
+                    featureProfile.enableGit;
+                const showGitInfo = gitFeaturesEnabled ? rawShowGitInfo : 'none';
+                if (badgePriority === 'author' && !gitFeaturesEnabled) {
+                    badgePriority = 'time';
+                }
+    
+                const gitBlame = gitFeaturesEnabled ? await this._getGitBlameInfo(filePath, modifiedAt.getTime()) : null;
+    
+                const badgeDetails = this._generateBadgeDetails({
                     filePath,
-                    resourceUri: uri,
                     stat: normalizedStat,
-                    badgeDetails,
-                    gitBlame: showGitInfo === 'none' ? null : gitBlame,
-                    shouldUseAccessibleTooltips,
+                    diffMs,
+                    dateFormat,
+                    badgePriority,
+                    showFileSize,
                     fileSizeFormat,
-                    isCodeFile
+                    gitBlame,
+                    showGitInfo
                 });
-            } else if (tooltipPreference === 'summary') {
-                tooltip = this._buildSummaryTooltip({
-                    filePath,
-                    stat: normalizedStat,
-                    badgeDetails
-                });
-            } else {
-                tooltip = undefined;
-            }
-
-            let color = undefined;
-            if (colorScheme !== 'none') {
-                color = this._themeIntegration
-                    ? this._themeIntegration.applyThemeAwareColorScheme?.(colorScheme, filePath, diffMs)
-                    : this._getColorByScheme(modifiedAt, colorScheme, filePath);
-            }
-            this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
-
-            let finalBadge = trimBadge(badgeDetails.displayBadge) || trimBadge(badgeDetails.badge) || '??';
-            if (this._accessibility?.shouldEnhanceAccessibility?.()) {
-                finalBadge = this._accessibility.getAccessibleBadge?.(finalBadge) || finalBadge;
-            }
-
-            let decoration;
-            let decorationColor = color;
-            if (decorationColor) {
-                decorationColor = this._enhanceColorForSelection(decorationColor);
-                this._logger.debug(`🎨 Added enhanced color: ${decorationColor.id || decorationColor} (original: ${color?.id || color})`);
-            }
-
-            if (fadeOldFiles) {
-                const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                if (daysSinceModified > fadeThreshold) {
-                    decorationColor = new vscode.ThemeColor('editorGutter.commentRangeForeground');
+    
+                const fileExt = getExtension(filePath);
+                const isCodeFile = ['.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.php', '.java', '.cpp', '.c', '.cs', '.go', '.rs', '.kt', '.swift'].includes(fileExt);
+                const shouldUseAccessibleTooltips = accessibilityMode && this._accessibility?.shouldEnhanceAccessibility();
+                const tooltipPreference = isViewportPriority
+                    ? (featureProfile.enableRichTooltips ? 'rich' : 'summary')
+                    : (featureProfile.backgroundTooltipMode || 'off');
+                this._logger.debug(`🔍 Tooltip generation for ${fileLabel}: accessibilityMode=${accessibilityMode}, shouldUseAccessible=${shouldUseAccessibleTooltips}, preference=${tooltipPreference}, previewMode=${!!this._previewSettings}`);
+    
+                let tooltip;
+                if (tooltipPreference === 'rich') {
+                    tooltip = await this._buildTooltipContent({
+                        filePath,
+                        resourceUri: uri,
+                        stat: normalizedStat,
+                        badgeDetails,
+                        gitBlame: showGitInfo === 'none' ? null : gitBlame,
+                        shouldUseAccessibleTooltips,
+                        fileSizeFormat,
+                        isCodeFile
+                    });
+                } else if (tooltipPreference === 'summary') {
+                    tooltip = this._buildSummaryTooltip({
+                        filePath,
+                        stat: normalizedStat,
+                        badgeDetails
+                    });
+                } else {
+                    tooltip = undefined;
                 }
-            }
-
-            if (highContrastMode) {
-                decorationColor = new vscode.ThemeColor('editorWarning.foreground');
-                this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
-            }
-
-            const safeTooltip = tooltip && tooltip.length < 500 ? tooltip : undefined;
-
-            try {
-                decoration = this._acquireDecorationFromPool({
-                    badge: finalBadge,
-                    tooltip: safeTooltip,
-                    color: decorationColor
-                });
-                if (safeTooltip) {
-                    this._logger.debug(`📝 Added tooltip (${safeTooltip.length} chars)`);
+    
+                let color = undefined;
+                if (colorScheme !== 'none') {
+                    color = this._themeIntegration
+                        ? this._themeIntegration.applyThemeAwareColorScheme?.(colorScheme, filePath, diffMs)
+                        : this._getColorByScheme(modifiedAt, colorScheme, filePath);
                 }
-            } catch (decorationError) {
-                this._logger.error('❌ Failed to create decoration:', decorationError);
-                decoration = new vscode.FileDecoration('!!');
-                decoration.propagate = false;
-            }
-
-            this._logger.debug(`🎨 Color/contrast check for ${fileLabel}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!decorationColor}, previewMode=${!!this._previewSettings}`);
-
-            if (!this._previewSettings) {
-                await this._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
-            } else {
-                this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${fileLabel}`);
-            }
-
-            this._metrics.totalDecorations++;
-            this._maybeShedWorkload();
-            this._maybePurgeLightweightCaches();
-
-            if (!decoration?.badge) {
-                this._logger.error(`❌ Decoration badge is invalid for: ${fileLabel}`);
-                return undefined;
-            }
-
-            const processingTime = Date.now() - startTime;
-            if (!this._performanceMode) {
-                this._logger.infoWithOptions(this._stressLogOptions, `✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
-                this._logger.infoWithOptions(
-                    this._stressLogOptions,
-                    '🎯 RETURNING DECORATION TO VSCODE:',
-                    () => ({
-                        file: fileLabel,
-                        badge: decoration.badge,
-                        hasTooltip: !!decoration.tooltip,
-                        hasColor: !!decoration.color,
-                        colorType: decoration.color?.constructor?.name,
-                        processingTimeMs: processingTime,
-                        decorationType: decoration.constructor.name
-                    })
-                );
-            }
-
-            return decoration;
+                this._logger.debug(`🎨 Color scheme setting: ${colorScheme}, using color: ${color ? 'yes' : 'no'}`);
+    
+                let finalBadge = trimBadge(badgeDetails.displayBadge) || trimBadge(badgeDetails.badge) || '??';
+                if (this._accessibility?.shouldEnhanceAccessibility?.()) {
+                    finalBadge = this._accessibility.getAccessibleBadge?.(finalBadge) || finalBadge;
+                }
+    
+                let decoration;
+                let decorationColor = color;
+                if (decorationColor) {
+                    decorationColor = this._enhanceColorForSelection(decorationColor);
+                    this._logger.debug(`🎨 Added enhanced color: ${decorationColor.id || decorationColor} (original: ${color?.id || color})`);
+                }
+    
+                if (fadeOldFiles) {
+                    const daysSinceModified = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    if (daysSinceModified > fadeThreshold) {
+                        decorationColor = new vscode.ThemeColor('editorGutter.commentRangeForeground');
+                    }
+                }
+    
+                if (highContrastMode) {
+                    decorationColor = new vscode.ThemeColor('editorWarning.foreground');
+                    this._logger.info(`🔆 Applied high contrast color (overriding colorScheme=${colorScheme})`);
+                }
+    
+                const safeTooltip = tooltip && tooltip.length < 500 ? tooltip : undefined;
+    
+                try {
+                    decoration = this._acquireDecorationFromPool({
+                        badge: finalBadge,
+                        tooltip: safeTooltip,
+                        color: decorationColor
+                    });
+                    if (safeTooltip) {
+                        this._logger.debug(`📝 Added tooltip (${safeTooltip.length} chars)`);
+                    }
+                } catch (decorationError) {
+                    this._logger.error('❌ Failed to create decoration:', decorationError);
+                    decoration = new vscode.FileDecoration('!!');
+                    decoration.propagate = false;
+                }
+    
+                this._logger.debug(`🎨 Color/contrast check for ${fileLabel}: colorScheme=${colorScheme}, highContrastMode=${highContrastMode}, hasColor=${!!decorationColor}, previewMode=${!!this._previewSettings}`);
+    
+                if (!this._previewSettings) {
+                    await this._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
+                } else {
+                    this._logger.debug(`🔄 Skipping cache storage due to preview mode for: ${fileLabel}`);
+                }
+    
+                this._metrics.totalDecorations++;
+                this._maybeShedWorkload();
+                this._maybePurgeLightweightCaches();
+    
+                if (!decoration?.badge) {
+                    this._logger.error(`❌ Decoration badge is invalid for: ${fileLabel}`);
+                    return undefined;
+                }
+    
+                const processingTime = Date.now() - startTime;
+                if (!this._performanceMode) {
+                    this._logger.infoWithOptions(this._stressLogOptions, `✅ Decoration created for: ${fileLabel} (badge: ${decoration.badge || 'undefined'}) - Cache key: ${cacheKey.substring(0, 30)}...`);
+                    this._logger.infoWithOptions(
+                        this._stressLogOptions,
+                        '🎯 RETURNING DECORATION TO VSCODE:',
+                        () => ({
+                            file: fileLabel,
+                            badge: decoration.badge,
+                            hasTooltip: !!decoration.tooltip,
+                            hasColor: !!decoration.color,
+                            colorType: decoration.color?.constructor?.name,
+                            processingTimeMs: processingTime,
+                            decorationType: decoration.constructor.name
+                        })
+                    );
+                }
+    
+                return decoration;
         } catch (error) {
             this._metrics.errors++;
             const processingTime = startTime ? Date.now() - startTime : 0;

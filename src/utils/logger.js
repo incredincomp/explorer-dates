@@ -159,8 +159,8 @@ class Logger {
             global[GLOBAL_LOGGER_KEY] = null;
         } else if (typeof globalThis !== 'undefined' && globalThis[GLOBAL_LOGGER_KEY] === this) {
             globalThis[GLOBAL_LOGGER_KEY] = null;
-        } else if (typeof window !== 'undefined' && window[GLOBAL_LOGGER_KEY] === this) {
-            window[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof globalThis !== 'undefined' && globalThis.window?.[GLOBAL_LOGGER_KEY] === this) {
+            globalThis.window[GLOBAL_LOGGER_KEY] = null;
         }
         
         if (loggerInstance === this) {
@@ -298,17 +298,14 @@ function getLogger() {
         }
         return global[GLOBAL_LOGGER_KEY];
     } else if (typeof globalThis !== 'undefined') {
-        // Web/modern environments
+        // Web/modern environments (globalThis may be the window)
         if (!globalThis[GLOBAL_LOGGER_KEY]) {
             globalThis[GLOBAL_LOGGER_KEY] = new Logger();
         }
-        return globalThis[GLOBAL_LOGGER_KEY];
-    } else if (typeof window !== 'undefined') {
-        // Browser fallback
-        if (!window[GLOBAL_LOGGER_KEY]) {
-            window[GLOBAL_LOGGER_KEY] = new Logger();
+        if (globalThis.window) {
+            globalThis.window[GLOBAL_LOGGER_KEY] = globalThis[GLOBAL_LOGGER_KEY];
         }
-        return window[GLOBAL_LOGGER_KEY];
+        return globalThis[GLOBAL_LOGGER_KEY];
     } else {
         // Fallback to module-local singleton
         if (!loggerInstance) {

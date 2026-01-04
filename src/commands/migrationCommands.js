@@ -3,6 +3,10 @@
  * Commands for managing settings migration, validation, and cleanup
  */
 const vscode = require('vscode');
+const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
+const { SettingsOrganizer } = require('../utils/settingsOrganizer');
+
+const settingsCoordinator = getSettingsCoordinator();
 
 function registerMigrationCommands({ context, logger, getSettingsMigrationManager }) {
     const subscriptions = [];
@@ -18,17 +22,54 @@ function registerMigrationCommands({ context, logger, getSettingsMigrationManage
 
             vscode.window.showInformationMessage('Checking for settings that need migration...');
             const results = await migrationManager.migrateAllSettings(context);
-            
-            if (results.length === 0) {
+            const organizationSummary = await migrationManager.autoOrganizeSettingsIfNeeded(context, {
+                trigger: 'manual-migrate',
+                silent: true
+            });
+
+            const messageParts = [];
+            if (results.length > 0) {
+                messageParts.push(`${results.length} migration${results.length === 1 ? '' : 's'}`);
+            }
+            if (organizationSummary?.changed) {
+                messageParts.push('settings reorganized');
+            }
+
+            if (messageParts.length === 0) {
                 vscode.window.showInformationMessage('✅ All settings are up to date!');
             } else {
-                vscode.window.showInformationMessage(`✅ Migrated ${results.length} setting(s) successfully.`);
+                vscode.window.showInformationMessage(`✅ Explorer Dates maintenance applied: ${messageParts.join(' + ')}.`);
             }
             
-            logger.info('Manual settings migration completed', { results });
+            logger.info('Manual settings migration completed', {
+                results,
+                organizationSummary
+            });
         } catch (error) {
             logger.error('Failed to run settings migration', error);
             vscode.window.showErrorMessage(`Failed to migrate settings: ${error.message}`);
+        }
+    }));
+
+    // Organize Explorer Dates Settings Command
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.organizeSettings', async () => {
+        try {
+            const organizer = new SettingsOrganizer(context);
+            const summary = await organizer.organize();
+
+            const moved = summary.movedToWorkspace.length;
+            const sortedFiles = summary.sortedFiles.length;
+            const details = [
+                summary.reorderedWorkspace ? 'workspace settings reordered' : null,
+                moved ? `${moved} setting(s) moved to workspace scope` : null,
+                sortedFiles ? `${sortedFiles} explorer-dates file(s) sorted` : null
+            ].filter(Boolean).join(' • ') || 'No changes were necessary.';
+
+            vscode.window.showInformationMessage(`Explorer Dates settings organized: ${details}`);
+            logger.info('Organize settings command executed', summary);
+        } catch (error) {
+            logger.error('Failed to organize Explorer Dates settings', error);
+            vscode.window.showErrorMessage(`Failed to organize settings: ${error.message}`);
         }
     }));
 
@@ -147,11 +188,16 @@ function registerMigrationCommands({ context, logger, getSettingsMigrationManage
                     const existingColors = workbenchConfig.get('colorCustomizations', {});
                     const newColors = { ...existingColors, ...defaultColors };
                     
-                    await workbenchConfig.update('colorCustomizations', newColors, vscode.ConfigurationTarget.Global);
+                    await settingsCoordinator.updateSetting('workbench.colorCustomizations', newColors, {
+                        scope: 'user',
+                        reason: 'custom-colors-command'
+                    });
                     
                     // Also set color scheme to custom
-                    const explorerConfig = vscode.workspace.getConfiguration('explorerDates');
-                    await explorerConfig.update('colorScheme', 'custom', vscode.ConfigurationTarget.Global);
+                    await settingsCoordinator.updateSetting('colorScheme', 'custom', {
+                        scope: 'user',
+                        reason: 'custom-colors-command'
+                    });
                     
                     vscode.window.showInformationMessage('✅ Custom colors applied successfully!');
                     break;
@@ -178,7 +224,6 @@ function registerMigrationCommands({ context, logger, getSettingsMigrationManage
                 return;
             }
 
-            const config = vscode.workspace.getConfiguration('explorerDates');
             const packageJson = context.extension.packageJSON;
             const configProperties = packageJson?.contributes?.configuration?.properties || {};
 
@@ -187,8 +232,8 @@ function registerMigrationCommands({ context, logger, getSettingsMigrationManage
                 if (key.startsWith('explorerDates.')) {
                     const settingKey = key.replace('explorerDates.', '');
                     try {
-                        await config.update(settingKey, undefined, vscode.ConfigurationTarget.Global);
-                        await config.update(settingKey, undefined, vscode.ConfigurationTarget.Workspace);
+                        await settingsCoordinator.clearSetting(settingKey, { scope: 'user', reason: 'reset-to-defaults' });
+                        await settingsCoordinator.clearSetting(settingKey, { scope: 'workspace', reason: 'reset-to-defaults' });
                         resetCount++;
                     } catch (error) {
                         logger.warn(`Failed to reset setting ${settingKey}`, error);

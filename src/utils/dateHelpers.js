@@ -60,8 +60,6 @@ function fallbackDateFormat(timestamp) {
     
     // Unix epoch: January 1, 1970
     const epochYear = 1970;
-    const epochDayOfWeek = 4; // Thursday
-    
     // Calculate days since epoch
     const daysSinceEpoch = Math.floor(timestamp / MILLISECONDS_PER_DAY);
     

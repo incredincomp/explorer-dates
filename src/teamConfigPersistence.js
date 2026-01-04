@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { CHUNK_SIZES } = require('./presetDefinitions');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 const logger = getLogger();
 
@@ -44,6 +45,7 @@ class TeamConfigPersistenceManager {
         this._ephemeralConfigs = new Map();
         this._configWatcher = null;
         this._changeTimeout = null;
+        this._settings = getSettingsCoordinator();
         logger.info('Team persistence manager initialized with full functionality');
     }
     
@@ -677,12 +679,11 @@ class TeamConfigPersistenceManager {
             return;
         }
         
-        const config = vscode.workspace.getConfiguration();
         const previousValues = {};
         const updatedKeys = [];
         
         for (const [key, value] of Object.entries(profile.settings)) {
-            const inspect = config.inspect(key);
+            const inspect = this._settings.inspect(key);
             const currentValue = inspect?.workspaceValue ?? inspect?.globalValue ?? inspect?.defaultValue;
             previousValues[key] = currentValue;
             
@@ -690,8 +691,13 @@ class TeamConfigPersistenceManager {
                 continue;
             }
             
-            await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-            updatedKeys.push(key);
+            const result = await this._settings.updateSetting(key, value, {
+                scope: 'workspace',
+                reason: `team-profile:${profileId}`
+            });
+            if (result.updated) {
+                updatedKeys.push(result.key);
+            }
         }
         
         if (updatedKeys.length > 0) {
@@ -835,8 +841,10 @@ class TeamConfigPersistenceManager {
     }
     
     async _applySingleSetting(settingKey, value) {
-        const config = vscode.workspace.getConfiguration();
-        await config.update(settingKey, value, vscode.ConfigurationTarget.Workspace);
+        await this._settings.updateSetting(settingKey, value, {
+            scope: 'workspace',
+            reason: 'team-conflict-resolution'
+        });
     }
     
     _getWorkspaceRoot() {
@@ -1047,12 +1055,13 @@ class TeamConfigPersistenceManager {
         if (!includeMetadata) {
             delete exportData.metadata;
             // Remove metadata from profiles too
-            exportData.profiles = Object.fromEntries(
-                Object.entries(exportData.profiles).map(([id, profile]) => {
-                    const { metadata, ...profileWithoutMetadata } = profile;
-                    return [id, profileWithoutMetadata];
-                })
-            );
+                exportData.profiles = Object.fromEntries(
+                    Object.entries(exportData.profiles).map(([id, profile]) => {
+                        const profileWithoutMetadata = { ...profile };
+                        delete profileWithoutMetadata.metadata;
+                        return [id, profileWithoutMetadata];
+                    })
+                );
         }
         
         switch (format.toLowerCase()) {
@@ -1142,7 +1151,6 @@ class TeamConfigPersistenceManager {
             return;
         }
         
-        const teamConfigPath = vscode.Uri.joinPath(workspaceRoot, this._teamConfigFile);
         const pattern = new vscode.RelativePattern(workspaceRoot, this._teamConfigFile);
         
         this._configWatcher = vscode.workspace.createFileSystemWatcher(pattern);

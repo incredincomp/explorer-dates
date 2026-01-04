@@ -9,13 +9,16 @@ const { createMockVscode } = require('./helpers/mockVscode');
 
 console.log('🧪 Testing Periodic Refresh Mechanism\n');
 
-// Set up mock VS Code environment with short refresh interval for testing
-const configValues = {
-    'explorerDates.badgeRefreshInterval': 5000, // 5 seconds for testing
-    'explorerDates.showDateDecorations': true
-};
-
-const mockEnv = createMockVscode(configValues);
+// Set up mock VS Code environment with a very short workspace-level refresh interval
+const mockEnv = createMockVscode({
+    config: {
+        'explorerDates.showDateDecorations': true
+    },
+    workspaceConfig: {
+        // Use a 500ms interval so the timer fires quickly inside the test harness.
+        'explorerDates.badgeRefreshInterval': 500
+    }
+});
 const vscode = mockEnv.vscode;
 
 // Load the FileDateDecorationProvider

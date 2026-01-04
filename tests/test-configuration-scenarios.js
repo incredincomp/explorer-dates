@@ -17,6 +17,9 @@ let activeTimerHandles = new Set();
 let timerHandleCounter = 1;
 
 function enableImmediateTimers() {
+    // Set shorter chunk timeout for tests
+    process.env.EXPLORER_DATES_CHUNK_TIMEOUT = '100';
+    
     global.setTimeout = (fn, delay, ...args) => {
         const handle = timerHandleCounter++;
         activeTimerHandles.add(handle);

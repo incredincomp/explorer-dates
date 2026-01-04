@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { getLogger } = require('./utils/logger');
 const { generateWorkspaceKey, detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('./utils/workspaceDetection');
 const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RESTART_REQUIRED_SETTINGS } = require('./presetDefinitions');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 const logger = getLogger();
 
@@ -16,6 +17,7 @@ class RuntimeConfigManager {
         this._restartDebounceTimer = null;
         this._pendingRestartKey = 'explorerDates.pendingRestart';
         this._suggestionHistoryKey = 'explorerDates.suggestionHistory';
+        this._settings = getSettingsCoordinator();
         
         this._setupConfigurationWatcher();
         logger.info('Runtime configuration manager initialized');
@@ -132,16 +134,13 @@ class RuntimeConfigManager {
             throw new Error(`Unknown preset: ${presetId}`);
         }
         
-        const config = vscode.workspace.getConfiguration();
-        const changedSettings = [];
-        
-        for (const [key, value] of Object.entries(preset.settings)) {
-            const currentValue = config.get(key);
-            if (currentValue !== value) {
-                await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-                changedSettings.push(key.replace('explorerDates.', ''));
-            }
-        }
+        const applied = await this._settings.applySettings(preset.settings, {
+            scope: 'workspace',
+            reason: `apply-preset:${presetId}`
+        });
+        const changedSettings = applied
+            .filter(result => result.updated)
+            .map(result => result.key.replace('explorerDates.', ''));
         
         if (changedSettings.length > 0) {
             this._queueRestartPrompt(changedSettings);

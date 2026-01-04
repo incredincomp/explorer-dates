@@ -1035,7 +1035,6 @@ function createMockVscode(options = {}) {
     if (forceIsolation) {
         // Create isolated mock - don't use shared instance
         actualVscodeMock = mock;
-        console.log(`🔒 Creating isolated mock instance for ${options.isolationKey || 'unnamed test'}`);
     } else {
         // Use shared mock system as before
         if (!sharedVscodeMock) {

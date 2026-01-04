@@ -1,7 +1,9 @@
 {
-  "version": "1.0.0",
-  "createdAt": "2026-01-03T23:54:34.926Z",
+  "createdAt": "2026-01-04T08:56:39.927Z",
   "defaultProfile": "test",
+  "metadata": {
+    "extensionVersion": "1.2.2"
+  },
   "profiles": {
     "test": {
       "name": "Test Profile",
@@ -10,7 +12,5 @@
       }
     }
   },
-  "metadata": {
-    "extensionVersion": "1.2.2"
-  }
+  "version": "1.0.0"
 }

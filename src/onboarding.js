@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { getLogger } = require('./utils/logger');
 const { getLocalization } = require('./utils/localization');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 /**
  * Onboarding Manager for first-time users and feature discovery
@@ -10,6 +11,7 @@ class OnboardingManager {
         this._context = context;
         this._logger = getLogger();
         this._l10n = getLocalization();
+        this._settings = getSettingsCoordinator();
         
         // Track onboarding state
         this._hasShownWelcome = context.globalState.get('explorerDates.hasShownWelcome', false);
@@ -243,8 +245,6 @@ class OnboardingManager {
      * Apply quick configuration based on user selections
      */
     async _applyQuickConfiguration(configuration) {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        
         // Apply selected configuration
         if (configuration.preset) {
             const presets = this._getConfigurationPresets();
@@ -252,11 +252,10 @@ class OnboardingManager {
             
             if (preset) {
                 this._logger.info(`Applying preset: ${configuration.preset}`, preset.settings);
-                
-                for (const [key, value] of Object.entries(preset.settings)) {
-                    await config.update(key, value, vscode.ConfigurationTarget.Global);
-                    this._logger.debug(`Updated setting: explorerDates.${key} = ${value}`);
-                }
+                await this._settings.applySettings(preset.settings, {
+                    scope: 'user',
+                    reason: `onboarding-preset:${configuration.preset}`
+                });
                 
                 this._logger.info(`Applied preset: ${configuration.preset}`, preset.settings);
                 
@@ -267,9 +266,10 @@ class OnboardingManager {
         
         // Apply individual settings
         if (configuration.individual) {
-            for (const [key, value] of Object.entries(configuration.individual)) {
-                await config.update(key, value, vscode.ConfigurationTarget.Global);
-            }
+            await this._settings.applySettings(configuration.individual, {
+                scope: 'user',
+                reason: 'onboarding-individual'
+            });
             this._logger.info('Applied individual settings', configuration.individual);
         }
 
@@ -945,8 +945,10 @@ class OnboardingManager {
                     case 'tryFeature':
                         // Demo a specific new feature
                         if (message.feature === 'badgePriority') {
-                            const config = vscode.workspace.getConfiguration('explorerDates');
-                            await config.update('badgePriority', 'author', vscode.ConfigurationTarget.Global);
+                            await this._settings.updateSetting('badgePriority', 'author', {
+                                scope: 'user',
+                                reason: 'whats-new-demo'
+                            });
                             vscode.window.showInformationMessage('Badge priority set to author! You should see author initials on files now.');
                         }
                         break;

@@ -181,8 +181,9 @@ async function testWebDevelopmentPresetEnablesWorkers() {
         const workersSetting = webDevPreset.settings['explorerDates.enableIncrementalWorkers'];
         assert.strictEqual(workersSetting, true, 'Web development preset should enable incremental workers');
         
-        // Apply the preset settings
-        Object.assign(configValues, webDevPreset.settings);
+        // Apply the preset settings to workspace scope (where feature flags are stored)
+        const { workspaceConfigValues } = mockInstall;
+        Object.assign(workspaceConfigValues, webDevPreset.settings);
         
         // Verify feature flag recognizes the change
         const featureFlags = require('../src/featureFlags');
@@ -213,8 +214,9 @@ async function testMinimalPresetDisablesWorkers() {
         const workersSetting = minimalPreset.settings['explorerDates.enableIncrementalWorkers'];
         assert.strictEqual(workersSetting, false, 'Minimal preset should disable incremental workers');
         
-        // Apply the preset settings
-        Object.assign(configValues, minimalPreset.settings);
+        // Apply the preset settings to workspace scope (where feature flags are stored)
+        const { workspaceConfigValues } = mockInstall;
+        Object.assign(workspaceConfigValues, minimalPreset.settings);
         
         // Verify feature flag recognizes the change
         const featureFlags = require('../src/featureFlags');
@@ -245,8 +247,9 @@ async function testEnterprisePresetEnablesWorkers() {
         const workersSetting = enterprisePreset.settings['explorerDates.enableIncrementalWorkers'];
         assert.strictEqual(workersSetting, true, 'Enterprise preset should enable incremental workers');
         
-        // Apply the preset settings
-        Object.assign(configValues, enterprisePreset.settings);
+        // Apply the preset settings to workspace scope (where feature flags are stored)
+        const { workspaceConfigValues } = mockInstall;
+        Object.assign(workspaceConfigValues, enterprisePreset.settings);
         
         // Verify feature flag recognizes the change
         const featureFlags = require('../src/featureFlags');
@@ -277,8 +280,9 @@ async function testBalancedPresetDisablesWorkers() {
         const workersSetting = balancedPreset.settings['explorerDates.enableIncrementalWorkers'];
         assert.strictEqual(workersSetting, false, 'Balanced preset should disable incremental workers');
         
-        // Apply the preset settings
-        Object.assign(configValues, balancedPreset.settings);
+        // Apply the preset settings to workspace scope (where feature flags are stored)
+        const { workspaceConfigValues } = mockInstall;
+        Object.assign(workspaceConfigValues, balancedPreset.settings);
         
         // Verify feature flag recognizes the change
         const featureFlags = require('../src/featureFlags');
@@ -309,8 +313,9 @@ async function testDataSciencePresetDisablesWorkers() {
         const workersSetting = dataSciencePreset.settings['explorerDates.enableIncrementalWorkers'];
         assert.strictEqual(workersSetting, false, 'Data science preset should disable incremental workers');
         
-        // Apply the preset settings
-        Object.assign(configValues, dataSciencePreset.settings);
+        // Apply the preset settings to workspace scope (where feature flags are stored)
+        const { workspaceConfigValues } = mockInstall;
+        Object.assign(workspaceConfigValues, dataSciencePreset.settings);
         
         // Verify feature flag recognizes the change
         const featureFlags = require('../src/featureFlags');
@@ -345,8 +350,8 @@ async function testFeatureFlagStateConsistency() {
         assert.strictEqual(chunk, null, 'Chunk loading should return null when disabled');
         
         // Now enable it and retest
-        const { configValues } = mockInstall;
-        configValues['explorerDates.enableIncrementalWorkers'] = true;
+        const { workspaceConfigValues } = mockInstall;
+        workspaceConfigValues['explorerDates.enableIncrementalWorkers'] = true;
         
         // Test getEnabledFeatures list again
         const newEnabledFeatures = featureFlags.getEnabledFeatures();
@@ -444,7 +449,12 @@ async function main() {
 }
 
 if (require.main === module) {
-    main();
+    main()
+        .finally(() => {
+            // Ensure lingering VS Code timers/watchers from presets don't keep the process alive.
+            const exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
+            setTimeout(() => process.exit(exitCode), 0);
+        });
 }
 
 module.exports = {

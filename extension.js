@@ -290,6 +290,35 @@ let workspaceTemplatesManagerPromise = null;
 let exportReportingManagerPromise = null;
 let extensionApiManagerPromise = null;
 
+function shouldPrimeOnboardingChunk(context) {
+    if (!context?.globalState) {
+        return true;
+    }
+
+    const hasShownWelcome = context.globalState.get('explorerDates.hasShownWelcome', false);
+    const hasCompletedSetup = context.globalState.get('explorerDates.hasCompletedSetup', false);
+    const storedVersion = context.globalState.get('explorerDates.onboardingVersion', '0.0.0');
+    const currentVersion = context.extension?.packageJSON?.version || '0.0.0';
+
+    if (!hasShownWelcome || !hasCompletedSetup) {
+        return true;
+    }
+
+    return isMajorVersionUpdate(storedVersion, currentVersion);
+}
+
+function isMajorVersionUpdate(previousVersion, currentVersion) {
+    const parseMajor = (version) => {
+        const [major = '0'] = (version || '').split('.');
+        const parsed = Number.parseInt(major, 10);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const previousMajor = parseMajor(previousVersion);
+    const currentMajor = parseMajor(currentVersion);
+    return currentMajor > previousMajor;
+}
+
 function ensureOnboardingManager(context) {
     if (!onboardingManagerPromise) {
         onboardingManagerPromise = dynamicImports.loadOnboarding(context);
@@ -397,16 +426,24 @@ async function activate(context) {
         } catch (error) {
             logger.warn('Settings migration encountered issues:', error);
         }
+        try {
+            await settingsMigrationManager.autoOrganizeSettingsIfNeeded(context, {
+                trigger: 'activation',
+                silent: true
+            });
+        } catch (error) {
+            logger.warn('Settings organization encountered issues:', error);
+        }
 
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
         await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', !isWeb);
 
         const featureConfig = vscode.workspace.getConfiguration('explorerDates');
-        const workspaceTemplatesEnabled = featureConfig.get('enableWorkspaceTemplates', true);
         // Use unified enableExportReporting setting (with fallback to legacy enableReporting)
         const reportingEnabled = featureConfig.get('enableExportReporting', 
             featureConfig.get('enableReporting', true));
         const apiEnabled = featureConfig.get('enableExtensionApi', true);
+        const onboardingEnabled = featureConfig.get('enableOnboardingSystem', true);
 
         // Register file date decoration provider for overlay dates in Explorer
         fileDateProvider = new FileDateDecorationProvider();
@@ -486,16 +523,19 @@ async function activate(context) {
             logger.info('Explorer Dates API exports disabled via explorerDates.enableExtensionApi');
         }
 
-        // Show onboarding if needed
-        const onboardingConfig = vscode.workspace.getConfiguration('explorerDates');
-        if (onboardingConfig.get('showWelcomeOnStartup', true)) {
-            const onboardingManager = await ensureOnboardingManager(context);
-            if (onboardingManager && await onboardingManager.shouldShowOnboarding()) {
-                // Delay to let extension fully activate and avoid interrupting user workflow
-                // Longer delay for more graceful experience
-                setTimeout(() => {
-                    onboardingManager.showWelcomeMessage();
-                }, 5000);
+        // Show onboarding if needed without eagerly loading the heavy chunk for users who have already completed it.
+        const showWelcomeOnStartup = featureConfig.get('showWelcomeOnStartup', true);
+        if (onboardingEnabled && showWelcomeOnStartup) {
+            if (shouldPrimeOnboardingChunk(context)) {
+                const onboardingManager = await ensureOnboardingManager(context);
+                if (onboardingManager && await onboardingManager.shouldShowOnboarding()) {
+                    // Delay to let extension fully activate and avoid interrupting user workflow
+                    setTimeout(() => {
+                        onboardingManager.showWelcomeMessage();
+                    }, 5000);
+                }
+            } else {
+                logger.debug('Skipping onboarding preload – user already completed onboarding for this major version.');
             }
         }
 
@@ -550,7 +590,13 @@ async function activate(context) {
         // Register workspace templates commands with lazy loading
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
-                if (!workspaceTemplatesEnabled) {
+                const currentFeatureConfig = vscode.workspace.getConfiguration('explorerDates');
+                console.log('DEBUG: currentFeatureConfig type:', typeof currentFeatureConfig);
+                console.log('DEBUG: currentFeatureConfig keys:', Object.keys(currentFeatureConfig));
+                const workspaceTemplatesCurrentlyEnabled = currentFeatureConfig.get('enableWorkspaceTemplates', true);
+                console.log('DEBUG: workspaceTemplatesCurrentlyEnabled =', workspaceTemplatesCurrentlyEnabled);
+                console.log('DEBUG: calling get with key enableWorkspaceTemplates, default true');
+                if (!workspaceTemplatesCurrentlyEnabled) {
                     vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to use this command.');
                     return;
                 }
@@ -579,7 +625,9 @@ async function activate(context) {
 
         const saveTemplate = vscode.commands.registerCommand('explorerDates.saveTemplate', async () => {
             try {
-                if (!workspaceTemplatesEnabled) {
+                const currentFeatureConfig = vscode.workspace.getConfiguration('explorerDates');
+                const workspaceTemplatesCurrentlyEnabled = currentFeatureConfig.get('enableWorkspaceTemplates', true);
+                if (!workspaceTemplatesCurrentlyEnabled) {
                     vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to save templates.');
                     return;
                 }

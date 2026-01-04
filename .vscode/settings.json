@@ -1,0 +1,8 @@
+{
+    "explorerDates.colorScheme": "file-type",
+    "explorerDates.enableExportReporting": false,
+    "explorerDates.enableExtensionApi": false,
+    "explorerDates.enableIncrementalWorkers": true,
+    "explorerDates.enableWorkspaceIntelligence": false,
+    "explorerDates.performanceMode": false
+}

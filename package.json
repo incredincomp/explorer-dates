@@ -226,6 +226,11 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.organizeSettings",
+        "title": "Organize Explorer Dates Settings",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.resetToDefaults",
         "title": "Reset Settings to Defaults",
         "category": "Explorer Dates"
@@ -978,6 +983,7 @@
     "test:performance-mode": "node tests/test-performance-mode.js",
     "test:performance-baselines": "node tests/test-performance-baselines.js",
     "test:periodic-refresh": "node tests/test-periodic-refresh.js",
+    "test:vsix-smoke": "xvfb-run -a npx @vscode/test-cli --config .vscode-test.vsix-smoke.mjs",
     "test:memory-isolation": "node --expose-gc tests/test-memory-isolation.js",
     "test:memory-isolation-forced-miss": "node --expose-gc tests/test-memory-isolation-forced-miss.js",
     "test:memory-isolation-matrix": "node --expose-gc tests/test-memory-isolation-matrix.js",
@@ -1019,7 +1025,8 @@
     "package-chunks": "node esbuild-federation.js --chunks --production",
     "watch-chunks": "node esbuild-federation.js --chunks --watch",
     "build:analysis": "npm run package-bundle && npm run package-chunks",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "format:settings": "node scripts/sort-settings.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

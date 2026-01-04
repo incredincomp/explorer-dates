@@ -75,7 +75,13 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
    - `Explorer Dates: Show Performance Metrics`
    - `Explorer Dates: Open Logs`
    - `Explorer Dates: Refresh Date Decorations`
+   - `Explorer Dates: Organize Settings`
    - Full list in [DOCS/COMMANDS.md](./DOCS/COMMANDS.md)
+
+### Settings Housekeeping
+- Explorer Dates now auto-detects misplaced workspace settings or unsorted `explorer-dates-*.json` files during activation/migrations and quietly reorganizes them when needed.
+- `Explorer Dates: Organize Settings` remains available for manual runs (or when automation is disabled).
+- Use `npm run format:settings` (or `node scripts/sort-settings.js path/to/file.json`) to alphabetize any VS Code or Explorer Dates JSON config on demand.
 
 ## VS Code for Web Support
 
@@ -375,94 +381,186 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ### Version 1.3.0 (Latest)
 
-**Module Federation & Team Configuration Release**
+**Module Federation & Team Configuration Release** *(Released January 4, 2026)*
 
 Explorer Dates v1.3.0 introduces a modern module federation architecture with comprehensive team collaboration features:
 
-#### **Architecture Revolution**
+#### **🏗️ Architecture Revolution**
 - **Module Federation**: Dynamic chunk loading reduces base bundle from 267KB to ~99KB core + 281KB optional features
 - **Feature Gating**: Disable features you don't use to save bundle size (up to 36% reduction possible)
 - **Cross-Platform Bundles**: Dedicated Node.js and web bundles with platform-specific optimizations
 - **Smart Loading**: Features load only when needed, with graceful fallback when disabled
 
-#### **Team Collaboration & Configuration**
+#### **👥 Team Collaboration & Configuration**
 - **Team Configuration Profiles**: Share standardized Explorer Dates configurations across your team
 - **Conflict Resolution**: Intelligent merge strategies when team configs conflict with user preferences
 - **Configuration Templates**: Built-in presets for different development scenarios (minimal, balanced, enterprise)
 - **Settings Migration**: Automatic migration from legacy settings with intelligent conflict detection
 - **Runtime Optimization**: Suggest optimal configurations based on workspace characteristics
 
-#### **Enhanced Performance & Reliability**
+#### **⚡ Enhanced Performance & Reliability**
 - **Comprehensive Testing**: 40+ test suites covering feature gating, chunk loading, memory isolation, and edge cases
 - **Memory Optimizations**: Advanced pooling and flyweight caching from v1.2.5 retained and enhanced
 - **Error Resilience**: Graceful handling of missing chunks, corrupted configurations, and network failures
 - **Bundle Verification**: Automated testing ensures all builds are production-ready
 
-#### **Developer Experience**
+#### **🔧 Developer Experience**
 - **Configuration Validation**: Real-time validation of all settings with helpful error messages
 - **Preset System**: One-click application of optimized configurations for different use cases
 - **Chunk Status Monitoring**: Visibility into which features are loaded and their impact on bundle size
 - **Advanced Diagnostics**: Enhanced debugging tools for configuration and performance analysis
 
-**Migration Notes:**
-- All existing configurations are automatically migrated
-- New feature flags default to enabled for backward compatibility
-- Teams can disable unused features to optimize bundle size
-- See [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for detailed migration information
+#### **📋 Migration & Deprecations**
+- **⚠️ Settings Consolidated**: `enableReporting` → `enableExportReporting` (automatic migration)
+- **✅ All Configurations Auto-Migrated**: Existing configurations automatically upgraded with conflict detection
+- **✅ Backward Compatibility**: New feature flags default to enabled
+- **✅ Team Optimization**: Teams can disable unused features to optimize bundle size
+
+**Upgrade Path:** See [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for detailed migration information.
+
+---
+
+### Version 1.2.6
+
+**Stability & Memory Optimizations** *(December 2025)*
+
+#### **🧠 Memory Management Enhancements**
+- **Decoration Pooling**: 99.9% cache hit rate with object reuse
+- **Flyweight String Caching**: FIFO caches prevent transient allocations
+- **Advanced Cache Slimming**: 40% per-entry memory reduction
+- **Memory Shedding**: Optional adaptive guardrail for resource-constrained environments
+
+#### **🎯 Performance Improvements**
+- **Hierarchical Cache Buckets**: O(1) lookups with intelligent directory-based trimming
+- **Viewport-Aware Decorations**: Full experience for active files, lightweight for background
+- **Progressive Feature Levels**: Auto-scaling based on workspace size
+
+---
+
+### Version 1.2.5
+
+**Large Workspace Performance** *(November 2025)*
+
+#### **📊 Workspace Intelligence**
+- **Automatic Large Workspace Detection**: Proactive warnings for 50,000+ file projects
+- **Adaptive File Watching**: Smart watchers for high-signal folders only
+- **Activity Tracking Guardrail**: 3,000 file activity cap with LRU eviction
+- **Hybrid Filtering**: User events prioritized over filesystem churn
+
+#### **⚠️ Deprecations & Changes**
+- **Memory Environment Variables**: New adaptive memory management options
+- **Feature Level Auto-Detection**: Workspace size now determines optimal feature set
+- **Smart Watcher Patterns**: Legacy `**/*` watching replaced with adaptive patterns
+
+---
 
 ### Version 1.2.2
 
-**Workspace Exclusion Reliability**
+**Workspace Exclusion Reliability** *(October 2025)*
 
-- Automatic profile cleanup deduplicates every workspace exclusion list at startup, keeping `.vscode/settings.json` lean even after months of smart suggestions.
-- Existing installs are sanitized before new suggestions run, so previously duplicated folders disappear without manual cleanup.
+#### **🔧 Configuration Management**
+- **Automatic Profile Cleanup**: Deduplicates exclusion lists at startup
+- **Smart Suggestion Logic**: Only writes newly detected folders, prevents repeat prompts
+- **Enhanced User Control**: Single Keep/Review/Revert prompt for auto-exclusions
 
-**Smarter Suggestions & Prompts**
+#### **✅ Improvements**
+- Existing installs automatically sanitized before new suggestions
+- Cleaner `.vscode/settings.json` maintenance
+- Reduced prompt fatigue for workspace exclusions
 
-- Smart Exclusion now only writes newly detected folders, preventing the repeated "add the same exclusions" prompts on every reload.
-- When Explorer Dates auto-excludes something, you get a single Keep/Review/Revert prompt so you stay in control without cluttering settings.
+---
 
 ### Version 1.2.0
 
-**Configuration Validation & Progressive Loading**
+**Configuration Validation & Progressive Loading** *(September 2025)*
 
-- **VS Code for Web Compatibility**: Added a dedicated browser bundle, filesystem adapter, and download-based exports so Explorer Dates runs seamlessly on `vscode.dev`, `github.dev`, and other web-hosted IDEs.
-- **Feature Gating**: `enableWorkspaceTemplates`, `enableReporting`, `enableExtensionApi`, and `allowExternalPlugins` now actively control their respective managers and commands.
-- **Reporting Enhancements**: Respect custom report formats, activity retention windows, and time-tracking integration metadata while keeping historical data trimmed.
-- **Progressive Loading Warm-up**: When enabled, the batch processor now pre-warms Explorer decorations in the background for large workspaces.
-- **Template Accuracy**: Built-in workspace templates reference real Explorer Dates settings so exports/imports remain reliable.
-- **Config Verification**: Added `npm run test:config` to ensure every contributed setting is referenced before publishing.
+#### **🌐 VS Code for Web Support** *(New)*
+- **Dedicated Browser Bundle**: Seamless operation on `vscode.dev`, `github.dev`
+- **Filesystem Adapter**: Platform-agnostic file operations
+- **Download-Based Exports**: Web-compatible configuration sharing
+
+#### **🚀 Feature Enhancements**
+- **Feature Gating**: Active control via `enableWorkspaceTemplates`, `enableReporting`, `enableExtensionApi`
+- **Progressive Loading Warm-up**: Background decoration pre-warming for large workspaces
+- **Enhanced Reporting**: Custom formats, retention windows, time-tracking integration
+- **Template Accuracy**: Built-in templates reference actual Explorer Dates settings
+
+#### **⚠️ Configuration Changes**
+- **New Feature Flags**: Granular control over extension components
+- **Report Format Evolution**: Enhanced CSV/JSON/HTML/Markdown exports
+- **API Access Control**: `allowExternalPlugins` for security-conscious environments
+
+---
 
 ### Version 1.1.0
 
-**Major Configuration & Feature Update**
+**Major Configuration & Feature Update** *(August 2025)*
 
-- **Fixed Configuration Conflicts**
-- **File Size Display**
-- **Enhanced Color Schemes**
-- **Context Menu Integration**
-- **Keyboard Shortcuts**
-- **Improved Settings**
+#### **🎨 Visual Enhancements** *(New)*
+- **File Size Display**: Optional file size alongside dates (e.g., "5m • 1.2KB")
+- **Enhanced Color Schemes**: `recency`, `file-type`, `subtle`, `vibrant`, `custom` options
+- **Badge Priority Control**: Choose between time, author, or size in 2-character badges
+
+#### **🖱️ User Experience** *(New)*
+- **Context Menu Integration**: Right-click "Copy File Date" and "Show File Details"
+- **Keyboard Shortcuts**: Ctrl+Shift+D (Cmd+Shift+D) for quick toggle
+- **Improved Tooltips**: Rich hover information with full timestamps and Git data
+
+#### **⚠️ Deprecated Features**
+- **Legacy Color Settings**: Moved to `workbench.colorCustomizations` for theme integration
+- **Basic Context Actions**: Enhanced with dedicated menu items and shortcuts
+
+#### **🔧 Configuration Fixes**
+- Resolved setting conflicts and validation issues
+- Enhanced settings organization and documentation
+
+---
 
 ### Version 1.0.1
 
-**Performance & Localization Update**
+**Performance & Localization Update** *(July 2025)*
 
-- Performance Optimization: Configurable exclusions, intelligent caching, and performance metrics
-- Accessibility: High-contrast mode and enhanced screen reader support
-- Localization: Support for 6 languages with auto-detection
-- Debugging Tools: Built-in logging and performance metrics viewing
+#### **🌍 Accessibility & Localization** *(New)*
+- **Multi-Language Support**: EN, ES, FR, DE, JA, ZH with auto-detection
+- **High-Contrast Mode**: Enhanced visibility for accessibility needs
+- **Screen Reader Compatibility**: Full ARIA support and accessible tooltips
+
+#### **⚡ Performance Optimizations** *(New)*
+- **Configurable Exclusions**: Smart exclusion patterns for large projects
+- **Intelligent Caching**: Advanced caching algorithms with hit rate optimization
+- **Performance Metrics**: Built-in monitoring and diagnostic commands
+
+#### **🔍 Debugging Tools** *(New)*
+- **Built-in Logging**: Comprehensive logging system with configurable levels
+- **Performance Metrics Viewer**: Real-time performance and cache statistics
+- **Diagnostic Commands**: Troubleshooting and health check utilities
+
+---
 
 ### Version 1.0.0
 
-**Initial Release**
+**Initial Release** *(June 2025)*
 
-- Native Integration: Built using VS Code's FileDecorationProvider API
-- Intuitive Time Badges: Clear formats like `5m`, `2h`, `3d`
-- Smart Performance: Intelligent caching and file system watching
-- Lightweight: Elegant native decorations without UI overlays
+#### **🎯 Core Features** *(New)*
+- **Native VS Code Integration**: Built using FileDecorationProvider API for optimal performance
+- **Intuitive Time Badges**: Clear, readable formats like `5m`, `2h`, `3d`, `1w`
+- **Smart Caching**: Intelligent file system watching and metadata caching
+- **Lightweight Architecture**: No UI overlays, pure native decorations
 
-See [CHANGELOG.md](./CHANGELOG.md) for complete details.
+#### **📋 Foundation**
+- Elegant sidebar integration without workspace clutter
+- Automatic refresh and file system watching
+- Basic configuration options for display preferences
+- Cross-platform compatibility (Windows, macOS, Linux)
+
+---
+
+**Upgrade Notes:**
+- **From v1.2.x**: Settings automatically migrated, new feature flags available for bundle optimization
+- **From v1.1.x**: Color settings moved to `workbench.colorCustomizations`, enhanced context menu available
+- **From v1.0.x**: Performance mode recommended for large workspaces, accessibility features available
+
+See [CHANGELOG.md](./CHANGELOG.md) for complete technical details and [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for migration assistance.
 
 ## License
 

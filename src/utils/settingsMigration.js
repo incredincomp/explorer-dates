@@ -4,11 +4,16 @@
  */
 const vscode = require('vscode');
 const { getLogger } = require('./logger');
+const { getSettingsCoordinator } = require('./settingsCoordinator');
+const { SettingsOrganizer } = require('./settingsOrganizer');
 
 class SettingsMigrationManager {
     constructor() {
         this._logger = getLogger();
         this._migratedSettings = new Set();
+        this._settings = getSettingsCoordinator();
+        this._organizer = null;
+        this._organizerContext = null;
     }
 
     /**
@@ -46,14 +51,16 @@ class SettingsMigrationManager {
      * Migrate enableReporting to enableExportReporting
      */
     async migrateReportingSettings() {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const legacy = config.inspect('enableReporting');
-        const current = config.inspect('enableExportReporting');
+        const legacy = this._settings.inspect('enableReporting');
+        const current = this._settings.inspect('enableExportReporting');
 
         // Check if legacy setting exists and new setting doesn't have a user-defined value
         if (legacy?.globalValue !== undefined && current?.globalValue === undefined) {
             try {
-                await config.update('enableExportReporting', legacy.globalValue, vscode.ConfigurationTarget.Global);
+                await this._settings.updateSetting('enableExportReporting', legacy.globalValue, {
+                    scope: 'user',
+                    reason: 'migrate-enableReporting-global'
+                });
                 this._migratedSettings.add('enableReporting→enableExportReporting (Global)');
                 this._logger.info('Migrated global enableReporting to enableExportReporting', { 
                     oldValue: legacy.globalValue 
@@ -66,7 +73,10 @@ class SettingsMigrationManager {
         // Also handle workspace-level settings
         if (legacy?.workspaceValue !== undefined && current?.workspaceValue === undefined) {
             try {
-                await config.update('enableExportReporting', legacy.workspaceValue, vscode.ConfigurationTarget.Workspace);
+                await this._settings.updateSetting('enableExportReporting', legacy.workspaceValue, {
+                    scope: 'workspace',
+                    reason: 'migrate-enableReporting-workspace'
+                });
                 this._migratedSettings.add('enableReporting→enableExportReporting (Workspace)');
                 this._logger.info('Migrated workspace enableReporting to enableExportReporting', { 
                     oldValue: legacy.workspaceValue 
@@ -78,11 +88,10 @@ class SettingsMigrationManager {
 
         if (legacy?.workspaceFolderValue !== undefined && current?.workspaceFolderValue === undefined) {
             try {
-                await config.update(
-                    'enableExportReporting',
-                    legacy.workspaceFolderValue,
-                    vscode.ConfigurationTarget.WorkspaceFolder
-                );
+                await this._settings.updateSetting('enableExportReporting', legacy.workspaceFolderValue, {
+                    scope: 'workspaceFolder',
+                    reason: 'migrate-enableReporting-folder'
+                });
                 this._migratedSettings.add('enableReporting→enableExportReporting (WorkspaceFolder)');
                 this._logger.info('Migrated workspace folder enableReporting to enableExportReporting', {
                     oldValue: legacy.workspaceFolderValue
@@ -103,16 +112,15 @@ class SettingsMigrationManager {
      * Migrate deprecated customColors setting to workbench.colorCustomizations
      */
     async migrateCustomColorSettings() {
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const legacyColors = config.get('customColors');
+        const explorerConfig = vscode.workspace.getConfiguration('explorerDates');
+        const legacyColors = explorerConfig.get('customColors');
         
         if (!legacyColors || typeof legacyColors !== 'object') {
             return false;
         }
 
         // Check if workbench colors are already configured
-        const workbenchConfig = vscode.workspace.getConfiguration('workbench');
-        const colorCustomizations = workbenchConfig.get('colorCustomizations', {});
+        const colorCustomizations = this._settings.getValue('workbench.colorCustomizations') || {};
         
         const hasExplorerColors = colorCustomizations['explorerDates.customColor.veryRecent'] !== undefined ||
                                  colorCustomizations['explorerDates.customColor.recent'] !== undefined ||
@@ -132,7 +140,10 @@ class SettingsMigrationManager {
         };
 
         try {
-            await workbenchConfig.update('colorCustomizations', newColors, vscode.ConfigurationTarget.Global);
+            await this._settings.updateSetting('workbench.colorCustomizations', newColors, {
+                scope: 'user',
+                reason: 'migrate-customColors'
+            });
             this._migratedSettings.add('customColors→workbench.colorCustomizations');
             this._logger.info('Migrated custom colors to workbench.colorCustomizations', { 
                 oldColors: legacyColors,
@@ -149,7 +160,6 @@ class SettingsMigrationManager {
      * Validate and potentially fix feature flag settings
      */
     async validateFeatureFlags() {
-        const config = vscode.workspace.getConfiguration('explorerDates');
         const flagsToValidate = {
             enableOnboardingSystem: { default: true, type: 'boolean' },
             enableExportReporting: { default: true, type: 'boolean' },
@@ -166,8 +176,8 @@ class SettingsMigrationManager {
         const untouchedDefaults = [];
 
         for (const [flag, spec] of Object.entries(flagsToValidate)) {
-            const inspected = config.inspect(flag);
-            const currentValue = config.get(flag);
+            const inspected = this._settings.inspect(flag);
+            const currentValue = this._settings.getValue(flag);
             
             // Check if setting exists at user or workspace level
             const hasUserValue = inspected?.globalValue !== undefined;
@@ -185,7 +195,10 @@ class SettingsMigrationManager {
                 if (!isValidType) {
                     // Type mismatch - fix it
                     try {
-                        await config.update(flag, spec.default, vscode.ConfigurationTarget.Global);
+                        await this._settings.updateSetting(flag, spec.default, {
+                            scope: 'user',
+                            reason: `feature-flag-validation:${flag}`
+                        });
                         fixes.push(`${flag}: corrected type mismatch`);
                         hasIssues = true;
                     } catch (error) {
@@ -209,7 +222,6 @@ class SettingsMigrationManager {
      * Clean up deprecated settings (with user consent)
      */
     async cleanupDeprecatedSettings() {
-        const config = vscode.workspace.getConfiguration('explorerDates');
         const deprecatedSettings = [
             'customColors',  // Replaced by workbench.colorCustomizations
             'enableReporting'  // Replaced by enableExportReporting
@@ -217,7 +229,7 @@ class SettingsMigrationManager {
 
         const foundDeprecated = [];
         for (const setting of deprecatedSettings) {
-            const value = config.inspect(setting);
+            const value = this._settings.inspect(setting);
             if (
                 value?.globalValue !== undefined ||
                 value?.workspaceValue !== undefined ||
@@ -244,9 +256,9 @@ class SettingsMigrationManager {
             for (const setting of foundDeprecated) {
                 try {
                     // Remove from both global and workspace
-                    await config.update(setting, undefined, vscode.ConfigurationTarget.Global);
-                    await config.update(setting, undefined, vscode.ConfigurationTarget.Workspace);
-                    await config.update(setting, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+                    await this._settings.clearSetting(setting, { scope: 'user', reason: 'cleanup-deprecated' });
+                    await this._settings.clearSetting(setting, { scope: 'workspace', reason: 'cleanup-deprecated' });
+                    await this._settings.clearSetting(setting, { scope: 'workspaceFolder', reason: 'cleanup-deprecated' });
                     this._logger.info(`Removed deprecated setting: ${setting}`);
                 } catch (error) {
                     this._logger.error(`Failed to remove deprecated setting ${setting}`, error);
@@ -286,6 +298,66 @@ class SettingsMigrationManager {
         
         this._logger.info('Recorded migration metrics', migrationRecord);
         return true;
+    }
+
+    /**
+     * Automatically tidy Explorer Dates settings when we detect drift.
+     */
+    async autoOrganizeSettingsIfNeeded(context, options = {}) {
+        const organizer = this._getSettingsOrganizer(context);
+        if (!organizer) {
+            return null;
+        }
+
+        try {
+            const plan = await organizer.getOrganizationPlan();
+            if (!plan?.needsWork) {
+                this._logger.debug('Auto organization skipped - no Explorer Dates settings to tidy.');
+                return null;
+            }
+
+            const summary = await organizer.organize({ plan });
+            if (summary?.changed) {
+                if (!options.silent) {
+                    const details = [];
+                    if (summary.movedToWorkspace.length) {
+                        details.push(`${summary.movedToWorkspace.length} moved to workspace`);
+                    }
+                    if (summary.reorderedWorkspace) {
+                        details.push('workspace keys sorted');
+                    }
+                    if (summary.sortedFiles.length) {
+                        details.push(`${summary.sortedFiles.length} file(s) tidied`);
+                    }
+                    const detailText = details.length ? ` (${details.join(' • ')})` : '';
+                    vscode.window.showInformationMessage(`Explorer Dates cleaned up project settings${detailText}.`);
+                }
+
+                this._logger.info('Explorer Dates settings auto-organized', {
+                    trigger: options.trigger || 'unknown',
+                    summary
+                });
+            }
+
+            return summary;
+        } catch (error) {
+            this._logger.warn('Automatic Explorer Dates settings organization failed', error);
+            return null;
+        }
+    }
+
+    _getSettingsOrganizer(context) {
+        if (!context) {
+            this._logger.debug('Settings organizer unavailable - missing extension context.');
+            return null;
+        }
+
+        if (!this._organizer || this._organizerContext !== context) {
+            this._organizer = new SettingsOrganizer(context);
+            this._organizerContext = context;
+        }
+
+        return this._organizer;
     }
 
     /**

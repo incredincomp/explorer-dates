@@ -4,17 +4,29 @@ const assert = require('assert');
 const path = require('path');
 const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 
+// Set short chunk timeout for faster test execution
+process.env.EXPLORER_DATES_CHUNK_TIMEOUT = '100';
+
 const mockInstall = createMockVscode();
 const { infoLog, vscode, configValues, registeredProviders, workspaceRoot } = mockInstall;
 const extension = require('../extension');
 
 function applyGating(overrides = {}) {
-    Object.assign(configValues, {
+    // Reset logs before applying configuration
+    mockInstall.resetLogs();
+    
+    // Apply to workspace config since settings migration moves feature flags to workspace scope
+    Object.assign(mockInstall.workspaceConfigValues, {
         'explorerDates.enableWorkspaceTemplates': true,
         'explorerDates.enableReporting': true,
         'explorerDates.enableExtensionApi': true,
         'explorerDates.allowExternalPlugins': true
     }, overrides);
+    
+    // Also clear any global overrides that might conflict
+    for (const key of Object.keys(overrides)) {
+        delete mockInstall.configValues[key];
+    }
 }
 
 async function disposeContext(context) {
@@ -32,6 +44,7 @@ async function disposeContext(context) {
 
 async function runScenario(name, overrides, testFn) {
     applyGating(overrides);
+    console.log('DEBUG: After applyGating, configValues:', JSON.stringify(configValues, null, 2));
     mockInstall.resetLogs();
     const context = createExtensionContext();
     let activated = false;

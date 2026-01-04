@@ -2,6 +2,9 @@ const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
 const { getFileName, getRelativePath } = require('../utils/pathUtils');
 const { ensureDate } = require('../utils/dateHelpers');
+const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
+
+const settingsCoordinator = getSettingsCoordinator();
 
 function registerAnalysisCommands({
     context,
@@ -296,25 +299,30 @@ function registerAnalysisCommands({
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.quickFix', async () => {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
             const fixes = [];
 
-            if (!config.get('showDateDecorations', true)) {
+            if (!settingsCoordinator.getValue('showDateDecorations')) {
                 fixes.push({
                     issue: 'Date decorations are disabled',
                     description: 'Enable date decorations',
-                    fix: async () => config.update('showDateDecorations', true, vscode.ConfigurationTarget.Global)
+                    fix: async () => settingsCoordinator.updateSetting('showDateDecorations', true, {
+                        scope: 'user',
+                        reason: 'quick-fix'
+                    })
                 });
             }
 
-            const excludedPatterns = config.get('excludedPatterns', []);
+            const excludedPatterns = settingsCoordinator.getValue('excludedPatterns') || [];
             if (excludedPatterns.includes('**/*')) {
                 fixes.push({
                     issue: 'All files are excluded by pattern',
                     description: 'Remove overly broad exclusion pattern',
                     fix: async () => {
                         const newPatterns = excludedPatterns.filter(p => p !== '**/*');
-                        await config.update('excludedPatterns', newPatterns, vscode.ConfigurationTarget.Global);
+                        await settingsCoordinator.updateSetting('excludedPatterns', newPatterns, {
+                            scope: 'user',
+                            reason: 'quick-fix'
+                        });
                     }
                 });
             }

@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
 const { getFileName, getRelativePath } = require('../utils/pathUtils');
 const { ensureDate } = require('../utils/dateHelpers');
+const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
 
 const isWeb = process.env.VSCODE_WEB === 'true';
 let childProcess = null;
@@ -11,6 +12,8 @@ function loadChildProcess() {
     }
     return childProcess;
 }
+
+const settingsCoordinator = getSettingsCoordinator();
 
 function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
     const subscriptions = [];
@@ -133,11 +136,13 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
 
     // Reset to defaults command is now handled by migrationCommands.js which provides comprehensive reset functionality
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', async () => {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentValue = config.get('showDateDecorations', true);
-            config.update('showDateDecorations', !currentValue, vscode.ConfigurationTarget.Global);
+            const currentValue = settingsCoordinator.getValue('showDateDecorations');
+            await settingsCoordinator.updateSetting('showDateDecorations', !currentValue, {
+                scope: 'user',
+                reason: 'toggle-decorations'
+            });
             const message = !currentValue
                 ? l10n?.getString('decorationsEnabled') || 'Date decorations enabled'
                 : l10n?.getString('decorationsDisabled') || 'Date decorations disabled';
@@ -203,11 +208,13 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', async () => {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentValue = config.get('fadeOldFiles', false);
-            config.update('fadeOldFiles', !currentValue, vscode.ConfigurationTarget.Global);
+            const currentValue = settingsCoordinator.getValue('fadeOldFiles') ?? false;
+            await settingsCoordinator.updateSetting('fadeOldFiles', !currentValue, {
+                scope: 'user',
+                reason: 'toggle-fade'
+            });
             const message = !currentValue ? 'Fade old files enabled' : 'Fade old files disabled';
             vscode.window.showInformationMessage(message);
             logger.info(`Fade old files toggled to: ${!currentValue}`);
