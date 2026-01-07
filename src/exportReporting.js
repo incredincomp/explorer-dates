@@ -1,10 +1,16 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { getExtension, normalizePath } = require('./utils/pathUtils');
+const { ensureDate } = require('./utils/dateHelpers');
 
 const logger = getLogger();
 const isWeb = process.env.VSCODE_WEB === 'true';
+const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test'];
+const DEFAULT_EXCLUDED_PATTERNS = ['**/*.tmp', '**/*.log', '**/.git/**', '**/node_modules/**'];
+const DEFAULT_MAX_TRACKED_FILES = 3000;
+const MAX_TRACK_HISTORY_PER_FILE = 100;
+const MAX_TRACKED_FILES_LIMIT = 20000;
 
 /**
  * Export & Reporting Manager
@@ -13,13 +19,27 @@ const isWeb = process.env.VSCODE_WEB === 'true';
 class ExportReportingManager {
     constructor() {
         this.fileActivityCache = new Map();
+        this._trackedFileOrder = new Map();
         this.allowedFormats = ['json', 'csv', 'html', 'markdown'];
         this.activityTrackingDays = 30;
         this.activityCutoffMs = null;
         this.timeTrackingIntegration = 'none';
+        this.maxTrackedActivityFiles = DEFAULT_MAX_TRACKED_FILES;
+        this.excludedFolders = [...DEFAULT_EXCLUDED_FOLDERS];
+        this.excludedPatterns = [...DEFAULT_EXCLUDED_PATTERNS];
+        this._excludedRegexes = [];
         this._configurationWatcher = null;
         this._fileWatcher = null;
         this._fileWatcherSubscriptions = [];
+        this._userActivityDisposables = [];
+        this._recentUserInteraction = new Map();
+        this._userInteractionTtlMs = Number(process.env.EXPLORER_DATES_USER_ACTIVITY_TTL_MS || 5 * 60 * 1000);
+        this._activitySourceStats = {
+            user: 0,
+            watcher: 0
+        };
+        this._lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+        this._trackingDisabled = false;
         this._loadConfiguration();
         this._setupConfigurationWatcher();
         this.initialize();
@@ -35,6 +55,14 @@ class ExportReportingManager {
             this.activityTrackingDays = Math.max(1, Math.min(365, days));
             this.activityCutoffMs = this.activityTrackingDays * 24 * 60 * 60 * 1000;
             this.timeTrackingIntegration = config.get('timeTrackingIntegration', 'none');
+            this.maxTrackedActivityFiles = this._resolveTrackedFileLimit(
+                config.get('maxTrackedActivityFiles', DEFAULT_MAX_TRACKED_FILES)
+            );
+            this.excludedFolders = config.get('excludedFolders', DEFAULT_EXCLUDED_FOLDERS) || DEFAULT_EXCLUDED_FOLDERS;
+            this.excludedPatterns = config.get('excludedPatterns', DEFAULT_EXCLUDED_PATTERNS) || DEFAULT_EXCLUDED_PATTERNS;
+            this._excludedRegexes = this.excludedPatterns
+                .map((pattern) => this._createPatternRegex(pattern))
+                .filter(Boolean);
         } catch (error) {
             logger.error('Failed to load reporting configuration', error);
         }
@@ -47,12 +75,18 @@ class ExportReportingManager {
         this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((event) => {
             if (event.affectsConfiguration('explorerDates.reportFormats') ||
                 event.affectsConfiguration('explorerDates.activityTrackingDays') ||
-                event.affectsConfiguration('explorerDates.timeTrackingIntegration')) {
+                event.affectsConfiguration('explorerDates.timeTrackingIntegration') ||
+                event.affectsConfiguration('explorerDates.maxTrackedActivityFiles') ||
+                event.affectsConfiguration('explorerDates.excludedFolders') ||
+                event.affectsConfiguration('explorerDates.excludedPatterns') ||
+                event.affectsConfiguration('explorerDates.performanceMode')) {
                 this._loadConfiguration();
+                this._applyTrackingConfiguration();
                 logger.info('Reporting configuration updated', {
                     allowedFormats: this.allowedFormats,
                     activityTrackingDays: this.activityTrackingDays,
-                    timeTrackingIntegration: this.timeTrackingIntegration
+                    timeTrackingIntegration: this.timeTrackingIntegration,
+                    maxTrackedActivityFiles: this.maxTrackedActivityFiles
                 });
             }
         });
@@ -60,7 +94,16 @@ class ExportReportingManager {
 
     async initialize() {
         try {
-            this.startFileWatcher();
+            if (this._isTrackingSuppressed()) {
+                this._trackingDisabled = true;
+                this._disposeUserActivityListeners();
+                this._stopFileWatcher();
+                logger.info('Export & Reporting Manager initialized (activity tracking suppressed by performance/lightweight mode)');
+                return;
+            }
+            this._trackingDisabled = false;
+            this._registerUserActivityListeners();
+            this._applyTrackingConfiguration();
             logger.info('Export & Reporting Manager initialized');
         } catch (error) {
             logger.error('Failed to initialize Export & Reporting Manager:', error);
@@ -68,57 +111,129 @@ class ExportReportingManager {
     }
 
     startFileWatcher() {
-        if (this._fileWatcher) {
+        if (this._fileWatcher || this.maxTrackedActivityFiles === 0 || isWeb) {
+            if (this.maxTrackedActivityFiles === 0) {
+                logger.info('File activity tracking disabled (maxTrackedActivityFiles=0)');
+            }
+            if (isWeb) {
+                logger.info('Skipping file activity watcher in web environment');
+            }
             return;
         }
-        // Watch for file changes to track activity
         const watcher = vscode.workspace.createFileSystemWatcher('**/*');
         this._fileWatcher = watcher;
         
         this._fileWatcherSubscriptions = [
-            watcher.onDidChange((uri) => this.recordFileActivity(uri, 'modified')),
-            watcher.onDidCreate((uri) => this.recordFileActivity(uri, 'created')),
-            watcher.onDidDelete((uri) => this.recordFileActivity(uri, 'deleted'))
+            watcher.onDidChange((uri) => this.recordFileActivity(uri, 'modified', { source: 'watcher' })),
+            watcher.onDidCreate((uri) => this.recordFileActivity(uri, 'created', { source: 'watcher' })),
+            watcher.onDidDelete((uri) => this.recordFileActivity(uri, 'deleted', { source: 'watcher' }))
         ];
     }
 
-    recordFileActivity(uri, action) {
-        try {
-            const filePath = uri.fsPath || uri.path;
-            const timestamp = new Date();
-            
-            if (!this.fileActivityCache.has(filePath)) {
-                this.fileActivityCache.set(filePath, []);
+    _stopFileWatcher() {
+        if (this._fileWatcherSubscriptions.length) {
+            for (const disposable of this._fileWatcherSubscriptions) {
+                try {
+                    disposable.dispose();
+                } catch {
+                    // ignore
+                }
             }
-            
-            this.fileActivityCache.get(filePath).push({
-                action: action,
-                timestamp: timestamp,
-                path: filePath
+            this._fileWatcherSubscriptions = [];
+        }
+        if (this._fileWatcher) {
+            try {
+                this._fileWatcher.dispose();
+            } catch {
+                // ignore
+            }
+            this._fileWatcher = null;
+        }
+    }
+
+    _applyTrackingConfiguration() {
+        const trackingSuppressed = this._isTrackingSuppressed();
+        if (trackingSuppressed || this.maxTrackedActivityFiles <= 0 || isWeb) {
+            this._trackingDisabled = trackingSuppressed || this.maxTrackedActivityFiles <= 0 || isWeb;
+            this._stopFileWatcher();
+            this._disposeUserActivityListeners();
+            this.fileActivityCache.clear();
+            this._trackedFileOrder.clear();
+            return;
+        }
+        if (this._trackingDisabled) {
+            this._trackingDisabled = false;
+            this._registerUserActivityListeners();
+        }
+        this._registerUserActivityListeners();
+        this.startFileWatcher();
+        this._enforceTrackedFileLimit();
+    }
+
+    recordFileActivity(uri, action, options = {}) {
+        try {
+            const source = options.source || 'system';
+            if (this.maxTrackedActivityFiles === 0) {
+                return;
+            }
+            const filePath = uri?.fsPath || uri?.path;
+            if (!filePath) {
+                return;
+            }
+            const normalizedPath = this._normalizeKey(filePath);
+            if (!normalizedPath || !this._shouldTrackFile(normalizedPath)) {
+                return;
+            }
+            // Note: Removed overly restrictive watcher event filtering to capture background changes
+            // This allows git pulls, build output, and teammate edits to be recorded in workspace analytics
+            let entry = this.fileActivityCache.get(normalizedPath);
+            if (!entry) {
+                entry = { path: filePath, activities: [] };
+                this.fileActivityCache.set(normalizedPath, entry);
+            } else {
+                entry.path = filePath;
+            }
+            const timestamp = new Date();
+            entry.activities.push({
+                action,
+                timestamp,
+                path: filePath,
+                source
             });
-            
-            this._enforceActivityRetention(filePath);
-            
+            if (source === 'user') {
+                this._markRecentUserInteraction(normalizedPath, timestamp.getTime());
+            }
+            if (this._activitySourceStats[source] === undefined) {
+                this._activitySourceStats[source] = 0;
+            }
+            this._activitySourceStats[source]++;
+            this._enforceActivityRetention(normalizedPath, entry);
+            this._touchTrackedFileEntry(normalizedPath, timestamp.getTime());
         } catch (error) {
             logger.error('Failed to record file activity:', error);
         }
     }
 
-    _enforceActivityRetention(filePath) {
-        const activities = this.fileActivityCache.get(filePath);
+    _enforceActivityRetention(normalizedPath, entry) {
+        const activities = entry?.activities;
         if (!activities || activities.length === 0) {
             return;
         }
 
         if (this.activityCutoffMs) {
-            const cutoff = new Date(Date.now() - this.activityCutoffMs);
-            while (activities.length && activities[0].timestamp < cutoff) {
+            const cutoff = Date.now() - this.activityCutoffMs;
+            while (activities.length && activities[0].timestamp.getTime() < cutoff) {
                 activities.shift();
             }
         }
 
-        if (activities.length > 100) {
-            activities.splice(0, activities.length - 100);
+        if (activities.length > MAX_TRACK_HISTORY_PER_FILE) {
+            activities.splice(0, activities.length - MAX_TRACK_HISTORY_PER_FILE);
+        }
+
+        if (activities.length === 0) {
+            this.fileActivityCache.delete(normalizedPath);
+            this._trackedFileOrder.delete(normalizedPath);
         }
     }
 
@@ -226,24 +341,26 @@ class ExportReportingManager {
             const stat = await vscode.workspace.fs.stat(uri);
             const relativePath = vscode.workspace.asRelativePath(uri);
             const cacheKey = uri.fsPath || uri.path;
-            const activities = this.fileActivityCache.get(cacheKey) || [];
+            const normalizedKey = this._normalizeKey(cacheKey);
+            const entry = this.fileActivityCache.get(normalizedKey);
+            const activities = entry?.activities || [];
             
             // Filter activities by time range
             const filteredActivities = this.filterActivitiesByTimeRange(activities, timeRange);
             
             return {
                 path: relativePath,
-                fullPath: cacheKey,
+                fullPath: entry?.path || cacheKey,
                 size: stat.size,
-                created: new Date(stat.ctime),
-                modified: new Date(stat.mtime),
+                created: ensureDate(stat.ctime),
+                modified: ensureDate(stat.mtime),
                 type: this.getFileType(relativePath),
                 extension: getExtension(relativePath),
                 activities: filteredActivities,
                 activityCount: filteredActivities.length,
                 lastActivity: filteredActivities.length > 0
                     ? filteredActivities[filteredActivities.length - 1].timestamp
-                    : new Date(stat.mtime)
+                    : ensureDate(stat.mtime)
             };
         } catch (error) {
             logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
@@ -294,25 +411,30 @@ class ExportReportingManager {
 
         const deletedFiles = [];
         
-        for (const [filePath, activities] of this.fileActivityCache) {
-            if (filePath.startsWith(folderPath)) {
-                const deleteActivities = activities.filter(a => a.action === 'deleted');
-                const filteredDeletes = this.filterActivitiesByTimeRange(deleteActivities, timeRange);
-                
-                if (filteredDeletes.length > 0) {
-                    deletedFiles.push({
-                        path: vscode.workspace.asRelativePath(filePath),
-                        fullPath: filePath,
-                        size: 0,
-                        created: null,
-                        modified: null,
-                        type: 'deleted',
-                        extension: getExtension(filePath),
-                        activities: filteredDeletes,
-                        activityCount: filteredDeletes.length,
-                        lastActivity: filteredDeletes[filteredDeletes.length - 1].timestamp
-                    });
-                }
+        const normalizedFolder = folderPath ? this._normalizeKey(folderPath) : '';
+        for (const [normalizedPath, entry] of this.fileActivityCache.entries()) {
+            if (!entry?.activities || entry.activities.length === 0) {
+                continue;
+            }
+            if (normalizedFolder && !normalizedPath.startsWith(normalizedFolder)) {
+                continue;
+            }
+            const deleteActivities = entry.activities.filter(a => a.action === 'deleted');
+            const filteredDeletes = this.filterActivitiesByTimeRange(deleteActivities, timeRange);
+            
+            if (filteredDeletes.length > 0) {
+                deletedFiles.push({
+                    path: vscode.workspace.asRelativePath(entry.path || normalizedPath),
+                    fullPath: entry.path || normalizedPath,
+                    size: 0,
+                    created: null,
+                    modified: null,
+                    type: 'deleted',
+                    extension: getExtension(entry.path || normalizedPath),
+                    activities: filteredDeletes,
+                    activityCount: filteredDeletes.length,
+                    lastActivity: filteredDeletes[filteredDeletes.length - 1].timestamp
+                });
             }
         }
         
@@ -328,7 +450,11 @@ class ExportReportingManager {
             mostActiveFiles: [],
             recentlyModified: [],
             largestFiles: [],
-            oldestFiles: []
+            oldestFiles: [],
+            activitySourceBreakdown: {
+                user: this._activitySourceStats.user || 0,
+                watcher: this._activitySourceStats.watcher || 0
+            }
         };
 
         // File types
@@ -712,18 +838,204 @@ ${report.files
             this._configurationWatcher.dispose();
             this._configurationWatcher = null;
         }
-        if (this._fileWatcherSubscriptions.length > 0) {
-            for (const disposable of this._fileWatcherSubscriptions) {
-                disposable.dispose();
-            }
-            this._fileWatcherSubscriptions = [];
-        }
-        if (this._fileWatcher) {
-            this._fileWatcher.dispose();
-            this._fileWatcher = null;
-        }
+        this._stopFileWatcher();
+        this._disposeUserActivityListeners();
         this.fileActivityCache.clear();
+        this._trackedFileOrder.clear();
+        this._recentUserInteraction.clear();
+        this._activitySourceStats = { user: 0, watcher: 0 };
         logger.info('Export & Reporting Manager disposed');
+    }
+
+    _normalizeKey(filePath = '') {
+        const normalized = normalizePath(filePath || '').trim();
+        return normalized ? normalized.toLowerCase() : '';
+    }
+
+    _shouldTrackFile(normalizedPath) {
+        if (!normalizedPath) {
+            return false;
+        }
+        for (const folder of this.excludedFolders) {
+            if (!folder) {
+                continue;
+            }
+            const trimmed = folder.replace(/^\/+|\/+$/g, '').toLowerCase();
+            if (!trimmed) {
+                continue;
+            }
+            const needle = `/${trimmed}`;
+            if (normalizedPath.includes(`${needle}/`) || normalizedPath.endsWith(needle)) {
+                return false;
+            }
+        }
+        return !this._excludedRegexes.some((regex) => regex.test(normalizedPath));
+    }
+
+    _createPatternRegex(pattern) {
+        if (!pattern || typeof pattern !== 'string') {
+            return null;
+        }
+        const escaped = pattern
+            .replace(/([.+^${}()|[\]\\])/g, '\\$1')
+            .replace(/\\\*\\\*/g, '.*')
+            .replace(/\\\*/g, '[^/]*')
+            .replace(/\\\?/g, '.');
+        try {
+            return new RegExp(escaped, 'i');
+        } catch {
+            return null;
+        }
+    }
+
+    _touchTrackedFileEntry(normalizedPath, timestampMs) {
+        if (!normalizedPath) {
+            return;
+        }
+        if (this._trackedFileOrder.has(normalizedPath)) {
+            this._trackedFileOrder.delete(normalizedPath);
+        }
+        this._trackedFileOrder.set(normalizedPath, timestampMs);
+        this._enforceTrackedFileLimit();
+    }
+
+    _enforceTrackedFileLimit() {
+        if (this.maxTrackedActivityFiles <= 0) {
+            this.fileActivityCache.clear();
+            this._trackedFileOrder.clear();
+            return;
+        }
+        while (this._trackedFileOrder.size > this.maxTrackedActivityFiles) {
+            const oldestEntry = this._trackedFileOrder.keys().next();
+            if (oldestEntry.done) {
+                break;
+            }
+            const oldestKey = oldestEntry.value;
+            this._trackedFileOrder.delete(oldestKey);
+            this.fileActivityCache.delete(oldestKey);
+        }
+    }
+
+    _resolveTrackedFileLimit(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+            return DEFAULT_MAX_TRACKED_FILES;
+        }
+        if (numeric <= 0) {
+            return 0;
+        }
+        return Math.min(Math.max(Math.floor(numeric), 500), MAX_TRACKED_FILES_LIMIT);
+    }
+
+    _isTrackingSuppressed() {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        const performanceMode = config.get('performanceMode', false);
+        return performanceMode || this._lightweightMode;
+    }
+
+    _registerUserActivityListeners() {
+        if (this._userActivityDisposables.length > 0) {
+            return;
+        }
+        const workspace = vscode.workspace || {};
+        const register = (fn, handler) => {
+            if (typeof fn !== 'function') {
+                return null;
+            }
+            return fn.call(workspace, handler);
+        };
+        const disposables = [];
+        const saveDisposable = register(workspace.onDidSaveTextDocument, (document) => {
+            this.recordFileActivity(document.uri, 'modified', { source: 'user' });
+        });
+        if (saveDisposable) {
+            disposables.push(saveDisposable);
+        }
+        const changeDisposable = register(workspace.onDidChangeTextDocument, (event) => {
+            const doc = event?.document;
+            if (!doc) {
+                return;
+            }
+            const normalized = this._normalizeKey(doc.uri.fsPath || doc.uri.path || '');
+            if (normalized) {
+                this._markRecentUserInteraction(normalized, Date.now());
+            }
+        });
+        if (changeDisposable) {
+            disposables.push(changeDisposable);
+        }
+        const createDisposable = register(workspace.onDidCreateFiles, (event) => {
+            event?.files?.forEach((uri) => this.recordFileActivity(uri, 'created', { source: 'user' }));
+        });
+        if (createDisposable) {
+            disposables.push(createDisposable);
+        }
+        const deleteDisposable = register(workspace.onDidDeleteFiles, (event) => {
+            event?.files?.forEach((uri) => this.recordFileActivity(uri, 'deleted', { source: 'user' }));
+        });
+        if (deleteDisposable) {
+            disposables.push(deleteDisposable);
+        }
+        const renameDisposable = register(workspace.onDidRenameFiles, (event) => {
+            event?.files?.forEach((entry) => {
+                this.recordFileActivity(entry.oldUri, 'deleted', { source: 'user' });
+                this.recordFileActivity(entry.newUri, 'created', { source: 'user' });
+            });
+        });
+        if (renameDisposable) {
+            disposables.push(renameDisposable);
+        }
+        if (disposables.length > 0) {
+            this._userActivityDisposables = disposables;
+        }
+    }
+
+    _disposeUserActivityListeners() {
+        if (!this._userActivityDisposables.length) {
+            return;
+        }
+        for (const disposable of this._userActivityDisposables) {
+            try {
+                disposable.dispose();
+            } catch {
+                // ignore
+            }
+        }
+        this._userActivityDisposables = [];
+        this._recentUserInteraction.clear();
+    }
+
+    _markRecentUserInteraction(normalizedPath, timestampMs) {
+        if (!normalizedPath) {
+            return;
+        }
+        this._cleanupRecentUserInteractions();
+        this._recentUserInteraction.set(normalizedPath, timestampMs || Date.now());
+    }
+
+    _cleanupRecentUserInteractions() {
+        if (!this._recentUserInteraction.size) {
+            return;
+        }
+        const now = Date.now();
+        for (const [key, ts] of this._recentUserInteraction.entries()) {
+            if (now - ts > this._userInteractionTtlMs) {
+                this._recentUserInteraction.delete(key);
+            }
+        }
+    }
+
+    _shouldRecordWatcherEvent(normalizedPath) {
+        this._cleanupRecentUserInteractions();
+        if (this._recentUserInteraction.has(normalizedPath)) {
+            return true;
+        }
+        const textDocuments = Array.isArray(vscode.workspace?.textDocuments) ? vscode.workspace.textDocuments : [];
+        const openDoc = textDocuments.find((doc) => {
+            const docPath = doc?.uri ? this._normalizeKey(doc.uri.fsPath || doc.uri.path) : '';
+            return docPath === normalizedPath;
+        });
+        return Boolean(openDoc);
     }
 }
 

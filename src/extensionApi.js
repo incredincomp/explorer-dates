@@ -1,5 +1,6 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
+const logger = getLogger();
 
 class BaseEventEmitter {
     constructor() {
@@ -32,15 +33,13 @@ class BaseEventEmitter {
                 try {
                     handler(...args);
                 } catch (error) {
-                    console.error(`Explorer Dates API handler failed for "${event}":`, error);
+                    logger.error(`Explorer Dates API handler failed for "${event}":`, error);
                 }
             });
         }
         return this;
     }
 }
-
-const logger = getLogger();
 
 /**
  * Extension API Manager
@@ -507,11 +506,11 @@ class ExtensionApiManager extends BaseEventEmitter {
                     }
                 });
                 
-                console.log('File Size Display plugin activated');
+                logger.info('File Size Display plugin activated');
             },
             
             deactivate: () => {
-                console.log('File Size Display plugin deactivated');
+                logger.info('File Size Display plugin deactivated');
             }
         };
     }

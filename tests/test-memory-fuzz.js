@@ -19,6 +19,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const {
+    resolveMemoryProfile,
+    applyProfileEnv
+} = require('./helpers/memoryProfiles');
 
 if (typeof global.gc !== 'function') {
     console.error('❌ Fuzz memory test requires Node to run with "--expose-gc".');
@@ -27,11 +31,18 @@ if (typeof global.gc !== 'function') {
     process.exit(1);
 }
 
+const memoryProfile = resolveMemoryProfile({ defaultProfile: '100k' });
+applyProfileEnv(memoryProfile);
+
 const RUNS = Number(process.env.MEMORY_FUZZ_RUNS || 5);
 const MIN_ITERS = Number(process.env.MEMORY_FUZZ_MIN_ITERS || 150);
 const MAX_ITERS = Number(process.env.MEMORY_FUZZ_MAX_ITERS || 350);
-const MAX_HEAP_DELTA_MB = Number(process.env.MEMORY_FUZZ_MAX_DELTA_MB || 32);
+const MAX_HEAP_DELTA_MB = Number(
+    process.env.MEMORY_FUZZ_MAX_DELTA_MB || memoryProfile.maxDeltaMb || 32
+);
 const FORCE_HITS = process.env.MEMORY_FUZZ_FORCE_HITS !== 'false';
+
+console.log(`\n🏗️ Workspace profile: ${memoryProfile.label} (${memoryProfile.fileCount.toLocaleString()} files)`);
 
 const artifactDir = path.join(__dirname, 'artifacts');
 fs.mkdirSync(artifactDir, { recursive: true });
@@ -90,6 +101,7 @@ function pickSampleFiles() {
                 'explorerDates.showDateDecorations': true,
                 'explorerDates.maxCacheSize': randInt(500, 5000)
             },
+            mockWorkspaceFileCount: memoryProfile.fileCount,
             sampleWorkspace: workspaceRoot
         });
 

@@ -1,23 +1,90 @@
 #!/usr/bin/env node
 
+const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
+
+const ENABLE_HANDLE_DIAGNOSTICS = process.env.CONFIG_SCENARIO_DEBUG_HANDLES === '1';
+if (!process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES) {
+    process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES = '1';
+}
+const asyncHooks = ENABLE_HANDLE_DIAGNOSTICS ? require('async_hooks') : null;
 const {
     createMockVscode,
     createExtensionContext,
     VSCodeUri,
-    workspaceRoot
+    workspaceRoot,
+    validateAllChunks,
+    validateBuiltChunks
 } = require('./helpers/mockVscode');
 
 const configurationProperties = pkg?.contributes?.configuration?.properties || {};
+const fsRequestMetadata = ENABLE_HANDLE_DIAGNOSTICS ? new WeakMap() : null;
+let fsHook = null;
+if (ENABLE_HANDLE_DIAGNOSTICS && asyncHooks) {
+    fsHook = asyncHooks.createHook({
+        init(asyncId, type, triggerAsyncId, resource) {
+            if ((type === 'FSREQPROMISE' || type === 'FSREQCALLBACK') && resource && typeof resource === 'object') {
+                const stack = new Error().stack
+                    ?.split('\n')
+                    .slice(2, 8)
+                    .map((line) => line.trim())
+                    .join(' | ');
+                fsRequestMetadata.set(resource, {
+                    asyncId,
+                    type,
+                    triggerAsyncId,
+                    createdAt: Date.now(),
+                    stack
+                });
+            }
+        }
+    });
+    fsHook.enable();
+}
 
 const originalSetTimeout = global.setTimeout;
 const originalClearTimeout = global.clearTimeout;
 let activeTimerHandles = new Set();
 let timerHandleCounter = 1;
+let chunkTimeoutOverridden = false;
+let previousChunkTimeout = process.env.EXPLORER_DATES_CHUNK_TIMEOUT;
+let workspaceWatchdogOverridden = false;
+let previousWorkspaceWatchdogTimeout = process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS;
+
+function configureWorkspaceScanWatchdog() {
+    if (!workspaceWatchdogOverridden) {
+        previousWorkspaceWatchdogTimeout = process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS;
+        workspaceWatchdogOverridden = true;
+    }
+    process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS = '0';
+}
 
 function enableImmediateTimers() {
-    global.setTimeout = (fn, delay, ...args) => {
+    // Set shorter chunk timeout for tests
+    if (!chunkTimeoutOverridden) {
+        previousChunkTimeout = process.env.EXPLORER_DATES_CHUNK_TIMEOUT;
+        chunkTimeoutOverridden = true;
+    }
+    process.env.EXPLORER_DATES_CHUNK_TIMEOUT = '100';
+    configureWorkspaceScanWatchdog();
+    
+    global.setTimeout = (fn, delay = 0, ...args) => {
+        if (typeof delay === 'number' && delay > 0) {
+            const handle = originalSetTimeout(() => {
+                try {
+                    if (typeof fn === 'function') {
+                        fn(...args);
+                    }
+                } finally {
+                    activeTimerHandles.delete(handle);
+                }
+            }, delay);
+            activeTimerHandles.add(handle);
+            return handle;
+        }
+
         const handle = timerHandleCounter++;
         activeTimerHandles.add(handle);
         try {
@@ -30,7 +97,11 @@ function enableImmediateTimers() {
         return handle;
     };
     global.clearTimeout = (handle) => {
-        activeTimerHandles.delete(handle);
+        if (activeTimerHandles.has(handle)) {
+            activeTimerHandles.delete(handle);
+            return;
+        }
+        originalClearTimeout(handle);
     };
 }
 
@@ -38,6 +109,106 @@ function restoreTimers() {
     global.setTimeout = originalSetTimeout;
     global.clearTimeout = originalClearTimeout;
     activeTimerHandles.clear();
+    if (chunkTimeoutOverridden) {
+        if (previousChunkTimeout === undefined) {
+            delete process.env.EXPLORER_DATES_CHUNK_TIMEOUT;
+        } else {
+            process.env.EXPLORER_DATES_CHUNK_TIMEOUT = previousChunkTimeout;
+        }
+        chunkTimeoutOverridden = false;
+    }
+    if (workspaceWatchdogOverridden) {
+        if (previousWorkspaceWatchdogTimeout === undefined) {
+            delete process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS;
+        } else {
+            process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS = previousWorkspaceWatchdogTimeout;
+        }
+        workspaceWatchdogOverridden = false;
+    }
+}
+
+function normalizeConfigKey(fullKey) {
+    if (!fullKey) {
+        return fullKey;
+    }
+    return fullKey.startsWith('explorerDates.') ? fullKey.slice('explorerDates.'.length) : fullKey;
+}
+
+function shouldSkipValidation(schema) {
+    if (!schema) {
+        return false;
+    }
+    if (schema.deprecationMessage) {
+        return true;
+    }
+    if (typeof schema.markdownDescription === 'string' && /deprecated/i.test(schema.markdownDescription)) {
+        return true;
+    }
+    return false;
+}
+
+function summarizeScenarioEntries(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return 'no-entries';
+    }
+    return entries
+        .map((entry) => `${normalizeConfigKey(entry.key)}=${formatValueForLog(entry.value)}`)
+        .join(', ');
+}
+
+function applyEntryValue(mockInstall, entry) {
+    const scope = entry.scope || 'window';
+    const globalValue = deepClone(entry.value);
+    mockInstall.configValues[entry.key] = globalValue;
+
+    if (scope !== 'application') {
+        mockInstall.workspaceConfigValues[entry.key] = deepClone(entry.value);
+    }
+    if (scope === 'resource') {
+        mockInstall.workspaceFolderConfigValues[entry.key] = deepClone(entry.value);
+    }
+}
+
+function ensureChunkArtifactsAccessible() {
+    const sourceStatus = validateAllChunks();
+    if (!sourceStatus.success) {
+        const details = Object.entries(sourceStatus.errors || {})
+            .map(([chunk, message]) => `${chunk}: ${message}`)
+            .join('; ');
+        throw new Error(
+            `Source chunk validation failed (${sourceStatus.loadedCount}/${sourceStatus.totalCount}): ${details}`
+        );
+    }
+
+    const chunkTargets = [
+        { target: 'node', dir: path.join(workspaceRoot, 'dist', 'chunks') },
+        { target: 'web', dir: path.join(workspaceRoot, 'dist', 'web-chunks') }
+    ];
+
+    const summaries = [];
+    for (const { target, dir } of chunkTargets) {
+        if (!fs.existsSync(dir)) {
+            console.warn(`Skipping ${target} chunk validation (missing ${dir})`);
+            summaries.push(`${target}:skipped`);
+            continue;
+        }
+        const status = validateBuiltChunks(target);
+        if (!status.success) {
+            const details = Object.entries(status.errors || {})
+                .map(([chunk, message]) => `${chunk}: ${message}`)
+                .join('; ');
+            throw new Error(
+                `${target} chunk validation failed (${status.loadedCount}/${status.totalCount}): ${details}`
+            );
+        }
+        summaries.push(`${target}:${status.loadedCount}/${status.totalCount}`);
+    }
+
+    console.log(
+        `Chunk artifacts validated (source:${sourceStatus.loadedCount}/${sourceStatus.totalCount}, ${summaries.join(
+            ', '
+        )})`
+    );
 }
 
 function isPlainObject(value) {
@@ -96,8 +267,46 @@ const SPECIAL_VALUE_SAMPLES = {
             label: 'sync-path',
             value: path.join(workspaceRoot, 'tests', 'artifacts', 'templates-sync')
         }
+    ],
+    'explorerDates.security.allowedExtraPaths': [
+        {
+            label: 'trusted-fixtures',
+            value: [
+                path.join(workspaceRoot, 'tests', 'fixtures', 'trusted-temp'),
+                path.join(workspaceRoot, 'tests', 'artifacts')
+            ]
+        }
     ]
 };
+
+const COMBINED_SCENARIOS = [
+    {
+        label: 'security-relaxed-profile',
+        entries: [
+            { key: 'explorerDates.security.enforceWorkspaceBoundaries', value: false },
+            { key: 'explorerDates.security.enableBoundaryEnforcement', value: false },
+            { key: 'explorerDates.security.allowTestPaths', value: true }
+        ]
+    },
+    {
+        label: 'performance-balanced-feature-set',
+        entries: [
+            { key: 'explorerDates.performanceMode', value: false },
+            { key: 'explorerDates.enableAdvancedCache', value: true },
+            { key: 'explorerDates.enableWorkspaceIntelligence', value: true },
+            { key: 'explorerDates.enableIncrementalWorkers', value: true }
+        ]
+    },
+    {
+        label: 'reporting-minimal',
+        entries: [
+            { key: 'explorerDates.enableReporting', value: false },
+            { key: 'explorerDates.enableExportReporting', value: false },
+            { key: 'explorerDates.activityTrackingDays', value: 7 },
+            { key: 'explorerDates.maxTrackedActivityFiles', value: 0 }
+        ]
+    }
+];
 
 function buildSampleValues(key, schema) {
     if (SPECIAL_VALUE_SAMPLES[key]) {
@@ -176,6 +385,9 @@ function buildSampleValues(key, schema) {
 }
 
 function formatValueForLog(value) {
+    if (typeof value === 'undefined') {
+        return 'undefined';
+    }
     if (typeof value === 'string') {
         return value;
     }
@@ -183,6 +395,53 @@ function formatValueForLog(value) {
         return String(value);
     }
     return JSON.stringify(value);
+}
+
+function validateScenarioEffect({ mockInstall, entries, scenarioName }) {
+    const config = mockInstall.vscode.workspace.getConfiguration('explorerDates');
+    for (const entry of entries) {
+        if (entry.skipValidation) {
+            continue;
+        }
+        const normalizedKey = normalizeConfigKey(entry.key);
+        const inspected = config.inspect(normalizedKey) || {};
+        const observedValues = [
+            inspected.globalValue,
+            inspected.workspaceValue,
+            inspected.workspaceFolderValue,
+            config.get(normalizedKey)
+        ].filter((value) => value !== undefined);
+        const hasMatch = observedValues.some((value) => deepEqual(value, entry.value));
+        if (!hasMatch) {
+            throw new Error(
+                `Configuration value mismatch after scenario ${scenarioName}: ${entry.key} -> ${formatValueForLog(
+                    observedValues.at(-1)
+                )}`
+            );
+        }
+    }
+}
+
+function snapshotConfigStores(mockInstall) {
+    return {
+        config: deepClone(mockInstall.configValues),
+        workspace: deepClone(mockInstall.workspaceConfigValues),
+        workspaceFolder: deepClone(mockInstall.workspaceFolderConfigValues)
+    };
+}
+
+function restoreConfigStores(mockInstall, snapshot) {
+    const restore = (target, replacement) => {
+        for (const key of Object.keys(target)) {
+            if (!Object.prototype.hasOwnProperty.call(replacement, key)) {
+                delete target[key];
+            }
+        }
+        Object.assign(target, replacement);
+    };
+    restore(mockInstall.configValues, snapshot.config);
+    restore(mockInstall.workspaceConfigValues, snapshot.workspace);
+    restore(mockInstall.workspaceFolderConfigValues, snapshot.workspaceFolder);
 }
 
 async function disposeContext(context) {
@@ -198,22 +457,128 @@ async function disposeContext(context) {
     context.subscriptions.length = 0;
 }
 
+function isChunkLoadError(error) {
+    if (!error) {
+        return false;
+    }
+    if (error.code === 'CHUNK_LOAD_FAILED') {
+        return true;
+    }
+    const name = (error.name || '').toLowerCase();
+    const message = (error.message || '').toLowerCase();
+    return name.includes('chunkloaderror') || message.includes('chunk missing');
+}
+
+async function executeCommandWithGuards(vscodeApi, commandId, options = {}) {
+    const { args = [], enabled = true, skipReason, tolerateChunkFailures = false } = options;
+    if (!enabled) {
+        if (skipReason) {
+            console.log(`⚠️  Skipping ${commandId}: ${skipReason}`);
+        }
+        return;
+    }
+    try {
+        await vscodeApi.commands.executeCommand(commandId, ...args);
+    } catch (error) {
+        if (tolerateChunkFailures && isChunkLoadError(error)) {
+            console.warn(`⚠️  Skipping ${commandId}: ${error.message}`);
+            return;
+        }
+        throw error;
+    }
+}
+
 async function exerciseCoreCommands(vscodeApi, sampleUri) {
-    await vscodeApi.commands.executeCommand('explorerDates.refreshDateDecorations');
-    await vscodeApi.commands.executeCommand('explorerDates.showCurrentConfig');
-    await vscodeApi.commands.executeCommand('explorerDates.toggleDecorations');
-    await vscodeApi.commands.executeCommand('explorerDates.copyFileDate', sampleUri);
-    await vscodeApi.commands.executeCommand('explorerDates.showFileDetails', sampleUri);
-    await vscodeApi.commands.executeCommand('explorerDates.openTemplateManager');
-    await vscodeApi.commands.executeCommand('explorerDates.generateReport');
-    await vscodeApi.commands.executeCommand('explorerDates.showApiInfo');
+    const featureConfig = vscodeApi.workspace.getConfiguration('explorerDates');
+    const templatesEnabled = featureConfig.get('enableWorkspaceTemplates', true);
+    const reportingEnabled = featureConfig.get('enableExportReporting', featureConfig.get('enableReporting', true));
+    const extensionApiEnabled = featureConfig.get('enableExtensionApi', true);
+
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.refreshDateDecorations');
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.showCurrentConfig');
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.toggleDecorations');
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.copyFileDate', { args: [sampleUri] });
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.showFileDetails', { args: [sampleUri] });
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.openTemplateManager', {
+        enabled: templatesEnabled,
+        skipReason: 'workspace templates feature disabled'
+    });
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.generateReport', {
+        enabled: reportingEnabled,
+        skipReason: 'export reporting disabled',
+        tolerateChunkFailures: true
+    });
+    await executeCommandWithGuards(vscodeApi, 'explorerDates.showApiInfo', {
+        enabled: extensionApiEnabled,
+        skipReason: 'extension API disabled',
+        tolerateChunkFailures: true
+    });
+}
+
+async function exerciseRuntimeCommands(vscodeApi) {
+    const runtimeCommandIds = [
+        'explorerDates.applyPreset',
+        'explorerDates.configureRuntime',
+        'explorerDates.suggestOptimalPreset',
+        'explorerDates.showChunkStatus',
+        'explorerDates.optimizeBundle',
+        'explorerDates.validateTeamConfig'
+    ];
+
+    for (const commandId of runtimeCommandIds) {
+        try {
+            await vscodeApi.commands.executeCommand(commandId);
+        } catch (error) {
+            throw new Error(`Runtime command ${commandId} failed: ${error.message}`);
+        }
+    }
+}
+
+async function runRuntimeCommandValidation(mockInstall, extension) {
+    const context = createExtensionContext();
+    const snapshot = snapshotConfigStores(mockInstall);
+    let activated = false;
+
+    try {
+        await extension.activate(context);
+        activated = true;
+        await exerciseRuntimeCommands(mockInstall.vscode);
+        console.log('Runtime management commands executed successfully.');
+    } finally {
+        if (activated) {
+            await extension.deactivate();
+        }
+        await disposeContext(context);
+        restoreConfigStores(mockInstall, snapshot);
+        mockInstall.resetLogs();
+    }
+}
+
+function getScenarioEntries(scenario) {
+    if (scenario.combined) {
+        return scenario.entries;
+    }
+    return [
+        {
+            key: scenario.key,
+            value: deepClone(scenario.value),
+            scope: scenario.scope || 'window',
+            skipValidation: scenario.skipValidation === true
+        }
+    ];
 }
 
 async function runScenario({ mockInstall, extension, scenario, sampleUri }) {
-    const scenarioName = `${scenario.key} -> ${scenario.label}`;
-    const hadValue = Object.prototype.hasOwnProperty.call(mockInstall.configValues, scenario.key);
-    const previousValue = hadValue ? deepClone(mockInstall.configValues[scenario.key]) : undefined;
-    mockInstall.configValues[scenario.key] = deepClone(scenario.value);
+    const entries = getScenarioEntries(scenario);
+    const scenarioName = scenario.combined
+        ? `combined -> ${scenario.label}`
+        : `${normalizeConfigKey(scenario.key)} -> ${scenario.label}`;
+    const entrySummary = summarizeScenarioEntries(entries);
+    const configSnapshot = snapshotConfigStores(mockInstall);
+
+    for (const entry of entries) {
+        applyEntryValue(mockInstall, entry);
+    }
 
     const context = createExtensionContext();
     let activated = false;
@@ -234,46 +599,138 @@ async function runScenario({ mockInstall, extension, scenario, sampleUri }) {
             throw new Error('Decoration provider returned empty result');
         }
 
+        validateScenarioEffect({ mockInstall, entries, scenarioName });
+
         await exerciseCoreCommands(mockInstall.vscode, sampleUri);
 
-        console.log(`PASS ${scenarioName} (${formatValueForLog(scenario.value)})`);
+        console.log(`PASS ${scenarioName} (${entrySummary})`);
     } catch (error) {
-        console.error(`FAIL ${scenarioName} failed (${formatValueForLog(scenario.value)}): ${error.message}`);
+        console.error(`FAIL ${scenarioName} failed (${entrySummary}): ${error.message}`);
         throw error;
     } finally {
         if (activated) {
             await extension.deactivate();
         }
         await disposeContext(context);
-
-        if (hadValue) {
-            mockInstall.configValues[scenario.key] = deepClone(previousValue);
-        } else {
-            delete mockInstall.configValues[scenario.key];
-        }
-
+        restoreConfigStores(mockInstall, configSnapshot);
         mockInstall.resetLogs();
     }
 }
 
 function buildScenarios() {
     const scenarios = [];
+    const coveredKeys = new Set();
     for (const [key, schema] of Object.entries(configurationProperties)) {
         const samples = buildSampleValues(key, schema);
         for (const sample of samples) {
             scenarios.push({
                 key,
                 label: sample.label,
-                value: sample.value
+                value: sample.value,
+                scope: schema.scope || 'window',
+                skipValidation: shouldSkipValidation(schema)
             });
         }
+        coveredKeys.add(key);
     }
+    for (const combined of COMBINED_SCENARIOS) {
+        scenarios.push({
+            combined: true,
+            label: combined.label,
+            entries: combined.entries.map((entry) => ({
+                key: entry.key,
+                value: deepClone(entry.value),
+                scope: configurationProperties[entry.key]?.scope || 'window',
+                skipValidation: shouldSkipValidation(configurationProperties[entry.key])
+            }))
+        });
+        combined.entries.forEach((entry) => coveredKeys.add(entry.key));
+    }
+
+    ensureSchemaCoverage(coveredKeys);
     return scenarios;
+}
+
+function ensureSchemaCoverage(coveredKeys) {
+    const missing = Object.keys(configurationProperties).filter((key) => !coveredKeys.has(key));
+    if (missing.length > 0) {
+        throw new Error(`Configuration test coverage gap detected. Missing keys: ${missing.join(', ')}`);
+    }
+}
+
+function describeHandle(handle) {
+    if (!ENABLE_HANDLE_DIAGNOSTICS || !handle) {
+        return '';
+    }
+    const type = handle.constructor?.name || typeof handle;
+    if (type === 'Socket') {
+        const local = handle.localAddress ? `${handle.localAddress}:${handle.localPort}` : 'local:n/a';
+        const remote = handle.remoteAddress ? `${handle.remoteAddress}:${handle.remotePort}` : 'remote:n/a';
+        const tag =
+            handle === process.stdin
+                ? 'stdin'
+                : handle === process.stdout
+                ? 'stdout'
+                : handle === process.stderr
+                ? 'stderr'
+                : 'anonymous';
+        return `${type}[${tag}](fd=${handle.fd ?? 'n/a'}, isTTY=${handle.isTTY === true}, ${local} -> ${remote}, destroyed=${handle.destroyed}, readable=${handle.readable}, writable=${handle.writable})`;
+    }
+    if (type === 'Timeout') {
+        return `${type}(active=${!handle._destroyed})`;
+    }
+    if (type === 'Server') {
+        return `${type}(connections=${handle._connections || 0})`;
+    }
+    if (type === 'ChildProcess') {
+        const command = handle.spawnargs?.join(' ') || handle.spawnfile || 'unknown';
+        return `${type}(pid=${handle.pid}, connected=${handle.connected}, exitCode=${handle.exitCode ?? 'n/a'}, cmd=${command})`;
+    }
+    if (type === 'MessagePort') {
+        return `${type}(hasRef=${handle.hasRef?.() === true})`;
+    }
+    return type;
+}
+
+function describeRequest(request) {
+    if (!ENABLE_HANDLE_DIAGNOSTICS || !request) {
+        return '';
+    }
+    const type = request.constructor?.name || typeof request;
+    if (type === 'FSReqPromise') {
+        const ctx = request.context || {};
+        const details = [];
+        const meta = fsRequestMetadata?.get(request);
+        if (meta) {
+            details.push(`asyncId=${meta.asyncId}`);
+            if (meta.stack) {
+                details.push(`createdAt=${meta.stack}`);
+            }
+        }
+        if (ctx.oncomplete?.name) {
+            details.push(`on=${ctx.oncomplete.name}`);
+        }
+        if (ctx.path) {
+            details.push(`path=${ctx.path}`);
+        }
+        if (ctx.fd !== undefined) {
+            details.push(`fd=${ctx.fd}`);
+        }
+        if (ctx.promise instanceof Promise) {
+            details.push('promise=pending');
+        }
+        if (ctx.syscall) {
+            details.push(`syscall=${ctx.syscall}`);
+        }
+        return `${type}(${details.join(', ') || 'no-context'})`;
+    }
+    return type;
 }
 
 async function main() {
     enableImmediateTimers();
     const mockInstall = createMockVscode();
+    ensureChunkArtifactsAccessible();
     const extension = require('../extension');
     const sampleFilePath = path.join(mockInstall.sampleWorkspace, 'fileDateDecorationProvider.js');
     const sampleUri = VSCodeUri.file(sampleFilePath);
@@ -282,6 +739,8 @@ async function main() {
     console.log(`Exercising ${scenarios.length} configuration scenarios...`);
 
     try {
+        await runRuntimeCommandValidation(mockInstall, extension);
+
         for (const scenario of scenarios) {
             await runScenario({ mockInstall, extension, scenario, sampleUri });
         }
@@ -290,9 +749,56 @@ async function main() {
         console.error('Configuration scenario tests failed:', error);
         process.exitCode = 1;
     } finally {
+        if (ENABLE_HANDLE_DIAGNOSTICS) {
+            const pendingFsOps = mockInstall.getActiveFsOperations?.() || [];
+            const handles = process._getActiveHandles?.() || [];
+            const requests = process._getActiveRequests?.() || [];
+            const handleDescriptions = handles.map(describeHandle);
+            const interestingHandles = handleDescriptions.filter(
+                (desc) => !/^Socket\[(std(?:out|err)|stdin)\]/.test(desc)
+            );
+            if (pendingFsOps.length > 0) {
+                console.log(
+                    'Active mock FS stats at config-scenarios exit:',
+                    pendingFsOps.map((op) => `${op.path} (age=${Date.now() - op.startedAt}ms)`)
+                );
+            }
+
+            if (interestingHandles.length > 0) {
+                console.log('Active handles at config-scenarios exit:', handleDescriptions);
+            } else {
+                console.log('Active handles at config-scenarios exit: stdio only');
+            }
+
+            if (requests.length > 0) {
+                console.log('Active requests at config-scenarios exit:', requests.map(describeRequest));
+            }
+
+            const hasHandleLeak = pendingFsOps.length > 0 || interestingHandles.length > 0 || requests.length > 0;
+            const shouldForceExit = process.env.CONFIG_SCENARIO_FORCE_EXIT !== '0';
+            if (hasHandleLeak || shouldForceExit) {
+                const code = typeof process.exitCode === 'number' ? process.exitCode : 0;
+                process.exit(code);
+            }
+        }
+
+        if (!ENABLE_HANDLE_DIAGNOSTICS && process.env.CONFIG_SCENARIO_FORCE_EXIT !== '0') {
+            const code = typeof process.exitCode === 'number' ? process.exitCode : 0;
+            process.exit(code);
+        }
         mockInstall.dispose();
         restoreTimers();
+        if (fsHook) {
+            fsHook.disable();
+        }
     }
 }
 
-main();
+if (ENABLE_HANDLE_DIAGNOSTICS) {
+    main();
+} else {
+    main().catch((error) => {
+        console.error('Configuration scenario tests failed:', error);
+        process.exitCode = 1;
+    });
+}

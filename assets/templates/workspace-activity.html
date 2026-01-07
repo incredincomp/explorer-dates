@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Workspace File Activity</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px;background:var(--vscode-editor-background);color:var(--vscode-foreground)}
+table{width:100%;border-collapse:collapse;margin-top:20px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--vscode-panel-border)}
+th{background-color:var(--vscode-editor-background);font-weight:bold}
+tr:hover{background-color:var(--vscode-list-hoverBackground)}
+.header{margin-bottom:20px}
+.stats{display:flex;gap:20px;margin-bottom:20px}
+.stat-box{padding:10px;background:var(--vscode-editor-background);border-radius:4px;border:1px solid var(--vscode-panel-border)}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>📊 Workspace File Activity</h1>
+<p>Recently modified files in your workspace</p>
+</div>
+<div class="stats">
+<div class="stat-box"><strong>Total Files:</strong> {{TOTAL_FILES}}</div>
+<div class="stat-box"><strong>Most Recent:</strong> {{MOST_RECENT}}</div>
+</div>
+<table>
+<thead>
+<tr>
+<th>📁 File Path</th>
+<th>🕒 Last Modified</th>
+<th>📏 Size</th>
+</tr>
+</thead>
+<tbody>
+{{ROWS}}
+</tbody>
+</table>
+</body>
+</html>

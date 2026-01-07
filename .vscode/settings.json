@@ -1,0 +1,14 @@
+{
+    "explorerDates.colorScheme": "file-type",
+    "explorerDates.dateDecorationFormat": "relative-short",
+    "explorerDates.enableAdvancedCache": false,
+    "explorerDates.enableAnalysisCommands": false,
+    "explorerDates.enableExportReporting": false,
+    "explorerDates.enableExtensionApi": false,
+    "explorerDates.enableIncrementalWorkers": false,
+    "explorerDates.enableOnboardingSystem": false,
+    "explorerDates.enableWorkspaceIntelligence": false,
+    "explorerDates.enableWorkspaceTemplates": false,
+    "explorerDates.forceEnableForLargeWorkspaces": false,
+    "explorerDates.performanceMode": false
+}

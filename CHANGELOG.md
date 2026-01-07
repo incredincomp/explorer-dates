@@ -1,5 +1,255 @@
 # Changelog
 
+## 1.3.0 - Module Federation & Team Configuration (January 4, 2026)
+
+### 🏗️ Architecture Revolution
+
+**Module Federation System**
+- Complete rewrite using module federation architecture
+- Base bundle reduced from 267KB to **~99KB** core + **281KB** optional chunks
+- Features load dynamically based on configuration flags
+- **36% bundle size reduction** possible by disabling unused features
+- Graceful degradation when chunks are missing or disabled
+
+**Cross-Platform Optimization**
+- Dedicated Node.js (`extension.js`) and Web (`extension.web.js`) bundles
+- Platform-specific file system adapters for optimal performance
+- Web bundle optimized for `vscode.dev`, `github.dev`, and Codespaces
+- Automatic platform detection with appropriate feature gating
+
+### 👥 Team Configuration & Collaboration
+
+**Team Configuration Profiles**
+- Share standardized Explorer Dates configurations across teams
+- JSON-based export/import with validation and error handling
+- Conflict resolution strategies when team configs clash with user preferences
+- Automatic backup creation before applying team configurations
+- File watching for real-time team configuration updates
+
+**Configuration Management**
+- Built-in configuration presets (minimal, balanced, enterprise, data-science)
+- Runtime configuration suggestions based on workspace characteristics
+- Settings validation with helpful error messages and auto-correction
+- Migration system for legacy settings with intelligent conflict detection
+- Configuration preview system for testing changes before applying
+
+**Collaboration Features**
+- Team profile CRUD operations with persistence
+- User override documentation for transparency
+- Conflict resolution UI with detailed diff views
+- Workspace-specific configuration inheritance
+
+### 🚀 Performance & Reliability Enhancements
+
+**Comprehensive Testing Suite**
+- **40+ test suites** covering all aspects of the extension
+- Feature gating validation ensures disabled features don't load
+- Chunk loading failure resilience testing
+- Memory isolation matrix testing with allocation telemetry
+- Cross-platform compatibility verification
+- Bundle integrity verification before publication
+
+**Error Handling & Resilience**
+- Graceful handling of missing chunk files
+- Corrupted configuration recovery
+- Network failure resilience for team configurations
+- File system permission error handling with ephemeral fallbacks
+- Automatic retry mechanisms for transient failures
+
+**Advanced Diagnostics**
+- Bundle size analysis and optimization suggestions
+- Chunk loading status monitoring
+- Feature-level performance metrics
+- Configuration validation and troubleshooting
+- Memory usage analysis and optimization recommendations
+
+### 🛠️ Developer Experience Improvements
+
+**Enhanced Configuration System**
+- **Real-time validation** of all settings with immediate feedback
+- **Preset application** with one-click optimal configurations
+- **Bundle optimization wizard** for size-conscious deployments
+- **Configuration comparison** tools for understanding changes
+- **Runtime chunk management** for feature-level control
+
+**Advanced Features**
+- **Restart batching** - intelligently groups configuration changes to minimize reloads
+- **Settings migration** - automatic upgrade of legacy configurations
+- **Theme integration** - automatic color scheme adaptation when VS Code themes change
+- **QuickPick UI flows** - streamlined interfaces for common tasks
+
+### 📦 Bundle Structure & Feature Gating
+
+**Core Bundle (~99KB)**
+- Essential file decoration functionality
+- Basic commands and settings
+- Performance monitoring
+- Error handling and logging
+
+**Optional Chunks (loaded on demand)**
+- **Onboarding System** (~34KB): Welcome wizard, feature tour, getting started flows
+- **Export & Reporting** (~17KB): File modification reports, analytics, activity tracking
+- **Workspace Templates** (~14KB): Configuration templates, team profile management
+- **Extension API** (~15KB): Third-party extension integration, plugin system
+- **Advanced Cache** (~5KB): Enhanced caching algorithms, memory optimization
+- **Analysis Commands** (~8KB): Diagnostic tools, performance analysis, debugging
+- **Workspace Intelligence** (~12KB): Smart exclusions, large workspace detection
+- **Incremental Workers** (~19KB): Background file processing, batch operations
+
+### 🔧 Configuration Changes
+
+**New Settings (v1.3.0)**
+```json
+{
+  "explorerDates.enableOnboardingSystem": true,     // Control welcome flows
+  "explorerDates.enableExportReporting": true,      // Control reporting features  
+  "explorerDates.enableWorkspaceTemplates": true,   // Control template system
+  "explorerDates.enableExtensionApi": true,         // Control API access
+  "explorerDates.enableAdvancedCache": true,        // Control cache enhancements
+  "explorerDates.enableAnalysisCommands": true,     // Control diagnostic tools
+  "explorerDates.enableWorkspaceIntelligence": true, // Control smart features
+  "explorerDates.enableIncrementalWorkers": false   // Control background workers
+}
+```
+
+**Migration Notes**
+- All existing settings are automatically migrated
+- `enableReporting` → `enableExportReporting` (with deprecation notice)
+- `customColors` → `workbench.colorCustomizations` (with migration assistant)
+- New feature flags default to `true` for backward compatibility
+- Disable unused features to reduce bundle size
+
+### 🧪 Quality Assurance
+
+**Testing Coverage**
+- **Memory isolation testing** - ensures no memory leaks between feature combinations
+- **Feature gate validation** - verifies disabled features don't load or execute
+- **Chunk loading resilience** - tests graceful degradation when chunks fail to load
+- **Configuration scenario testing** - validates 90+ configuration permutations
+- **Cross-platform compatibility** - ensures consistent behavior across environments
+- **Bundle verification** - automated checks for production readiness
+
+**CI/CD Enhancements**
+- Automated bundle size analysis with regression detection
+- Memory usage monitoring with configurable thresholds
+- Feature flag matrix testing across all supported configurations
+- Platform-specific testing for Node.js and web environments
+
+### 📚 Documentation Updates
+
+**New Documentation**
+- [Team Configuration Guide](./DOCS/TEAM_CONFIG_TESTING.md)
+- [Upgrade Guide](./DOCS/UPGRADE_GUIDE.md) — now the canonical settings migration reference
+- [Architecture Documentation](./DOCS/ARCHITECTURE.md) — includes the module federation, chunking, and bundle optimization details
+- [Troubleshooting Guide](./DOCS/TROUBLESHOOTING.md)
+
+**Updated Documentation**
+- README with v1.3.0 features and configuration options
+- Settings Guide with new feature flags and team configuration
+- Upgrade Guide with migration instructions and breaking changes
+- Commands documentation with new team configuration commands
+
+### ⚠️ Breaking Changes
+
+- **Minimum VS Code Version**: Now requires VS Code 1.105.0+
+- **Bundle Structure**: Extensions relying on internal APIs may need updates
+- **Configuration Schema**: Some legacy settings are deprecated (with automatic migration)
+- **Web Environment**: Enhanced web support may change behavior in browser contexts
+
+### 🔄 Migration Path
+
+1. **Automatic Migration**: Settings are migrated automatically on first run
+2. **Feature Validation**: Review new feature flags and disable unused features
+3. **Bundle Optimization**: Use new optimization tools to reduce bundle size
+4. **Team Setup**: Configure team profiles if working in collaborative environments
+5. **Testing**: Verify all functionality works as expected in your environment
+
+See [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for detailed migration instructions.
+
+## 1.2.10 - Workspace-Aware Indexing & Worker Reliability
+
+### Automatic Workspace Sync
+- Explorer Dates now listens for workspace folder additions/removals and reruns smart watchers, progressive loading, and the large-workspace detector automatically. Switching monorepo roots no longer requires a manual reload to keep decorations accurate.
+- The incremental indexer restarts in the background with a scale-aware file budget, so new repos warm quickly while existing caches stay hot. Extreme workspaces cap their initial crawl aggressively, whereas normal projects keep the full 2,000-file budget (overridable via `EXPLORER_DATES_INDEXER_MAX_FILES`).
+
+### Incremental Indexer Hygiene
+- Removed workspace folders are pruned from the in-memory stat index immediately, preventing stale entries from lingering after you close a repo or remove a Codespace root.
+- Reinitializing the indexer now disposes any previous worker host before creating another, eliminating worker_threads/WebWorker leaks when performance mode toggles on/off.
+
+### Web Worker Reliability
+- The worker host’s capability probe accepts environments where `URL` is exposed as a function (the standard shape in browsers), so the web bundle consistently spins up a real WebWorker instead of falling back to inline hashing on `vscode.dev`/`github.dev`.
+
+### Guardrails & Observability
+- `checkWorkspaceSize()` is serialized to avoid overlapping 50K-file scans and is reused by the workspace-change listener, keeping watcher throttle tiers, batch processor scaling, and feature levels in sync with the active repo footprint.
+- README + SETTINGS_GUIDE call out the new workspace-change behavior so teams know the indexer restarts automatically when repos are added or removed.
+
+## 1.2.9 - Viewport-Aware Scaling & Hierarchical Cache
+
+### Hierarchical Cache Buckets
+- In-memory decorations now live inside folder buckets, so trimming the cache evicts entire cold directories with one operation instead of hundreds of single-file deletions.
+- Keeps the hit rate high in 150K-file workspaces while capping the cache size consistently (eviction stats are exposed via `Explorer Dates: Show Metrics`).
+
+### Viewport-Aware Decorations
+- Explorer Dates now tracks visible editors and your recent working set. Files you can actually see keep rich tooltips, colors, Git info, and size badges; background files fall back to lightweight badges so Explorer stays responsive even when VS Code requests thousands of decorations.
+- The new summary tooltip mode keeps accessibility text concise for background files while still surfacing key metadata.
+
+### Progressive Feature Levels
+- Added `explorerDates.featureLevel` with `auto`/`full`/`enhanced`/`standard`/`minimal` profiles. `auto` adapts to workspace size and feeds into the viewport-aware pipeline so large repos stay fast without forcing `performanceMode`.
+- Profiles control whether Git, color schemes, file sizes, and rich tooltips run for background files. Visible files always get the maximum fidelity that the current profile allows.
+
+### Incremental Indexer & Workers
+- A cancellable incremental indexer now warms a stat cache in the background using the BatchProcessor. Workspace scans stop immediately when settings change, and delta updates stream from file watcher events so the index never drifts.
+- Heavy digest math (hashing, bucket calculations) runs inside a worker: `worker_threads` on desktop and a real WebWorker inside `vscode.dev`/`github.dev`. When workers are unavailable, the host falls back to inline computation automatically.
+- Background decoration requests reuse the indexed stats, dramatically reducing `fs.stat` calls when Explorer asks for thousands of items. Priority/visible files still hit the live file system for perfect accuracy.
+
+### Docs & Tooling
+- README + SETTINGS_GUIDE document the new `featureLevel` setting, hierarchical cache, and viewport-aware behavior.
+- Diagnostics now expose cache bucket counts, feature level, and viewport stats so performance webviews/showMetrics reflect the new systems.
+
+## 1.2.8 - Smart File Watching & Large Workspace Resilience
+
+### Adaptive Watchers (No More `**/*` on Monorepos)
+- Replaced the single `**/*` watcher with a smart analyzer that prioritizes high-signal folders (`src/`, `app/`, `packages/`, etc.) and root-level config files. Watcher budgets adjust automatically when the workspace crosses 10K/50K files so Explorer remains responsive even in 150K-file repos.
+- Added dynamic per-directory watchers that follow whatever you're actively editing. They spin up instantly when you open/save files and auto-expire after ~10 minutes of inactivity (tunable via `EXPLORER_DATES_WATCHER_TTL_MS`), keeping the total watcher count lean.
+- Watcher events are throttled automatically (100 ms by default, 250 ms for large workspaces, 600 ms for extreme/50K+ workspaces) to prevent decoration thrash when build tools touch thousands of files at once.
+
+### New Settings & Env Controls
+- `explorerDates.smartFileWatching` (default `true`) toggles the adaptive watcher pipeline. Disable it to fall back to VS Code's global watcher if you prefer the old behavior.
+- `explorerDates.smartWatcherMaxPatterns` (default `20`, min `5`, max `200`) caps how many static patterns we register per workspace folder—use this to fine-tune baseline overhead on mega repos.
+- `explorerDates.smartWatcherExtensions` lets you customize which file extensions count as “high signal” for smart watcher coverage (defaults include common languages + config formats). Extensions are normalized so you can pass either `"ts"` or `".ts"`.
+- Added environment flags `EXPLORER_DATES_MAX_DYNAMIC_WATCHERS` and `EXPLORER_DATES_WATCHER_TTL_MS` (existing env plumbing) to globally cap dynamic watchers or change their idle timeout.
+
+### Large Folder Guardrail
+- New `explorerDates.autoExcludeLargeFolders` + `explorerDates.autoExcludeFolderMinSizeMB` settings keep giant build/cache folders (50 MB+ by default) out of the decoration pipeline immediately—no settings.json edits required. The guardrail plugs directly into smart exclusions and watcher analysis, so once a folder is auto-suppressed it won’t get watchers or cache entries until it shrinks.
+
+### Adaptive Batch Processor
+- Batch processing now adapts to workspace scale and queue depth automatically. `explorerDates.adaptiveBatchProcessing` keeps per-chunk sizes tight in 10K+/50K+ repos without hurting smaller projects. Metrics now expose the effective batch size so diagnostics and the performance webview show the current tuning.
+
+### Large Workspace Awareness
+- The 50K+ file detector now feeds back into the watcher strategy: when a repo crosses the extreme threshold we immediately reconfigure watchers with the slower throttle window instead of nagging users to enable performance mode.
+- Workspace metrics now report `watcherStrategy`, `staticWatchers`, `dynamicWatchers`, `workspaceScale`, and `workspaceFileCount` so diagnostics and the performance webview show exactly how Explorer Dates adapted to the current repo.
+
+### Docs & Bundles
+- README and SETTINGS_GUIDE gained a dedicated “Adaptive File Watching” section with tuning examples for large repos, plus the performance chapter now explains the new flow.
+- `package.json` contributions expose the new settings so they appear in VS Code's Settings UI.
+- Rebuilt both desktop/web bundles and refreshed `dist/extension*.js(.map)` to pick up the watcher implementation.
+
+## 1.2.7 - Activity Tracking Guardrail
+
+### Idle Memory Fixes
+- Added `explorerDates.maxTrackedActivityFiles` (default 3,000) to cap the workspace activity cache and automatically evict oldest entries before they balloon VS Code's heap during long idle sessions.
+- Setting the cap to `0` disables the activity watcher entirely; VS Code for Web also skips the watcher to keep browser sandboxes lean.
+- Activity tracking now respects your existing exclusion rules (`explorerDates.excludedFolders` / `explorerDates.excludedPatterns`) before storing entries, eliminating noisy data from `node_modules/`, build artifacts, or logs.
+- Cached activity entries are normalized + deduplicated by path, retaining only 100 recent events per file and automatically purging empty entries so the report generator stays lightweight.
+- Hybrid filtering prefers editor-driven events (save/create/delete/rename) and only uses the raw filesystem watcher when the file is open or was touched recently, so automated build churn no longer floods the cache.
+- Reports now ship with a `activitySourceBreakdown` summary so you can see how many entries came from explicit user actions vs. watcher fallbacks.
+- Activity tracking auto-disables whenever `performanceMode` or `EXPLORER_DATES_LIGHTWEIGHT_MODE` is active, guaranteeing zero overhead for lightweight profiles.
+
+### Reporting Reliability
+- Activity reports pull from the normalized cache structure, so file deletions and restorations always reference the original path even after eviction.
+- The reporting manager cleans up watchers/timers immediately when disposed, preventing runaway listeners between extension reloads.
+- README + Settings Guide document the new guardrail and provide quick recipes for low-memory environments.
+
 ## 1.2.6 - Cache Preservation & Diagnostics
 
 ### Warm Resets Without Data Loss

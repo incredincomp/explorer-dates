@@ -14,6 +14,10 @@
 const fs = require('fs');
 const path = require('path');
 const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const {
+    resolveMemoryProfile,
+    applyProfileEnv
+} = require('./helpers/memoryProfiles');
 
 if (typeof global.gc !== 'function') {
     console.error('❌ Memory isolation test requires Node to run with "--expose-gc".');
@@ -21,9 +25,12 @@ if (typeof global.gc !== 'function') {
     process.exit(1);
 }
 
+const memoryProfile = resolveMemoryProfile({ defaultProfile: '250k' });
+applyProfileEnv(memoryProfile);
+
 const ITERATIONS = Number(process.env.MEMORY_SOAK_ITERATIONS || 2000);
-const MAX_HEAP_DELTA_MB = Number(process.env.MEMORY_SOAK_MAX_DELTA_MB || 12);
-const BATCH_DELAY_MS = Number(process.env.MEMORY_SOAK_DELAY_MS || 0);
+const MAX_HEAP_DELTA_MB = Number(process.env.MEMORY_SOAK_MAX_DELTA_MB || memoryProfile.maxDeltaMb || 12);
+const BATCH_DELAY_MS = Number(process.env.MEMORY_SOAK_DELAY_MS || memoryProfile.delayMs || 0);
 const INCLUDE_HIT_PHASE = process.env.MEMORY_SOAK_INCLUDE_HITS !== 'false';
 const HIT_PHASE_ITERATIONS = Number(
     process.env.MEMORY_SOAK_HIT_ITERATIONS || Math.max(50, Math.floor(ITERATIONS * 0.75))
@@ -35,12 +42,15 @@ const DISABLE_INCREMENTAL_REFRESH = process.env.DISABLE_INCREMENTAL_REFRESH === 
 
 const mockInstall = createMockVscode({
     config: {
-        'explorerDates.badgeRefreshInterval': 1500,
+        'explorerDates.badgeRefreshInterval': memoryProfile.badgeRefreshInterval ?? 1500,
         'explorerDates.showDateDecorations': true,
         'explorerDates.colorScheme': 'recency'
     },
+    mockWorkspaceFileCount: memoryProfile.fileCount,
     sampleWorkspace: workspaceRoot
 });
+
+console.log(`\n🏗️ Workspace profile: ${memoryProfile.label} (${memoryProfile.fileCount.toLocaleString()} files)`);
 
 const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 const sampleFiles = [

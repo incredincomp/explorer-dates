@@ -1,5 +1,132 @@
-const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const GLOBAL_VSCODE_SYMBOL = '__explorerDatesVscode';
+let cachedVscode = null;
+let fallbackVscode = null;
+let fallbackInUse = false;
+
+function getGlobalVscode() {
+    try {
+        return globalThis[GLOBAL_VSCODE_SYMBOL];
+    } catch {
+        return undefined;
+    }
+}
+
+function createFallbackVscode() {
+    if (fallbackVscode) {
+        return fallbackVscode;
+    }
+
+    const noopDisposable = { dispose() {} };
+    class ThemeColor {
+        constructor(id) {
+            this.id = id;
+        }
+    }
+
+    const ColorThemeKind = {
+        Light: 1,
+        Dark: 2,
+        HighContrast: 3
+    };
+
+    fallbackVscode = {
+        window: {
+            activeColorTheme: { kind: ColorThemeKind.Dark },
+            onDidChangeActiveColorTheme: () => noopDisposable,
+            showInformationMessage: async () => undefined,
+            createOutputChannel: () => ({
+                appendLine: () => {},
+                dispose: () => {}
+            })
+        },
+        ColorThemeKind,
+        ThemeColor,
+        commands: {
+            executeCommand: async () => undefined
+        },
+        workspace: {
+            getConfiguration: () => ({
+                get: () => undefined,
+                update: async () => undefined
+            })
+        },
+        ConfigurationTarget: {
+            Global: 1,
+            Workspace: 2,
+            WorkspaceFolder: 3
+        }
+    };
+    return fallbackVscode;
+}
+
+const FALLBACK_ERROR_CODES = new Set([
+    'MODULE_NOT_FOUND',
+    'ERR_MODULE_NOT_FOUND',
+    'WEB_NATIVE_MODULE'
+]);
+
+function shouldFallbackToMock(error) {
+    if (!error) {
+        return true;
+    }
+    if (error.code && FALLBACK_ERROR_CODES.has(error.code)) {
+        return true;
+    }
+    const message = typeof error.message === 'string' ? error.message : '';
+    return message.includes("Cannot find module 'vscode'");
+}
+
+function resolveVscode() {
+    const globalMock = getGlobalVscode();
+    if (globalMock) {
+        cachedVscode = globalMock;
+        fallbackInUse = false;
+        return cachedVscode;
+    }
+
+    if (cachedVscode && !fallbackInUse) {
+        return cachedVscode;
+    }
+
+    try {
+        cachedVscode = require('vscode');
+        fallbackInUse = false;
+    } catch (error) {
+        if (shouldFallbackToMock(error)) {
+            cachedVscode = createFallbackVscode();
+            fallbackInUse = true;
+        } else {
+            throw error;
+        }
+    }
+    return cachedVscode;
+}
+
+// Lazily proxy VS Code so tests can install their mock before the real module loads
+const vscode = new Proxy({}, {
+    get(_target, prop) {
+        return resolveVscode()[prop];
+    },
+    set(_target, prop, value) {
+        resolveVscode()[prop] = value;
+        return true;
+    },
+    has(_target, prop) {
+        return prop in resolveVscode();
+    },
+    ownKeys() {
+        return Reflect.ownKeys(resolveVscode());
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+        const descriptor = Object.getOwnPropertyDescriptor(resolveVscode(), prop);
+        if (descriptor) {
+            descriptor.configurable = true;
+        }
+        return descriptor;
+    }
+});
+const { getLogger } = require('./utils/logger');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { getExtension } = require('./utils/pathUtils');
 
 /**
@@ -8,8 +135,10 @@ const { getExtension } = require('./utils/pathUtils');
 class ThemeIntegrationManager {
     constructor() {
         this._logger = getLogger();
+        this._settings = getSettingsCoordinator();
         this._currentThemeKind = vscode.window.activeColorTheme.kind;
         this._themeChangeListeners = [];
+        this._themeChangeDisposable = null;
         
         // Setup theme change detection
         this._setupThemeChangeDetection();
@@ -23,7 +152,7 @@ class ThemeIntegrationManager {
      * Setup theme change detection
      */
     _setupThemeChangeDetection() {
-        vscode.window.onDidChangeActiveColorTheme((theme) => {
+        this._themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme((theme) => {
             const oldTheme = this._currentThemeKind;
             this._currentThemeKind = theme.kind;
             
@@ -365,13 +494,15 @@ class ThemeIntegrationManager {
      */
     async autoConfigureForTheme() {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentColorScheme = config.get('colorScheme', 'none');
+            const currentColorScheme = this._settings.getValue('colorScheme') ?? 'none';
             
             // Only auto-configure if user hasn't set a specific preference
             if (currentColorScheme === 'none' || currentColorScheme === 'auto') {
                 const suggestedScheme = this.getSuggestedColorScheme();
-                await config.update('colorScheme', suggestedScheme, vscode.ConfigurationTarget.Global);
+                await this._settings.updateSetting('colorScheme', suggestedScheme, {
+                    scope: 'user',
+                    reason: 'theme-auto-config'
+                });
                 
                 this._logger.info(`Auto-configured color scheme for ${this._getThemeKindName(this._currentThemeKind)} theme: ${suggestedScheme}`);
                 
@@ -412,6 +543,14 @@ class ThemeIntegrationManager {
      */
     dispose() {
         this._themeChangeListeners.length = 0;
+        if (this._themeChangeDisposable) {
+            try {
+                this._themeChangeDisposable.dispose();
+            } catch (error) {
+                this._logger.warn('Failed to dispose theme change subscription', error);
+            }
+            this._themeChangeDisposable = null;
+        }
         this._logger.info('ThemeIntegrationManager disposed');
     }
 }

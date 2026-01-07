@@ -1,7 +1,8 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
-const { getLocalization } = require('./localization');
+const { getLogger } = require('./utils/logger');
+const { getLocalization } = require('./utils/localization');
 const { getFileName } = require('./utils/pathUtils');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 /**
  * Accessibility Manager for enhanced keyboard navigation and screen reader support
@@ -10,6 +11,7 @@ class AccessibilityManager {
     constructor() {
         this._logger = getLogger();
         this._l10n = getLocalization();
+        this._settings = getSettingsCoordinator();
         this._isAccessibilityMode = false;
         this._keyboardNavigationEnabled = true;
         this._focusIndicators = new Map();
@@ -398,13 +400,15 @@ class AccessibilityManager {
             return;
         }
         
-        const config = vscode.workspace.getConfiguration('explorerDates');
         let appliedCount = 0;
         
         for (const rec of recommendations) {
             if (rec.type === 'setting') {
                 try {
-                    await config.update(rec.setting.replace('explorerDates.', ''), rec.value, vscode.ConfigurationTarget.Global);
+                    await this._settings.updateSetting(rec.setting, rec.value, {
+                        scope: 'user',
+                        reason: 'accessibility-recommendation'
+                    });
                     appliedCount++;
                     this._logger.info(`Applied accessibility recommendation: ${rec.setting} = ${rec.value}`);
                 } catch (error) {

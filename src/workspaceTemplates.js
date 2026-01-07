@@ -1,7 +1,8 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { GLOBAL_STATE_KEYS } = require('./constants');
+const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 const logger = getLogger();
 
@@ -15,6 +16,7 @@ class WorkspaceTemplatesManager {
         this._storage = context?.globalState || null;
         this._storageKey = GLOBAL_STATE_KEYS.TEMPLATE_STORE;
         this._fs = fileSystem;
+        this._settings = getSettingsCoordinator();
         this.templatesPath = null;
         this.builtInTemplates = this.getBuiltInTemplates();
         logger.info('Workspace Templates Manager initialized');
@@ -114,7 +116,7 @@ class WorkspaceTemplatesManager {
                     'explorerDates.smartExclusions': true,
                     'explorerDates.progressiveLoading': true,
                     'explorerDates.persistentCache': true,
-                    'explorerDates.enableReporting': true
+                    'explorerDates.enableExportReporting': true
                 }
             },
             'minimal': {
@@ -193,14 +195,18 @@ class WorkspaceTemplatesManager {
                 throw new Error(`Template "${templateId}" not found`);
             }
 
-            // Apply settings
-            const config = vscode.workspace.getConfiguration();
-            for (const [key, value] of Object.entries(template.settings)) {
-                await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-            }
+            const results = await this._settings.applySettings(template.settings, {
+                scope: 'workspace',
+                reason: `apply-template:${templateId}`
+            });
 
-            vscode.window.showInformationMessage(`Template "${template.name}" applied successfully!`);
-            logger.info(`Applied workspace template: ${template.name}`);
+            const changedCount = results.filter(result => result.updated).length;
+            const message = changedCount > 0
+                ? `Template "${template.name}" applied with ${changedCount} setting${changedCount === 1 ? '' : 's'} updated.`
+                : `Template "${template.name}" already matched your workspace.`;
+
+            vscode.window.showInformationMessage(message);
+            logger.info(`Applied workspace template: ${template.name}`, { changedCount });
             
             return true;
         } catch (error) {

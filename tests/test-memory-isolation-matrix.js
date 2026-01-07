@@ -13,6 +13,11 @@ const defaultIterations = process.env.MEMORY_SOAK_ITERATIONS || '1000';
 const defaultDelay = process.env.MEMORY_SOAK_DELAY_MS || '0';
 const defaultMaxDelta = process.env.MEMORY_SOAK_MAX_DELTA_MB || '24';
 
+const defaultProfile =
+    process.env.MEMORY_WORKSPACE_PROFILES ||
+    process.env.MEMORY_WORKSPACE_PROFILE ||
+    '450k';
+
 const scenarios = [
     {
         title: 'Control: pool + flyweights (forced bypass)',
@@ -44,7 +49,8 @@ function runScenario({ title, label, env }) {
         MEMORY_SOAK_LABEL: label,
         MEMORY_SOAK_ITERATIONS: defaultIterations,
         MEMORY_SOAK_DELAY_MS: defaultDelay,
-        MEMORY_SOAK_MAX_DELTA_MB: defaultMaxDelta
+        MEMORY_SOAK_MAX_DELTA_MB: defaultMaxDelta,
+        MEMORY_WORKSPACE_PROFILE: defaultProfile
     };
 
     console.log(`\n=== ${title} ===`);

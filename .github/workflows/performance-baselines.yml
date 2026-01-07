@@ -1,0 +1,42 @@
+name: Performance Baselines
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1' # Weekly on Monday at 3 AM UTC
+
+jobs:
+  verify-performance-baselines:
+    name: Bundle & Latency Baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension bundles
+        run: npm run package-bundle
+
+      - name: Run performance baseline suite
+        run: npm run test:performance-baselines
+
+      - name: Upload baseline trend artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-baseline-trend
+          path: tests/artifacts/performance/baseline-trend.json
+          if-no-files-found: warn
+          retention-days: 60

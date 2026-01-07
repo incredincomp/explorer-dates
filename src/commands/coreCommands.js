@@ -1,6 +1,9 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
-const { getFileName, getRelativePath } = require('../utils/pathUtils');
+const { getFileName, getRelativePath, getUriPath, normalizePath } = require('../utils/pathUtils');
+const { ensureDate } = require('../utils/dateHelpers');
+const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
+const { SecureFileOperations, SecurityValidator, detectSecurityEnvironment } = require('../utils/securityUtils');
 
 const isWeb = process.env.VSCODE_WEB === 'true';
 let childProcess = null;
@@ -9,6 +12,239 @@ function loadChildProcess() {
         childProcess = eval('require')('child_process');
     }
     return childProcess;
+}
+
+const SECURITY_WARNING_THROTTLE_MS_DEFAULT = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
+const SECURITY_WARNING_THROTTLE_LIMIT = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_CACHE || 500);
+const SECURITY_MAX_WARNINGS_DEFAULT = Number(process.env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
+const settingsCoordinator = getSettingsCoordinator();
+const securityEnvironment = detectSecurityEnvironment();
+const securityWarningLog = new Map();
+
+function dedupePaths(paths = []) {
+    const unique = new Set();
+    const result = [];
+    for (const entry of paths) {
+        if (!entry || unique.has(entry)) {
+            continue;
+        }
+        unique.add(entry);
+        result.push(entry);
+    }
+    return result;
+}
+
+function getExplicitBooleanSetting(config, key) {
+    if (!config || typeof config.inspect !== 'function') {
+        return undefined;
+    }
+    try {
+        const inspected = config.inspect(key);
+        if (!inspected) {
+            return undefined;
+        }
+        const scopes = [
+            inspected.workspaceFolderValue,
+            inspected.workspaceValue,
+            inspected.globalValue
+        ];
+        for (const value of scopes) {
+            if (typeof value === 'boolean') {
+                return value;
+            }
+        }
+    } catch {
+        // ignore
+    }
+    return undefined;
+}
+
+function normalizeSecurityPaths(candidatePaths = []) {
+    const list = Array.isArray(candidatePaths)
+        ? candidatePaths
+        : (candidatePaths ? [candidatePaths] : []);
+    const normalized = [];
+    for (const entry of list) {
+        if (!entry || typeof entry !== 'string') {
+            continue;
+        }
+        const cleaned = entry.trim().replace(/^['"]|['"]$/g, '');
+        if (!cleaned) {
+            continue;
+        }
+        const normalizedPath = normalizePath(cleaned);
+        if (normalizedPath) {
+            normalized.push(normalizedPath);
+        }
+    }
+    return normalized;
+}
+
+function parseEnvSecurityPaths() {
+    const envValue = process.env.EXPLORER_DATES_SECURITY_EXTRA_PATHS;
+    if (!envValue || typeof envValue !== 'string') {
+        return [];
+    }
+    const delimiter = process.platform === 'win32' ? ';' : ':';
+    return envValue
+        .split(delimiter)
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+
+function isTestLikeEnvironment() {
+    return securityEnvironment === 'test' ||
+        process.env.EXPLORER_DATES_TEST_MODE === '1' ||
+        process.env.NODE_ENV === 'test' ||
+        process.env.VSCODE_TEST === '1';
+}
+
+function getSecurityValidationContext() {
+    const config = vscode.workspace.getConfiguration('explorerDates');
+    const allowTestPaths = config.get('security.allowTestPaths', true);
+    const extraPathsSetting = config.get('security.allowedExtraPaths', []);
+
+    const workspaceFolders = vscode.workspace.workspaceFolders || [];
+    const workspaceRoots = workspaceFolders
+        .map((folder) => {
+            try {
+                return normalizePath(getUriPath(folder.uri));
+            } catch {
+                return null;
+            }
+        })
+        .filter(Boolean);
+
+    const normalizedExtras = normalizeSecurityPaths(extraPathsSetting);
+    const envExtras = normalizeSecurityPaths(parseEnvSecurityPaths());
+    const combinedAllowed = dedupePaths([
+        ...workspaceRoots,
+        ...normalizedExtras,
+        ...envExtras
+    ]);
+
+    const explicitBoundary = getExplicitBooleanSetting(config, 'security.enableBoundaryEnforcement');
+    const legacyBoundary = getExplicitBooleanSetting(config, 'security.enforceWorkspaceBoundaries');
+    let enforceBoundaries;
+    if (typeof explicitBoundary === 'boolean') {
+        enforceBoundaries = explicitBoundary;
+    } else if (typeof legacyBoundary === 'boolean') {
+        enforceBoundaries = legacyBoundary;
+    } else {
+        enforceBoundaries = securityEnvironment === 'production';
+    }
+
+    const relaxedForTests = allowTestPaths && isTestLikeEnvironment();
+    const shouldEnforce = enforceBoundaries && !relaxedForTests && combinedAllowed.length > 0;
+
+    const throttleMsSetting = config.get('security.logThrottleWindowMs');
+    const maxWarningsSetting = config.get('security.maxWarningsPerFile');
+    const throttleMs = Number.isFinite(throttleMsSetting)
+        ? Math.max(0, throttleMsSetting)
+        : (Number.isFinite(SECURITY_WARNING_THROTTLE_MS_DEFAULT) ? Math.max(0, SECURITY_WARNING_THROTTLE_MS_DEFAULT) : 5000);
+    const maxWarnings = Number.isFinite(maxWarningsSetting) && maxWarningsSetting >= 0
+        ? maxWarningsSetting
+        : (Number.isFinite(SECURITY_MAX_WARNINGS_DEFAULT) && SECURITY_MAX_WARNINGS_DEFAULT >= 0 ? SECURITY_MAX_WARNINGS_DEFAULT : 1);
+
+    return {
+        allowedPaths: shouldEnforce ? combinedAllowed : [],
+        enforceBoundaries: shouldEnforce,
+        throttleMs,
+        maxWarningsPerFile: maxWarnings
+    };
+}
+
+function shouldThrottleSecurityWarning(key, throttleMs, maxWarningsPerFile) {
+    if (!key) {
+        return false;
+    }
+    const now = Date.now();
+    const entry = securityWarningLog.get(key) || { lastTimestamp: 0, count: 0 };
+    if (typeof maxWarningsPerFile === 'number' &&
+        maxWarningsPerFile >= 0 &&
+        entry.count >= maxWarningsPerFile) {
+        return true;
+    }
+    if (typeof throttleMs === 'number' &&
+        throttleMs > 0 &&
+        now - entry.lastTimestamp < throttleMs) {
+        return true;
+    }
+    entry.lastTimestamp = now;
+    entry.count = (entry.count || 0) + 1;
+    securityWarningLog.set(key, entry);
+    if (securityWarningLog.size > SECURITY_WARNING_THROTTLE_LIMIT) {
+        const keys = Array.from(securityWarningLog.keys());
+        const trimCount = Math.ceil(keys.length * 0.25);
+        for (let i = 0; i < trimCount; i++) {
+            securityWarningLog.delete(keys[i]);
+        }
+    }
+    return false;
+}
+
+function getSanitizedPathForLog(target) {
+    let rawPath = '';
+    if (typeof target === 'string') {
+        rawPath = target;
+    } else if (target) {
+        rawPath = target.fsPath || target.path || '';
+        if (!rawPath && typeof target.toString === 'function') {
+            try {
+                rawPath = target.toString(true);
+            } catch {
+                rawPath = target.toString();
+            }
+        }
+    }
+    const sanitized = SecurityValidator.sanitizePath(rawPath || '', { preserveExtension: true });
+    return sanitized || 'unknown';
+}
+
+function ensureSecureUri(targetUri, logger, reason) {
+    if (!targetUri) {
+        return null;
+    }
+    const securityContext = getSecurityValidationContext();
+    const validation = SecureFileOperations.validateFileUri(targetUri, securityContext.allowedPaths);
+    const sanitizedPath = getSanitizedPathForLog(targetUri);
+    if (!validation.isValid) {
+        const warningKey = `${reason}:${sanitizedPath}`;
+        if (!shouldThrottleSecurityWarning(warningKey, securityContext.throttleMs, securityContext.maxWarningsPerFile)) {
+            const logLevel = securityEnvironment === 'production' ? 'warn' :
+                (securityEnvironment === 'development' ? 'info' : 'debug');
+            const logFn = typeof logger[logLevel] === 'function'
+                ? logger[logLevel].bind(logger)
+                : logger.warn.bind(logger);
+            logFn(`Blocked ${reason} due to insecure path`, {
+                path: sanitizedPath,
+                issue: validation.issue,
+                environment: securityEnvironment,
+                enforceBoundaries: securityContext.enforceBoundaries
+            });
+        }
+        if (securityEnvironment === 'production') {
+            vscode.window.showWarningMessage('Explorer Dates blocked this file because its path failed security checks.');
+        }
+        return null;
+    }
+    if (validation.warnings?.length) {
+        const warningKey = `warning:${reason}:${sanitizedPath}:${validation.warnings.join('|')}`;
+        if (!shouldThrottleSecurityWarning(warningKey, securityContext.throttleMs, securityContext.maxWarningsPerFile)) {
+            const logLevel = securityEnvironment === 'production' ? 'warn' :
+                (securityEnvironment === 'development' ? 'info' : 'debug');
+            const logFn = typeof logger[logLevel] === 'function'
+                ? logger[logLevel].bind(logger)
+                : logger.warn.bind(logger);
+            logFn(`Security warnings for ${reason}`, {
+                path: sanitizedPath,
+                warnings: validation.warnings,
+                environment: securityEnvironment,
+                enforceBoundaries: securityContext.enforceBoundaries
+            });
+        }
+    }
+    return targetUri;
 }
 
 function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
@@ -51,7 +287,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showMetrics', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.showMetrics', async () => {
         try {
             if (fileDateProvider) {
                 const metrics = fileDateProvider.getMetrics();
@@ -79,7 +315,17 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                         `Average Batch Time: ${metrics.batchProcessor.averageBatchTime.toFixed(2)}ms`;
                 }
 
-                vscode.window.showInformationMessage(message, { modal: true });
+                const choice = await vscode.window.showInformationMessage(
+                    message, 
+                    { modal: true },
+                    'View Rich Analytics'
+                );
+
+                if (choice === 'View Rich Analytics') {
+                    // Lazy load the rich analytics view
+                    await vscode.commands.executeCommand('explorerDates.showPerformanceAnalytics');
+                }
+
                 logger.info('Metrics displayed', metrics);
             }
         } catch (error) {
@@ -120,30 +366,15 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
-        try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
-            await config.update('badgePriority', 'time', vscode.ConfigurationTarget.Global);
-            await config.update('accessibilityMode', false, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage('Reset high contrast, badge priority, and accessibility mode to defaults. Changes should take effect immediately.');
-            logger.info('Reset problematic settings to defaults');
+    // Reset to defaults command is now handled by migrationCommands.js which provides comprehensive reset functionality
 
-            if (fileDateProvider) {
-                fileDateProvider.clearAllCaches();
-                fileDateProvider.refreshAll();
-            }
-        } catch (error) {
-            logger.error('Failed to reset settings', error);
-            vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
-        }
-    }));
-
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', async () => {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentValue = config.get('showDateDecorations', true);
-            config.update('showDateDecorations', !currentValue, vscode.ConfigurationTarget.Global);
+            const currentValue = settingsCoordinator.getValue('showDateDecorations');
+            await settingsCoordinator.updateSetting('showDateDecorations', !currentValue, {
+                scope: 'user',
+                reason: 'toggle-decorations'
+            });
             const message = !currentValue
                 ? l10n?.getString('decorationsEnabled') || 'Date decorations enabled'
                 : l10n?.getString('decorationsDisabled') || 'Date decorations disabled';
@@ -166,12 +397,18 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 return;
             }
 
+            const secureUri = ensureSecureUri(targetUri, logger, 'copyFileDate');
+            if (!secureUri) {
+                return;
+            }
+            targetUri = secureUri;
+
             const stat = await fileSystem.stat(targetUri);
-            const dateString = (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)).toLocaleString();
+            const dateString = ensureDate(stat.mtime).toLocaleString();
 
             await vscode.env.clipboard.writeText(dateString);
             vscode.window.showInformationMessage(`Copied to clipboard: ${dateString}`);
-            logger.info(`File date copied for: ${targetUri.fsPath || targetUri.path}`);
+            logger.info(`File date copied for: ${getSanitizedPathForLog(targetUri)}`);
         } catch (error) {
             logger.error('Failed to copy file date', error);
             vscode.window.showErrorMessage(`Failed to copy file date: ${error.message}`);
@@ -189,11 +426,17 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 return;
             }
 
+            const secureUri = ensureSecureUri(targetUri, logger, 'showFileDetails');
+            if (!secureUri) {
+                return;
+            }
+            targetUri = secureUri;
+
             const stat = await fileSystem.stat(targetUri);
             const fileName = getFileName(targetUri.fsPath || targetUri.path);
             const fileSize = fileDateProvider?._formatFileSize(stat.size, 'auto') || `${stat.size} bytes`;
-            const modified = (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)).toLocaleString();
-            const created = (stat.birthtime instanceof Date ? stat.birthtime : new Date(stat.birthtime || stat.mtime)).toLocaleString();
+            const modified = ensureDate(stat.mtime).toLocaleString();
+            const created = ensureDate(stat.birthtime || stat.mtime).toLocaleString();
 
             const details = `File: ${fileName}\n` +
                 `Size: ${fileSize}\n` +
@@ -202,18 +445,20 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 `Path: ${targetUri.fsPath || targetUri.path}`;
 
             vscode.window.showInformationMessage(details, { modal: true });
-            logger.info(`File details shown for: ${targetUri.fsPath || targetUri.path}`);
+            logger.info(`File details shown for: ${getSanitizedPathForLog(targetUri)}`);
         } catch (error) {
             logger.error('Failed to show file details', error);
             vscode.window.showErrorMessage(`Failed to show file details: ${error.message}`);
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', async () => {
         try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const currentValue = config.get('fadeOldFiles', false);
-            config.update('fadeOldFiles', !currentValue, vscode.ConfigurationTarget.Global);
+            const currentValue = settingsCoordinator.getValue('fadeOldFiles') ?? false;
+            await settingsCoordinator.updateSetting('fadeOldFiles', !currentValue, {
+                scope: 'user',
+                reason: 'toggle-fade'
+            });
             const message = !currentValue ? 'Fade old files enabled' : 'Fade old files disabled';
             vscode.window.showInformationMessage(message);
             logger.info(`Fade old files toggled to: ${!currentValue}`);
@@ -239,6 +484,12 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 return;
             }
 
+            const secureUri = ensureSecureUri(targetUri, logger, 'showFileHistory');
+            if (!secureUri) {
+                return;
+            }
+            targetUri = secureUri;
+
             const workspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
             if (!workspaceFolder) {
                 vscode.window.showWarningMessage('File is not in a workspace');
@@ -246,7 +497,8 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             }
 
             const relativePath = getRelativePath(workspaceFolder.uri.fsPath || workspaceFolder.uri.path, targetUri.fsPath || targetUri.path);
-            const command = `git log --oneline -10 -- "${relativePath}"`;
+            const sanitizedRelativePath = SecurityValidator.sanitizePath(relativePath, { preserveExtension: true }) || relativePath;
+            const command = `git log --oneline -10 -- "${sanitizedRelativePath}"`;
             const cp = loadChildProcess();
 
             cp.exec(command, { cwd: workspaceFolder.uri.fsPath, timeout: 3000 }, (error, stdout) => {
@@ -272,7 +524,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 );
             });
 
-            logger.info(`File history requested for: ${targetUri.fsPath || targetUri.path}`);
+            logger.info(`File history requested for: ${getSanitizedPathForLog(targetUri)}`);
         } catch (error) {
             logger.error('Failed to show file history', error);
             vscode.window.showErrorMessage(`Failed to show file history: ${error.message}`);
@@ -295,6 +547,12 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
                 return;
             }
 
+            const secureUri = ensureSecureUri(targetUri, logger, 'compareWithPrevious');
+            if (!secureUri) {
+                return;
+            }
+            targetUri = secureUri;
+
             const workspaceFolder = vscode.workspace.getWorkspaceFolder(targetUri);
             if (!workspaceFolder) {
                 vscode.window.showWarningMessage('File is not in a workspace');
@@ -302,55 +560,15 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             }
 
             await vscode.commands.executeCommand('git.openChange', targetUri);
-            logger.info(`Git diff opened for: ${targetUri.fsPath || targetUri.path}`);
+            logger.info(`Git diff opened for: ${getSanitizedPathForLog(targetUri)}`);
         } catch (error) {
             logger.error('Failed to compare with previous version', error);
             vscode.window.showErrorMessage(`Failed to compare with previous version: ${error.message}`);
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
-        try {
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            const customColors = config.get('customColors', {
-                veryRecent: '#00ff00',
-                recent: '#ffff00',
-                old: '#ff0000'
-            });
-
-            const message = `To use custom colors with Explorer Dates, add the following to your settings.json:\n\n` +
-                `"workbench.colorCustomizations": {\n` +
-                `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
-                `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
-                `  "explorerDates.customColor.old": "${customColors.old}"\n` +
-                `}\n\n` +
-                `Also set: "explorerDates.colorScheme": "custom"`;
-
-            const choice = await vscode.window.showInformationMessage(
-                'Custom colors configuration',
-                { modal: true, detail: message },
-                'Copy to Clipboard',
-                'Open Settings'
-            );
-
-            if (choice === 'Copy to Clipboard') {
-                const configText = `"workbench.colorCustomizations": {\n` +
-                    `  "explorerDates.customColor.veryRecent": "${customColors.veryRecent}",\n` +
-                    `  "explorerDates.customColor.recent": "${customColors.recent}",\n` +
-                    `  "explorerDates.customColor.old": "${customColors.old}"\n` +
-                    `}`;
-                await vscode.env.clipboard.writeText(configText);
-                vscode.window.showInformationMessage('Custom color configuration copied to clipboard');
-            } else if (choice === 'Open Settings') {
-                await vscode.commands.executeCommand('workbench.action.openSettings', 'workbench.colorCustomizations');
-            }
-
-            logger.info('Custom colors help displayed');
-        } catch (error) {
-            logger.error('Failed to apply custom colors', error);
-            vscode.window.showErrorMessage(`Failed to apply custom colors: ${error.message}`);
-        }
-    }));
+    // Note: explorerDates.applyCustomColors command is now handled by migrationCommands.js
+    // with enhanced functionality including interactive setup options
 
     subscriptions.forEach(disposable => context.subscriptions.push(disposable));
 }

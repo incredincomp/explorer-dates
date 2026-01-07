@@ -9,13 +9,16 @@ const { createMockVscode } = require('./helpers/mockVscode');
 
 console.log('🧪 Testing Periodic Refresh Mechanism\n');
 
-// Set up mock VS Code environment with short refresh interval for testing
-const configValues = {
-    'explorerDates.badgeRefreshInterval': 5000, // 5 seconds for testing
-    'explorerDates.showDateDecorations': true
-};
-
-const mockEnv = createMockVscode(configValues);
+// Set up mock VS Code environment with a very short workspace-level refresh interval
+const mockEnv = createMockVscode({
+    config: {
+        'explorerDates.showDateDecorations': true
+    },
+    workspaceConfig: {
+        // Use a 500ms interval so the timer fires quickly inside the test harness.
+        'explorerDates.badgeRefreshInterval': 500
+    }
+});
 const vscode = mockEnv.vscode;
 
 // Load the FileDateDecorationProvider
@@ -67,27 +70,29 @@ setTimeout(async () => {
         process.exit(1);
     }
     
-    // Test 3: Verify cache is cleared during refresh
-    console.log('\n📋 Test 3: Verify cache is cleared during refresh');
+    // Test 3: Verify cache marks stale entries for refresh during periodic cycle
+    console.log('\n📋 Test 3: Verify stale cache entries are marked for refresh');
     
-    // Add something to cache
+    // Insert a deliberately stale cache entry
+    const staleTimestamp = Date.now() - (provider._cacheTimeout || 60000) - 1000;
     provider._decorationCache.set('test-key', {
         decoration: new vscode.FileDecoration('5m'),
-        timestamp: Date.now()
+        timestamp: staleTimestamp
     });
     
-    const cacheSize = provider._decorationCache.size;
-    console.log(`   Added test item to cache (size: ${cacheSize})`);
+    console.log(`   Added stale cache entry (timestamp offset: ${Date.now() - staleTimestamp}ms)`);
     
     // Wait for another refresh cycle
     setTimeout(async () => {
-        const newCacheSize = provider._decorationCache.size;
-        console.log(`   Cache size after refresh: ${newCacheSize}`);
+        const refreshedEntry = provider._decorationCache.get('test-key');
+        const wasMarkedForRefresh = !refreshedEntry || refreshedEntry.forceRefresh === true;
         
-        if (newCacheSize === 0) {
-            console.log('   ✅ Cache was cleared during periodic refresh');
+        if (wasMarkedForRefresh) {
+            console.log('   ✅ Stale cache entry was marked for refresh or evicted');
         } else {
-            console.log('   ⚠️  Cache still has items (this may be OK if items were added after clear)');
+            console.log('   ❌ Stale cache entry was not marked for refresh');
+            await provider.dispose();
+            process.exit(1);
         }
         
         // Test 4: Verify dispose cleans up timer

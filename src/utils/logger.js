@@ -20,6 +20,11 @@ const inspectValue = (() => {
 
 const DEFAULT_LOG_PROFILE = 'default';
 const SUPPORTED_PROFILES = new Set(['default', 'stress', 'soak']);
+const LOG_LEVEL_ORDER = ['debug', 'info', 'warn', 'error'];
+const DEFAULT_CONSOLE_LEVEL = 'warn';
+const TEST_CONSOLE_LEVEL = (process.env.NODE_ENV === 'test' || process.env.EXPLORER_DATES_TEST_MODE === '1')
+    ? 'warn'
+    : null;
 
 /**
  * Logger utility for debugging and error tracking
@@ -29,16 +34,21 @@ class Logger {
         this._outputChannel = vscode.window.createOutputChannel('Explorer Dates');
         this._isEnabled = false;
         this._configurationWatcher = null;
+        this._muteOutputChannel = (process.env.NODE_ENV === 'test' || process.env.EXPLORER_DATES_TEST_MODE === '1') === true;
         this._logProfile = (process.env.EXPLORER_DATES_LOG_PROFILE || DEFAULT_LOG_PROFILE).toLowerCase();
         if (!SUPPORTED_PROFILES.has(this._logProfile)) {
             this._logProfile = DEFAULT_LOG_PROFILE;
         }
         this._throttleState = new Map();
+        this._consoleLevel = DEFAULT_CONSOLE_LEVEL;
         this._updateConfig();
         
         // Listen for configuration changes
         this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('explorerDates.enableLogging')) {
+            if (
+                e.affectsConfiguration('explorerDates.enableLogging') ||
+                e.affectsConfiguration('explorerDates.consoleLogLevel')
+            ) {
                 this._updateConfig();
             }
         });
@@ -47,6 +57,16 @@ class Logger {
     _updateConfig() {
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._isEnabled = config.get('enableLogging', false);
+        const envConsoleLevel = (process.env.EXPLORER_DATES_LOG_LEVEL || '').toLowerCase();
+        const configuredConsoleLevel = (config.get('consoleLogLevel', DEFAULT_CONSOLE_LEVEL) || '').toLowerCase();
+        const chosenLevel = TEST_CONSOLE_LEVEL || envConsoleLevel || configuredConsoleLevel || DEFAULT_CONSOLE_LEVEL;
+        this._consoleLevel = LOG_LEVEL_ORDER.includes(chosenLevel)
+            ? chosenLevel
+            : DEFAULT_CONSOLE_LEVEL;
+        // In test mode, keep channel noise low
+        if (TEST_CONSOLE_LEVEL) {
+            this._isEnabled = false;
+        }
     }
 
     setLogProfile(profileName = DEFAULT_LOG_PROFILE) {
@@ -100,23 +120,32 @@ class Logger {
     error(message, error, ...args) {
         const timestamp = new Date().toISOString();
         const formattedMessage = `[${timestamp}] [ERROR] ${message}`;
-        this._outputChannel.appendLine(formattedMessage);
+        if (!this._muteOutputChannel) {
+            this._outputChannel.appendLine(formattedMessage);
 
-        if (error instanceof Error) {
-            this._outputChannel.appendLine(`Error: ${error.message}`);
-            if (error.stack) {
-                this._outputChannel.appendLine(`Stack: ${error.stack}`);
+            if (error instanceof Error) {
+                this._outputChannel.appendLine(`Error: ${error.message}`);
+                if (error.stack) {
+                    this._outputChannel.appendLine(`Stack: ${error.stack}`);
+                }
+            } else if (error) {
+                this._outputChannel.appendLine(this._serializeArg(error));
             }
-        } else if (error) {
-            this._outputChannel.appendLine(this._serializeArg(error));
         }
 
         const evaluatedArgs = this._evaluateArgs(args);
-        if (evaluatedArgs.length > 0) {
+        if (evaluatedArgs.length > 0 && !this._muteOutputChannel) {
             evaluatedArgs.forEach((arg) => this._outputChannel.appendLine(this._serializeArg(arg)));
         }
 
-        console.error(formattedMessage, error, ...evaluatedArgs);
+        const consoleArgs = [];
+        if (error !== undefined && error !== null) {
+            consoleArgs.push(error);
+        }
+        if (evaluatedArgs.length > 0) {
+            consoleArgs.push(...evaluatedArgs);
+        }
+        this._mirrorToConsole('error', formattedMessage, consoleArgs);
     }
 
     /**
@@ -142,6 +171,17 @@ class Logger {
             this._configurationWatcher.dispose();
             this._configurationWatcher = null;
         }
+        
+        // Clean up global references
+        const GLOBAL_LOGGER_KEY = '__explorerDatesLogger';
+        if (typeof global !== 'undefined' && global[GLOBAL_LOGGER_KEY] === this) {
+            global[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof globalThis !== 'undefined' && globalThis[GLOBAL_LOGGER_KEY] === this) {
+            globalThis[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof globalThis !== 'undefined' && globalThis.window?.[GLOBAL_LOGGER_KEY] === this) {
+            globalThis.window[GLOBAL_LOGGER_KEY] = null;
+        }
+        
         if (loggerInstance === this) {
             loggerInstance = null;
         }
@@ -158,20 +198,16 @@ class Logger {
 
         const timestamp = new Date().toISOString();
         const formattedMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
-        this._outputChannel.appendLine(formattedMessage);
+        if (!this._muteOutputChannel) {
+            this._outputChannel.appendLine(formattedMessage);
+        }
 
         const evaluatedArgs = this._evaluateArgs(args);
-        if (evaluatedArgs.length > 0) {
+        if (evaluatedArgs.length > 0 && !this._muteOutputChannel) {
             evaluatedArgs.forEach((arg) => this._outputChannel.appendLine(this._serializeArg(arg)));
         }
 
-        const consoleMethod = level === 'warn'
-            ? console.warn
-            : level === 'error'
-                ? console.error
-                : console.log;
-
-        consoleMethod(formattedMessage, ...evaluatedArgs);
+        this._mirrorToConsole(level, formattedMessage, evaluatedArgs);
     }
 
     _evaluateArgs(args) {
@@ -232,7 +268,7 @@ class Logger {
             state.noticeLogged = true;
             const notice = `[${new Date().toISOString()}] [INFO] ⏸️ Suppressing further logs for "${key}" after ${limit} entries (profile=${this._logProfile})`;
             this._outputChannel.appendLine(notice);
-            console.log(notice);
+            this._mirrorToConsole('info', notice);
         }
         this._throttleState.set(key, state);
         return true;
@@ -245,19 +281,62 @@ class Logger {
         }
         return activeProfile === requestedProfile;
     }
+
+    _shouldMirrorToConsole(level) {
+        const configuredIndex = LOG_LEVEL_ORDER.indexOf(this._consoleLevel);
+        const messageIndex = LOG_LEVEL_ORDER.indexOf(level);
+        if (configuredIndex === -1 || messageIndex === -1) {
+            return false;
+        }
+        return messageIndex >= configuredIndex;
+    }
+
+    _mirrorToConsole(level, message, args = []) {
+        if (!this._shouldMirrorToConsole(level)) {
+            return;
+        }
+        const method = level === 'warn'
+            ? console.warn
+            : level === 'error'
+                ? console.error
+                : console.log;
+        method.call(console, message, ...args);
+    }
 }
 
-// Singleton instance
-let loggerInstance = null;
+// Global singleton instance that persists across chunk boundaries
+const GLOBAL_LOGGER_KEY = '__explorerDatesLogger';
 
 /**
- * Get the logger instance
+ * Get or create the global logger instance
  */
 function getLogger() {
-    if (!loggerInstance) {
-        loggerInstance = new Logger();
+    // Use global reference to ensure singleton across all chunks/modules
+    if (typeof global !== 'undefined') {
+        // Node.js environment
+        if (!global[GLOBAL_LOGGER_KEY]) {
+            global[GLOBAL_LOGGER_KEY] = new Logger();
+        }
+        return global[GLOBAL_LOGGER_KEY];
+    } else if (typeof globalThis !== 'undefined') {
+        // Web/modern environments (globalThis may be the window)
+        if (!globalThis[GLOBAL_LOGGER_KEY]) {
+            globalThis[GLOBAL_LOGGER_KEY] = new Logger();
+        }
+        if (globalThis.window) {
+            globalThis.window[GLOBAL_LOGGER_KEY] = globalThis[GLOBAL_LOGGER_KEY];
+        }
+        return globalThis[GLOBAL_LOGGER_KEY];
+    } else {
+        // Fallback to module-local singleton
+        if (!loggerInstance) {
+            loggerInstance = new Logger();
+        }
+        return loggerInstance;
     }
-    return loggerInstance;
 }
+
+// Module-local fallback instance
+let loggerInstance = null;
 
 module.exports = { Logger, getLogger };

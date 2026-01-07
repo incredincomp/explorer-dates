@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { getLogger } = require('./logger');
+const { getLogger } = require('./utils/logger');
 
 /**
  * Comprehensive File Decoration Diagnostics

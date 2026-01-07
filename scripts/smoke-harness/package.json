@@ -1,0 +1,14 @@
+{
+    "name": "explorer-dates-smoke-harness",
+    "displayName": "Explorer Dates VSIX Smoke Harness",
+    "publisher": "incredincomp",
+    "version": "0.0.0",
+    "engines": {
+        "vscode": "^1.105.0"
+    },
+    "main": "./extension.js",
+    "activationEvents": [
+        "*"
+    ],
+    "contributes": {}
+}
