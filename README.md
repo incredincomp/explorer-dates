@@ -263,7 +263,7 @@ Explorer Dates is optimized for low memory usage, using smart caching and poolin
 - Workspace folder changes (adding/removing repos) automatically restart the indexer, purge orphaned entries, and re-run the large-workspace detector so Explorer Dates keeps the correct scale without manual reloads.
 
 **Automatic Large Workspace Detection**
-- Explorer Dates automatically detects workspaces with **50,000+ files** during startup
+- Explorer Dates automatically detects workspaces with **250,000+ files** during startup
 - When detected, you'll receive a prompt with options:
   - **Enable Performance Mode**: Automatically enables minimal-overhead mode
   - **Keep Current Settings**: Continue with current configuration
@@ -442,7 +442,7 @@ Explorer Dates v1.3.0 introduces a modern module federation architecture with co
 **Large Workspace Performance** *(November 2025)*
 
 #### **📊 Workspace Intelligence**
-- **Automatic Large Workspace Detection**: Proactive warnings for 50,000+ file projects
+- **Automatic Large Workspace Detection**: Proactive warnings for 250,000+ file projects
 - **Adaptive File Watching**: Smart watchers for high-signal folders only
 - **Activity Tracking Guardrail**: 3,000 file activity cap with LRU eviction
 - **Hybrid Filtering**: User events prioritized over filesystem churn

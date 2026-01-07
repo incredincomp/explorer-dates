@@ -5,6 +5,7 @@
 const { getLogger } = require('./utils/logger');
 const { CHUNK_SIZES } = require('./presetDefinitions');
 const { getChunkSourcePath, getAllChunkNames } = require('./shared/chunkMap');
+const { registerFeatureFlagsGlobal } = require('./utils/featureFlagsBridge');
 let featureLogger = null;
 
 const DEFAULT_CHUNK_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_CHUNK_TIMEOUT || (process.env.NODE_ENV === 'test' ? 1000 : 5000));
@@ -493,6 +494,10 @@ const featureFlags = {
         return loadFeatureModule('batchProcessor');
     },
 
+    async decorationsAdvanced() {
+        return loadFeatureModule('decorationsAdvanced');
+    },
+
     async gitInsights() {
         // Git insights are loaded conditionally when git features are needed
         // No feature flag check - this is a performance optimization
@@ -582,7 +587,7 @@ function calculateSavings(config) {
 // Initialize default loaders for tests and CLI scripts
 registerDefaultLoaders();
 
-module.exports = { 
+const exportedFeatureFlags = {
     ...featureFlags,
     getFeatureConfig,
     calculateSavings,
@@ -593,3 +598,9 @@ module.exports = {
     loadFeatureModule,
     registerDefaultLoaders
 };
+
+// Make feature flags available to federated chunks (e.g., decorationsAdvanced)
+// via the shared global bridge so chunks can resolve loaders outside the main bundle.
+registerFeatureFlagsGlobal(exportedFeatureFlags);
+
+module.exports = exportedFeatureFlags;

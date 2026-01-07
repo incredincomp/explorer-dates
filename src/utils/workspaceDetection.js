@@ -1,7 +1,44 @@
 const vscode = require('vscode');
 const { getLogger } = require('./logger');
+const {
+    WORKSPACE_SCALE_BALANCED_THRESHOLD,
+    WORKSPACE_SCALE_LARGE_THRESHOLD,
+    WORKSPACE_SCALE_EXTREME_THRESHOLD,
+    WORKSPACE_SCAN_MAX_RESULTS
+} = require('../constants');
 
 const logger = getLogger();
+
+// Cache workspace file count to avoid repeated scans during activation
+let cachedWorkspaceMetrics = null;
+
+function _getWorkspaceKey(workspaceUri) {
+    if (!workspaceUri) return null;
+    return workspaceUri.fsPath || workspaceUri.path || null;
+}
+
+function setCachedWorkspaceMetrics(workspaceUri, fileCount) {
+    const key = _getWorkspaceKey(workspaceUri);
+    if (!key || typeof fileCount !== 'number') {
+        return;
+    }
+    cachedWorkspaceMetrics = {
+        workspaceKey: key,
+        fileCount,
+        timestamp: Date.now()
+    };
+}
+
+function getCachedWorkspaceMetrics(workspaceUri) {
+    const key = _getWorkspaceKey(workspaceUri);
+    if (!key || !cachedWorkspaceMetrics) {
+        return null;
+    }
+    if (cachedWorkspaceMetrics.workspaceKey !== key) {
+        return null;
+    }
+    return cachedWorkspaceMetrics;
+}
 
 /**
  * Generates consistent workspace keys for globalState storage
@@ -37,13 +74,20 @@ async function detectWorkspaceProfile(workspaceUri) {
         if (!workspaceUri) return 'unknown';
         
         // File count analysis for size-based recommendations
-        const files = await vscode.workspace.findFiles('**/*', null, 50001);
-        const fileCount = files.length;
+        const cached = getCachedWorkspaceMetrics(workspaceUri);
+        let fileCount;
+        if (cached) {
+            fileCount = cached.fileCount;
+        } else {
+            const files = await vscode.workspace.findFiles('**/*', null, WORKSPACE_SCAN_MAX_RESULTS);
+            fileCount = files.length;
+            setCachedWorkspaceMetrics(workspaceUri, fileCount);
+        }
         
         let workspaceSize = 'small';
-        if (fileCount >= 50000) {
+        if (fileCount >= WORKSPACE_SCALE_EXTREME_THRESHOLD) {
             workspaceSize = 'extreme';
-        } else if (fileCount >= 10000) {
+        } else if (fileCount >= WORKSPACE_SCALE_LARGE_THRESHOLD) {
             workspaceSize = 'large';
         } else if (fileCount >= 1000) {
             workspaceSize = 'medium';
@@ -53,10 +97,14 @@ async function detectWorkspaceProfile(workspaceUri) {
         const isRemote = vscode.env.remoteName;
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
         
+        const mediumBalanced = workspaceSize === 'medium' &&
+            fileCount >= WORKSPACE_SCALE_BALANCED_THRESHOLD &&
+            fileCount < WORKSPACE_SCALE_LARGE_THRESHOLD;
+
         // Determine profile based on size and environment
         if (workspaceSize === 'extreme' || (workspaceSize === 'large' && (isRemote || isWeb))) {
             return 'minimal';
-        } else if (workspaceSize === 'large' || isRemote || isWeb) {
+        } else if (workspaceSize === 'large' || mediumBalanced || isRemote || isWeb) {
             return 'balanced';
         }
         
@@ -92,13 +140,20 @@ async function analyzeWorkspaceEnvironment(workspaceUri) {
     if (!workspaceUri) return null;
     
     try {
-        const files = await vscode.workspace.findFiles('**/*', null, 50001);
-        const fileCount = files.length;
+        const cached = getCachedWorkspaceMetrics(workspaceUri);
+        let fileCount;
+        if (cached) {
+            fileCount = cached.fileCount;
+        } else {
+            const files = await vscode.workspace.findFiles('**/*', null, WORKSPACE_SCAN_MAX_RESULTS);
+            fileCount = files.length;
+            setCachedWorkspaceMetrics(workspaceUri, fileCount);
+        }
         
         let workspaceSize = 'small';
-        if (fileCount >= 50000) {
+        if (fileCount >= WORKSPACE_SCALE_EXTREME_THRESHOLD) {
             workspaceSize = 'extreme';
-        } else if (fileCount >= 10000) {
+        } else if (fileCount >= WORKSPACE_SCALE_LARGE_THRESHOLD) {
             workspaceSize = 'large';
         } else if (fileCount >= 1000) {
             workspaceSize = 'medium';
@@ -108,12 +163,17 @@ async function analyzeWorkspaceEnvironment(workspaceUri) {
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
         const remoteType = isWeb ? 'web' : isRemote ? 'remote' : 'local';
         
+        const mediumBalanced = workspaceSize === 'medium' &&
+            fileCount >= WORKSPACE_SCALE_BALANCED_THRESHOLD &&
+            fileCount < WORKSPACE_SCALE_LARGE_THRESHOLD;
+
         return {
             workspaceSize,
             fileCount,
             remoteType,
             isRemoteEnvironment: isRemote || isWeb,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            mediumBalanced
         };
     } catch (error) {
         logger.error('Workspace environment analysis failed:', error);
@@ -124,5 +184,7 @@ async function analyzeWorkspaceEnvironment(workspaceUri) {
 module.exports = {
     generateWorkspaceKey,
     detectWorkspaceProfile,
-    analyzeWorkspaceEnvironment
+    analyzeWorkspaceEnvironment,
+    setCachedWorkspaceMetrics,
+    getCachedWorkspaceMetrics
 };

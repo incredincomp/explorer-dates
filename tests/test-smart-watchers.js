@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function verifySmartWatcherTargets() {
     const patternsCreated = [];
@@ -100,4 +101,4 @@ async function main() {
 main().catch((error) => {
     console.error('❌ Smart watcher tests failed:', error);
     process.exitCode = 1;
-});
+}).finally(scheduleExit);

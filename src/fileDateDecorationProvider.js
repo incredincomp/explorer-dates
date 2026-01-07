@@ -5,9 +5,22 @@ const { fileSystem } = require('./filesystem/FileSystemAdapter');
 // Theme and accessibility managers loaded conditionally via ui-adapters chunk
 const { formatFileSize, trimBadge } = require('./utils/formatters');
 const { getFileName, getExtension, getCacheKey: buildCacheKey, normalizePath, getUriPath } = require('./utils/pathUtils');
-const { DEFAULT_CACHE_TIMEOUT, DEFAULT_MAX_CACHE_SIZE, MONTH_ABBREVIATIONS, GLOBAL_STATE_KEYS } = require('./constants');
+const {
+    DEFAULT_CACHE_TIMEOUT,
+    DEFAULT_MAX_CACHE_SIZE,
+    MONTH_ABBREVIATIONS,
+    GLOBAL_STATE_KEYS,
+    DEFAULT_DECORATION_POOL_SIZE,
+    DEFAULT_FLYWEIGHT_CACHE_SIZE,
+    WORKSPACE_SCALE_LARGE_THRESHOLD,
+    WORKSPACE_SCALE_EXTREME_THRESHOLD,
+    WORKSPACE_SCAN_MAX_RESULTS
+} = require('./constants');
 const { isWebEnvironment } = require('./utils/env');
 const { ensureDate } = require('./utils/dateHelpers');
+const { SecurityValidator, SecureFileOperations, detectSecurityEnvironment } = require('./utils/securityUtils');
+const { setCachedWorkspaceMetrics } = require('./utils/workspaceDetection');
+const DISABLE_GIT_FEATURES = process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
 
 // Conditional path import for Node.js environments
 let nodePath = null;
@@ -85,7 +98,7 @@ const SMART_WATCHER_PRIORITY = new Map([
 ]);
 
 const WORKSPACE_SCAN_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT || 7000);
-const WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT = 50000;
+const WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT = WORKSPACE_SCALE_EXTREME_THRESHOLD;
 const ROOT_CACHE_BUCKET = '__root__';
 const VIEWPORT_DEFAULT_WINDOW_MS = 5 * 60 * 1000;
 const VIEWPORT_STANDARD_WINDOW_MS = 10 * 60 * 1000;
@@ -93,6 +106,10 @@ const VIEWPORT_MINIMAL_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_VIEWPORT_HISTORY_LIMIT = Number(process.env.EXPLORER_DATES_VIEWPORT_HISTORY_LIMIT || 400);
 const FEATURE_LEVELS = ['full', 'enhanced', 'standard', 'minimal'];
 const DEFAULT_INDEXER_MAX_FILES = Math.max(100, Number(process.env.EXPLORER_DATES_INDEXER_MAX_FILES || 2000));
+const SECURITY_EXTRA_PATHS_ENV = 'EXPLORER_DATES_SECURITY_EXTRA_PATHS';
+const DEFAULT_SECURITY_THROTTLE_MS = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
+const SECURITY_WARNING_CACHE_LIMIT = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_CACHE || 500);
+const DEFAULT_SECURITY_MAX_WARNINGS = Number(process.env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
 
 const describeFile = (input = '') => {
     const pathValue = typeof input === 'string' ? input : getUriPath(input);
@@ -310,21 +327,22 @@ class FileDateDecorationProvider {
         this._fileLocks = new Map();
         this._operationQueue = new Map();
         this._globalConcurrencyQueue = [];
-        this._maxConcurrentOperations = 20;
+        this._maxConcurrentOperationsBase = 20;
+        this._maxConcurrentOperations = this._maxConcurrentOperationsBase;
         this._activeOperations = 0;
         this._disposed = false;
         this._disposedNoticeLogged = false;
         this._decorationPool = new Map();
         this._decorationPoolOrder = [];
         this._decorationPoolStats = { hits: 0, misses: 0, allocations: 0, reuses: 0 };
-        this._maxDecorationPoolSize = 512;
+        this._maxDecorationPoolSize = DEFAULT_DECORATION_POOL_SIZE;
         this._badgeFlyweightCache = new Map();
         this._badgeFlyweightOrder = [];
-        this._badgeFlyweightLimit = 2048;
+        this._badgeFlyweightLimit = DEFAULT_FLYWEIGHT_CACHE_SIZE;
         this._badgeFlyweightStats = { hits: 0, misses: 0, allocations: 0, reuses: 0 };
         this._readableDateFlyweightCache = new Map();
         this._readableDateFlyweightOrder = [];
-        this._readableDateFlyweightLimit = 2048;
+        this._readableDateFlyweightLimit = DEFAULT_FLYWEIGHT_CACHE_SIZE;
         this._readableFlyweightStats = { hits: 0, misses: 0, allocations: 0, reuses: 0 };
         this._enableDecorationPool = process.env.EXPLORER_DATES_ENABLE_DECORATION_POOL !== '0';
         this._enableFlyweights = process.env.EXPLORER_DATES_ENABLE_FLYWEIGHTS !== '0';
@@ -376,6 +394,8 @@ class FileDateDecorationProvider {
         this._batchProcessorModule = null; // Cache for the loaded module
         this._progressiveLoadingJobs = new Set();
         this._progressiveLoadingEnabled = false;
+        this._decorationsAdvancedChunk = null; // Lazy-loaded optional systems
+        this._decorationsAdvancedChunkPromise = null;
         this._advancedCache = null; // Will be initialized with context
         this._configurationWatcher = null;
         this._fileWatchers = new Set();
@@ -392,11 +412,25 @@ class FileDateDecorationProvider {
         this._workspaceFileCount = null;
         this._workspaceScale = 'unknown';
         this._logWatcherEvents = process.env.EXPLORER_DATES_LOG_WATCHERS === '1';
+        this._securityEnvironment = detectSecurityEnvironment();
+        this._securityEnforceWorkspaceBoundaries = true;
+        this._securityAllowedExtraPaths = [];
+        this._securityAllowTestPaths = true;
+        this._securityRelaxedForTests = false;
+        this._securityLoggedTestRelaxation = false;
+        this._securityWarningLog = new Map();
+        this._securityLogThrottleMs = DEFAULT_SECURITY_THROTTLE_MS;
+        this._securityMaxWarningsPerFile = Number.isFinite(DEFAULT_SECURITY_MAX_WARNINGS)
+            ? Math.max(0, DEFAULT_SECURITY_MAX_WARNINGS)
+            : 1;
         this._workspaceFolderListener = typeof vscode.workspace.onDidChangeWorkspaceFolders === 'function'
             ? vscode.workspace.onDidChangeWorkspaceFolders((event) => this._handleWorkspaceFoldersChanged(event))
             : null;
         this._workspaceFolderChangeTimer = null;
         this._workspaceSizeCheckPromise = null;
+        this._workspaceScanPromise = null;
+        this._workspaceScanWatchdogTimer = null;
+        this._workspaceScanTimedOut = false;
         this._watcherSetupToken = 0;
         this._isDisposed = false;
         
@@ -437,8 +471,12 @@ class FileDateDecorationProvider {
         const configuredTimeout = config.get('cacheTimeout', CONFIG_DEFAULT_CACHE_TIMEOUT);
         this._hasCustomCacheTimeout = this._detectCacheTimeoutOverride(config, configuredTimeout);
         this._cacheTimeout = this._resolveCacheTimeout(configuredTimeout);
-        this._performanceMode = config.get('performanceMode', false);
+        this._performanceModeExplicit = config.get('performanceMode', false);
+        this._performanceModeAuto = false;
+        this._performanceMode = this._performanceModeExplicit;
         this._updateCacheNamespace(config);
+        this._updateSecurityBoundarySettings(config);
+        this._applyReuseCapacitySettings(config);
         if (this._lightweightMode) {
             this._performanceMode = true;
             this._enableDecorationPool = false;
@@ -483,7 +521,8 @@ class FileDateDecorationProvider {
 
         // Memory diagnostics + cache pressure monitors
         this._memorySheddingEvents = [];
-        this._softHeapAlertThresholdMB = Number(process.env.EXPLORER_DATES_SOFT_HEAP_ALERT_MB || 1);
+        // Diagnostic soaks often bypass caches; raise the soft threshold slightly to avoid noise while keeping the hard limit intact.
+        this._softHeapAlertThresholdMB = Number(process.env.EXPLORER_DATES_SOFT_HEAP_ALERT_MB || 2);
         this._consecutiveSoftHeapBreaches = 0;
         this._softHeapAlertLogged = false;
         this._cachePressureThreshold = Number(process.env.EXPLORER_DATES_CACHE_PRESSURE_RATIO || 0.7);
@@ -557,6 +596,11 @@ class FileDateDecorationProvider {
      * @returns {Promise<Object|null>}
      */
     async _loadGitInsightsChunk() {
+        if (DISABLE_GIT_FEATURES) {
+            this._gitAvailable = false;
+            return null;
+        }
+
         // Return existing loading promise if already in progress
         if (this._gitInsightsLoading) {
             return this._gitInsightsLoading;
@@ -778,14 +822,36 @@ class FileDateDecorationProvider {
         if (this._workspaceSizeCheckPromise) {
             return this._workspaceSizeCheckPromise;
         }
-
-        this._workspaceSizeCheckPromise = this._performWorkspaceSizeCheck()
-            .catch((error) => {
-                this._logger.debug('Workspace size check failed (non-critical):', error);
-            })
-            .finally(() => {
-                this._workspaceSizeCheckPromise = null;
+        if (!this._workspaceScanPromise) {
+            this._workspaceScanTimedOut = false;
+            const scanPromise = this._performWorkspaceSizeCheck()
+                .then((result) => {
+                    if (this._workspaceScanTimedOut) {
+                        this._workspaceScanTimedOut = false;
+                        this._logger.info('Workspace size scan completed after watchdog fallback; applied actual workspace metrics', {
+                            workspaceFileCount: this._workspaceFileCount,
+                            workspaceScale: this._workspaceScale
+                        });
+                    }
+                    return result;
+                })
+                .catch((error) => {
+                    this._logger.debug('Workspace size check failed (non-critical):', error);
+                });
+            this._workspaceScanPromise = scanPromise.finally(() => {
+                this._workspaceScanPromise = null;
             });
+        }
+
+        const watchdogPromise = this._startWorkspaceScanWatchdog();
+        const racePromises = watchdogPromise
+            ? [this._workspaceScanPromise, watchdogPromise]
+            : [this._workspaceScanPromise];
+
+        this._workspaceSizeCheckPromise = Promise.race(racePromises).finally(() => {
+            this._clearWorkspaceScanWatchdog();
+            this._workspaceSizeCheckPromise = null;
+        });
 
         return this._workspaceSizeCheckPromise;
     }
@@ -825,14 +891,57 @@ class FileDateDecorationProvider {
         }
     }
 
+    _startWorkspaceScanWatchdog() {
+        if (this._workspaceScanTimedOut) {
+            return Promise.resolve();
+        }
+
+        const configuredMs = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS);
+        const baseTimeout = Number.isFinite(WORKSPACE_SCAN_TIMEOUT_MS) && WORKSPACE_SCAN_TIMEOUT_MS > 0
+            ? WORKSPACE_SCAN_TIMEOUT_MS
+            : 5000;
+        const derivedMs = Number.isFinite(configuredMs)
+            ? configuredMs
+            : Math.min(20000, Math.max(3000, baseTimeout + 2000));
+
+        if (!Number.isFinite(derivedMs) || derivedMs <= 0) {
+            return null;
+        }
+
+        if (this._workspaceScanWatchdogTimer) {
+            clearTimeout(this._workspaceScanWatchdogTimer);
+        }
+
+        return new Promise((resolve) => {
+            this._workspaceScanWatchdogTimer = setTimeout(() => {
+                this._workspaceScanWatchdogTimer = null;
+                this._workspaceScanTimedOut = true;
+                this._workspaceFileCount = WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT;
+                this._workspaceScale = 'extreme';
+                try {
+                    const config = vscode.workspace.getConfiguration('explorerDates');
+                    this._applyFeatureLevel(this._determineFeatureLevel(config), 'workspace-scale-watchdog');
+                } catch {
+                    this._applyFeatureLevel(this._determineFeatureLevel(), 'workspace-scale-watchdog');
+                }
+                this._logger.warn(`Workspace size check exceeded ${derivedMs}ms; forcing extreme scale fallback`);
+                resolve();
+            }, derivedMs);
+        });
+    }
+
+    _clearWorkspaceScanWatchdog() {
+        if (this._workspaceScanWatchdogTimer) {
+            clearTimeout(this._workspaceScanWatchdogTimer);
+            this._workspaceScanWatchdogTimer = null;
+        }
+    }
+
     async _performWorkspaceSizeCheck() {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const forceEnable = config.get('forceEnableForLargeWorkspaces', false);
         const performanceMode = config.get('performanceMode', false);
-
-        if (forceEnable || performanceMode) {
-            return;
-        }
+        const suppressPrompt = forceEnable || performanceMode;
 
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -841,7 +950,7 @@ class FileDateDecorationProvider {
 
         this._logger.info('Checking workspace size for large workspace detection...');
 
-        const files = await this._findWorkspaceFilesWithTimeout(50001);
+        const files = await this._findWorkspaceFilesWithTimeout(WORKSPACE_SCAN_MAX_RESULTS);
         const timedOut = !Array.isArray(files);
         const fileCount = timedOut ? WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT : files.length;
 
@@ -851,12 +960,24 @@ class FileDateDecorationProvider {
                 : 'the configured timeout';
             this._logger.warn(`Workspace scan exceeded ${timeoutMsg}; defaulting to extreme scale`);
         } else {
-            this._logger.info(`Workspace contains ${fileCount >= 50001 ? '50,000+' : fileCount} files`);
+            const thresholdLabel = `${WORKSPACE_SCALE_LARGE_THRESHOLD}+`;
+            this._logger.info(`Workspace contains ${fileCount >= WORKSPACE_SCALE_LARGE_THRESHOLD ? thresholdLabel : fileCount} files`);
         }
 
         const previousScale = this._workspaceScale;
         this._workspaceFileCount = fileCount;
-        this._workspaceScale = fileCount >= 50000 ? 'extreme' : fileCount >= 10000 ? 'large' : 'normal';
+        this._workspaceScale = fileCount >= WORKSPACE_SCALE_EXTREME_THRESHOLD
+            ? 'extreme'
+            : fileCount >= WORKSPACE_SCALE_LARGE_THRESHOLD
+                ? 'large'
+                : 'normal';
+
+        try {
+            const primaryWorkspace = workspaceFolders[0]?.uri;
+            setCachedWorkspaceMetrics(primaryWorkspace, fileCount);
+        } catch (cacheError) {
+            this._logger.debug('Unable to cache workspace file count', cacheError);
+        }
 
         if (previousScale !== this._workspaceScale && this._smartWatcherEnabled && !this._performanceMode) {
             this._logger.info(`Workspace scale changed ${previousScale} -> ${this._workspaceScale}; recalibrating watchers`);
@@ -868,6 +989,10 @@ class FileDateDecorationProvider {
         }
 
         this._applyFeatureLevel(this._determineFeatureLevel(config), 'workspace-scale-change');
+
+        if (suppressPrompt) {
+            this._logger.debug('Large workspace prompt suppressed (force/performance mode), but scaling adjustments applied');
+        }
     }
 
     _getIndexerMaxFiles() {
@@ -973,7 +1098,7 @@ class FileDateDecorationProvider {
         const normalizedExtensions = this._normalizeWatcherExtensions(
             config.get('smartWatcherExtensions', DEFAULT_SMART_WATCHER_EXTENSIONS)
         );
-        const maxPatterns = Math.max(1, Math.min(rawMaxPatterns, DEFAULT_DYNAMIC_WATCHER_LIMIT));
+        const maxPatterns = this._computeSmartWatcherMaxPatterns(rawMaxPatterns);
         this._smartWatcherConfig = {
             maxPatterns,
             extensions: normalizedExtensions
@@ -1063,72 +1188,94 @@ class FileDateDecorationProvider {
         });
     }
 
+    async _getDecorationsAdvancedChunk() {
+        if (this._decorationsAdvancedChunkPromise) {
+            return this._decorationsAdvancedChunkPromise;
+        }
+
+        this._decorationsAdvancedChunkPromise = (async () => {
+            try {
+                const featureFlags = require('./featureFlags');
+                const chunk = await featureFlags.decorationsAdvanced();
+                this._decorationsAdvancedChunk = chunk || null;
+                return this._decorationsAdvancedChunk;
+            } catch (error) {
+                this._logger.debug('Failed to load decorationsAdvanced chunk', error);
+                this._decorationsAdvancedChunk = null;
+                return null;
+            }
+        })();
+
+        return this._decorationsAdvancedChunkPromise;
+    }
+
     async _createWatcherWithFallback(pattern, label = 'unknown') {
-        // First try native watcher
+        try {
+            const chunk = await this._getDecorationsAdvancedChunk();
+            if (chunk?.createWatcherWithFallback) {
+                return await chunk.createWatcherWithFallback(this, pattern, label);
+            }
+        } catch (error) {
+            this._logger.debug(`Advanced watcher chunk failed for ${label}`, error);
+        }
+
+        const shouldUseFallbackWatcher = () => {
+            if (this._enableWatcherFallbacks === false) {
+                return false;
+            }
+            if (this._enableWatcherFallbacks === 'auto' || this._enableWatcherFallbacks === true) {
+                const platform = process.platform;
+                const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV;
+                const isRemote = vscode.env.remoteName;
+                const isDocker = process.env.DOCKER_CONTAINER;
+                return isWSL || isRemote || isDocker || platform === 'android';
+            }
+            return false;
+        };
+
+        // Fallback to native watcher if chunk unavailable
         try {
             const nativeWatcher = vscode.workspace.createFileSystemWatcher(pattern);
             this._logger.debug(`Native watcher created for ${label}`);
             return nativeWatcher;
         } catch (nativeError) {
             this._logger.debug(`Native watcher failed for ${label}:`, nativeError);
-            
-            // Only use fallback if explicitly enabled
-            if (!this._shouldUseFallbackWatcher()) {
-                throw nativeError;
+            if (!shouldUseFallbackWatcher()) {
+                return null;
             }
-            
             return this._createFallbackWatcher(pattern, label);
         }
     }
 
-    _shouldUseFallbackWatcher() {
-        // Check if fallback is enabled in configuration
-        if (this._enableWatcherFallbacks === false) {
-            return false;
-        }
-        
-        // Auto mode: use fallback on problematic platforms
-        if (this._enableWatcherFallbacks === 'auto' || this._enableWatcherFallbacks === true) {
-            return this._isPlatformFallbackRequired();
-        }
-        
-        return false;
-    }
-
-    _isPlatformFallbackRequired() {
-        const platform = process.platform;
-        const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV;
-        const isRemote = vscode.env.remoteName;
-        const isDocker = process.env.DOCKER_CONTAINER;
-        
-        return isWSL || isRemote || isDocker || platform === 'android';
-    }
-
     async _createFallbackWatcher(pattern, label) {
         try {
-            // Lazy load the fallback chunk
+            const chunk = await this._getDecorationsAdvancedChunk();
+            if (chunk?.createFallbackWatcher) {
+                return await chunk.createFallbackWatcher(this, pattern, label);
+            }
+        } catch (error) {
+            this._logger.warn(`Fallback watcher creation failed for ${label}:`, error);
+        }
+        try {
             if (!this._smartWatcherFallbackManager) {
                 const { loadFeatureModule } = require('./featureFlags');
                 const SmartWatcherFallbackModule = await loadFeatureModule('smartWatcherFallback');
-                
                 if (SmartWatcherFallbackModule) {
                     const { SmartWatcherFallbackManager } = SmartWatcherFallbackModule;
                     this._smartWatcherFallbackManager = new SmartWatcherFallbackManager({ logger: this._logger });
                     await this._smartWatcherFallbackManager.initialize();
                 }
             }
-            
+
             if (this._smartWatcherFallbackManager) {
                 const fallback = await this._smartWatcherFallbackManager.getFallback();
                 const watcher = await fallback.createWatcherWithFallback(pattern);
                 this._logger.debug(`Fallback watcher created for ${label}`);
                 return watcher;
             }
-            
         } catch (fallbackError) {
             this._logger.warn(`Fallback watcher creation failed for ${label}:`, fallbackError);
         }
-        
         return null;
     }
 
@@ -1158,6 +1305,11 @@ class FileDateDecorationProvider {
 
     _handleWatcherEvent(uri, eventType, source = 'unknown') {
         if (!uri || uri.scheme !== 'file') {
+            return;
+        }
+
+        const validation = this._validateWorkspaceUri(uri, `watcher:${eventType}`);
+        if (!validation?.isValid) {
             return;
         }
 
@@ -1728,6 +1880,270 @@ class FileDateDecorationProvider {
         }
     }
 
+    _dedupeSecurityPaths(paths = []) {
+        if (!Array.isArray(paths)) {
+            return [];
+        }
+        const unique = new Set();
+        const result = [];
+        for (const entry of paths) {
+            if (!entry || unique.has(entry)) {
+                continue;
+            }
+            unique.add(entry);
+            result.push(entry);
+        }
+        return result;
+    }
+
+    _normalizeSecurityPathList(candidatePaths = []) {
+        const list = Array.isArray(candidatePaths)
+            ? candidatePaths
+            : (candidatePaths ? [candidatePaths] : []);
+        const normalized = [];
+        for (const entry of list) {
+            if (!entry || typeof entry !== 'string') {
+                continue;
+            }
+            const cleaned = entry.trim().replace(/^['"]|['"]$/g, '');
+            if (!cleaned) {
+                continue;
+            }
+            const normalizedPath = normalizePath(cleaned);
+            if (normalizedPath) {
+                normalized.push(normalizedPath);
+            } else {
+                this._logger.debug(`Ignored invalid security path entry: ${entry}`);
+            }
+        }
+        return normalized;
+    }
+
+    _getExplicitBooleanSetting(config, key) {
+        if (!config || typeof config.inspect !== 'function') {
+            return undefined;
+        }
+        try {
+            const inspected = config.inspect(key);
+            if (!inspected || typeof inspected !== 'object') {
+                return undefined;
+            }
+            const scopes = [
+                inspected.workspaceFolderValue,
+                inspected.workspaceValue,
+                inspected.globalValue
+            ];
+            for (const value of scopes) {
+                if (typeof value === 'boolean') {
+                    return value;
+                }
+            }
+            return undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    _parseEnvExtraSecurityPaths() {
+        const envValue = process.env[SECURITY_EXTRA_PATHS_ENV];
+        if (!envValue || typeof envValue !== 'string') {
+            return [];
+        }
+        const delimiter = (nodePath && nodePath.delimiter) || (process.platform === 'win32' ? ';' : ':');
+        return envValue
+            .split(delimiter)
+            .map((value) => value.trim())
+            .filter(Boolean);
+    }
+
+    _isTestLikeEnvironment() {
+        return process.env.EXPLORER_DATES_TEST_MODE === '1' ||
+            process.env.NODE_ENV === 'test' ||
+            process.env.VSCODE_TEST === '1';
+    }
+
+    _updateSecurityBoundarySettings(config) {
+        const explorerConfig = config || vscode.workspace.getConfiguration('explorerDates');
+        const allowTestPaths = explorerConfig.get('security.allowTestPaths', true);
+        const extraPathsSetting = explorerConfig.get('security.allowedExtraPaths', []);
+        this._securityEnvironment = detectSecurityEnvironment();
+        const explicitBoundary = this._getExplicitBooleanSetting(explorerConfig, 'security.enableBoundaryEnforcement');
+        const legacyBoundary = this._getExplicitBooleanSetting(explorerConfig, 'security.enforceWorkspaceBoundaries');
+        let enforceBoundaries;
+        if (typeof explicitBoundary === 'boolean') {
+            enforceBoundaries = explicitBoundary;
+        } else if (typeof legacyBoundary === 'boolean') {
+            enforceBoundaries = legacyBoundary;
+        } else {
+            enforceBoundaries = this._securityEnvironment === 'production';
+        }
+        const normalizedExtras = this._normalizeSecurityPathList(extraPathsSetting);
+        const envExtras = this._normalizeSecurityPathList(this._parseEnvExtraSecurityPaths());
+        this._securityAllowedExtraPaths = this._dedupeSecurityPaths([
+            ...normalizedExtras,
+            ...envExtras
+        ]);
+        this._securityEnforceWorkspaceBoundaries = enforceBoundaries !== false;
+        this._securityAllowTestPaths = allowTestPaths !== false;
+        this._securityRelaxedForTests = this._securityAllowTestPaths &&
+            (this._securityEnvironment === 'test' || this._isTestLikeEnvironment());
+        if (this._securityRelaxedForTests && !this._securityLoggedTestRelaxation) {
+            this._logger.warn('Security workspace boundary enforcement relaxed (test environment detected)');
+            this._securityLoggedTestRelaxation = true;
+        }
+        const throttleMsSetting = explorerConfig.get('security.logThrottleWindowMs');
+        const maxWarningsSetting = explorerConfig.get('security.maxWarningsPerFile');
+        const resolvedThrottle = Number.isFinite(throttleMsSetting)
+            ? Math.max(0, throttleMsSetting)
+            : (Number.isFinite(DEFAULT_SECURITY_THROTTLE_MS) ? Math.max(0, DEFAULT_SECURITY_THROTTLE_MS) : 5000);
+        this._securityLogThrottleMs = resolvedThrottle;
+        const fallbackMaxWarnings = Number.isFinite(DEFAULT_SECURITY_MAX_WARNINGS) && DEFAULT_SECURITY_MAX_WARNINGS >= 0
+            ? DEFAULT_SECURITY_MAX_WARNINGS
+            : 1;
+        if (Number.isFinite(maxWarningsSetting) && maxWarningsSetting >= 0) {
+            this._securityMaxWarningsPerFile = maxWarningsSetting;
+        } else {
+            this._securityMaxWarningsPerFile = fallbackMaxWarnings;
+        }
+    }
+
+    _getWorkspaceRootPaths() {
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const roots = [];
+        const unique = new Set();
+        const addPath = (value) => {
+            if (!value) {
+                return;
+            }
+            const normalized = normalizePath(value);
+            if (!normalized || unique.has(normalized)) {
+                return;
+            }
+            unique.add(normalized);
+            roots.push(normalized);
+        };
+
+        workspaceFolders.forEach((folder) => {
+            try {
+                addPath(getUriPath(folder.uri));
+            } catch {
+                // ignore folder we cannot resolve
+            }
+        });
+
+        if (Array.isArray(this._securityAllowedExtraPaths)) {
+            this._securityAllowedExtraPaths.forEach((extraPath) => addPath(extraPath));
+        }
+
+        return roots;
+    }
+
+    _shouldThrottleSecurityWarning(key) {
+        if (!key) {
+            return false;
+        }
+        const now = Date.now();
+        const entry = this._securityWarningLog.get(key) || { lastTimestamp: 0, count: 0 };
+        if (typeof this._securityMaxWarningsPerFile === 'number' &&
+            this._securityMaxWarningsPerFile >= 0 &&
+            entry.count >= this._securityMaxWarningsPerFile) {
+            return true;
+        }
+        if (typeof this._securityLogThrottleMs === 'number' &&
+            this._securityLogThrottleMs > 0 &&
+            now - entry.lastTimestamp < this._securityLogThrottleMs) {
+            return true;
+        }
+        entry.lastTimestamp = now;
+        entry.count = (entry.count || 0) + 1;
+        this._securityWarningLog.set(key, entry);
+        if (this._securityWarningLog.size > SECURITY_WARNING_CACHE_LIMIT) {
+            const keys = Array.from(this._securityWarningLog.keys());
+            const trimCount = Math.ceil(keys.length * 0.25);
+            for (let i = 0; i < trimCount; i++) {
+                this._securityWarningLog.delete(keys[i]);
+            }
+        }
+        return false;
+    }
+
+    _logSecurityWarning(reason, sanitizedPath, details = {}, options = {}) {
+        const key = `${reason}:${sanitizedPath}`;
+        if (this._shouldThrottleSecurityWarning(key)) {
+            return;
+        }
+        const env = this._securityEnvironment || 'production';
+        const logLevel = env === 'production'
+            ? (options.level || 'warn')
+            : (env === 'development' ? 'info' : 'debug');
+        const logFn = typeof this._logger[logLevel] === 'function'
+            ? this._logger[logLevel].bind(this._logger)
+            : this._logger.warn.bind(this._logger);
+        logFn(`${reason}: ${sanitizedPath}`, {
+            environment: env,
+            ...details
+        });
+    }
+
+    _sanitizePathForLog(target) {
+        let rawPath = '';
+        if (typeof target === 'string') {
+            rawPath = target;
+        } else if (target) {
+            rawPath = target.fsPath || target.path || '';
+            if (!rawPath && typeof target.toString === 'function') {
+                try {
+                    rawPath = target.toString(true);
+                } catch {
+                    rawPath = target.toString();
+                }
+            }
+        }
+        const sanitized = SecurityValidator.sanitizePath(rawPath || '', { preserveExtension: true });
+        return sanitized || 'unknown';
+    }
+
+    _validateWorkspaceUri(uri, reason = 'operation') {
+        if (!uri) {
+            return { isValid: false, issue: 'Missing URI' };
+        }
+
+        const allowedWorkspaces = this._getWorkspaceRootPaths();
+        const shouldEnforceBoundaries =
+            this._securityEnforceWorkspaceBoundaries &&
+            !this._securityRelaxedForTests &&
+            allowedWorkspaces.length > 0;
+
+        const validation = SecureFileOperations.validateFileUri(
+            uri,
+            shouldEnforceBoundaries ? allowedWorkspaces : []
+        );
+        const sanitizedPath = this._sanitizePathForLog(uri);
+
+        if (!validation.isValid) {
+            this._logSecurityWarning(
+                `Security validation blocked ${reason}`,
+                sanitizedPath,
+                {
+                    issue: validation.issue,
+                    enforceBoundaries: shouldEnforceBoundaries
+                }
+            );
+        } else if (validation.warnings?.length) {
+            this._logSecurityWarning(
+                `Security warnings for ${reason}`,
+                sanitizedPath,
+                {
+                    warnings: validation.warnings,
+                    enforceBoundaries: shouldEnforceBoundaries
+                },
+                { level: 'info' }
+            );
+        }
+
+        return validation;
+    }
+
     async _collectFolderWatcherPatterns(folder, options) {
         if (options.limit <= 0) {
             return [];
@@ -1798,6 +2214,23 @@ class FileDateDecorationProvider {
                 .map((ext) => (ext || '').toString().trim().replace(/^\./, '').toLowerCase())
                 .filter(Boolean)
         ));
+    }
+
+    _computeSmartWatcherMaxPatterns(rawMaxPatterns) {
+        const bounded = Math.max(1, Math.min(rawMaxPatterns, DEFAULT_DYNAMIC_WATCHER_LIMIT));
+        const clamp = this._getWatcherPatternClamp();
+        return clamp ? Math.min(bounded, clamp) : bounded;
+    }
+
+    _getWatcherPatternClamp() {
+        switch (this._workspaceScale) {
+            case 'extreme':
+                return 8;
+            case 'large':
+                return 14;
+            default:
+                return null;
+        }
     }
 
     /**
@@ -1980,61 +2413,12 @@ class FileDateDecorationProvider {
                 // Handle performance mode changes
                 if (e.affectsConfiguration('explorerDates.performanceMode')) {
                     const newPerformanceMode = config.get('performanceMode', false);
-                    if (newPerformanceMode !== this._performanceMode) {
-                        this._performanceMode = newPerformanceMode;
-                        this._logger.info(`Performance mode changed to: ${newPerformanceMode}`);
-                        
-                        // Set up or tear down file watcher based on performance mode
-                        if (newPerformanceMode) {
-                            this._disposeFileWatchers({ permanent: true });
-                            this._logger.info('File watchers disabled for performance mode');
-                        } else {
-                            this._setupFileWatcher('performance-mode-toggle');
-                            this._logger.info('File watchers enabled (performance mode off)');
-                        }
-                        
-                        // Handle periodic refresh timer
-                        if (newPerformanceMode && this._refreshTimer) {
-                            clearInterval(this._refreshTimer);
-                            this._refreshTimer = null;
-                            this._logger.info('Periodic refresh disabled for performance mode');
-                        } else if (!newPerformanceMode && !this._refreshTimer) {
-                            this._setupPeriodicRefresh();
-                            this._logger.info('Periodic refresh enabled (performance mode off)');
-                        }
-                        
+                    if (newPerformanceMode !== this._performanceModeExplicit) {
+                        this._performanceModeExplicit = newPerformanceMode;
+                        await this._togglePerformanceMode(this._computeEffectivePerformanceMode(), {
+                            reason: 'configuration-change'
+                        });
                         this._applyFeatureLevel(this._determineFeatureLevel(config), 'performance-mode-change');
-
-                        // Clear caches and refresh when switching modes
-                        this.refreshAll({ reason: 'performance-mode-change' });
-
-                        if (newPerformanceMode) {
-                            if (this._workspaceIntelligence) {
-                                this._workspaceIntelligence.dispose();
-                                this._workspaceIntelligence = null;
-                            }
-                        } else {
-                            // Re-initialize workspace intelligence if needed
-                            if (!this._workspaceIntelligence) {
-                                const featureFlags = require('./featureFlags');
-                                const WorkspaceIntelligenceModule = await featureFlags.workspaceIntelligence();
-                                if (WorkspaceIntelligenceModule) {
-                                    const { WorkspaceIntelligenceManager } = WorkspaceIntelligenceModule;
-                                    this._workspaceIntelligence = new WorkspaceIntelligenceManager(this._fileSystem);
-                                    await this._workspaceIntelligence.initialize({
-                                        batchProcessor: this._batchProcessor,
-                                        enableProgressiveAnalysis: this._shouldEnableProgressiveAnalysis()
-                                    });
-                                    
-                                    const workspaceFolders = vscode.workspace.workspaceFolders;
-                                    if (workspaceFolders?.length) {
-                                        await this._workspaceIntelligence.analyzeWorkspace(workspaceFolders, {
-                                            maxFiles: this._getIndexerMaxFiles()
-                                        });
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 if (e.affectsConfiguration('explorerDates.featureLevel')) {
@@ -2064,6 +2448,22 @@ class FileDateDecorationProvider {
                     e.affectsConfiguration('explorerDates.showFileSize') ||
                     e.affectsConfiguration('explorerDates.fileSizeFormat') ||
                     e.affectsConfiguration('explorerDates.featureLevel');
+
+                const securitySettingsChanged =
+                    e.affectsConfiguration('explorerDates.security.enforceWorkspaceBoundaries') ||
+                    e.affectsConfiguration('explorerDates.security.allowedExtraPaths') ||
+                    e.affectsConfiguration('explorerDates.security.allowTestPaths');
+
+                if (securitySettingsChanged) {
+                    this._updateSecurityBoundarySettings(config);
+                }
+
+                if (
+                    e.affectsConfiguration('explorerDates.decorationPoolSize') ||
+                    e.affectsConfiguration('explorerDates.flyweightCacheSize')
+                ) {
+                    this._applyReuseCapacitySettings(config);
+                }
 
                 if (decorationSettingsChanged || namespaceChanged) {
                     this.refreshAll({
@@ -2160,106 +2560,28 @@ class FileDateDecorationProvider {
      * Dynamically load BatchProcessor module if needed
      */
     async _loadBatchProcessorIfNeeded() {
-        if (this._performanceMode) {
-            return null;
+        const chunk = await this._getDecorationsAdvancedChunk();
+        if (chunk?.loadBatchProcessorIfNeeded) {
+            return chunk.loadBatchProcessorIfNeeded(this);
         }
-        
-        if (!this._batchProcessorModule) {
-            try {
-                const featureFlags = require('./featureFlags');
-                this._batchProcessorModule = await featureFlags.batchProcessor();
-                if (!this._batchProcessorModule) {
-                    this._logger.debug('BatchProcessor chunk not available');
-                    return null;
-                }
-                this._logger.debug('BatchProcessor module loaded dynamically');
-            } catch (error) {
-                this._logger.error('Failed to load BatchProcessor module:', error);
-                return null;
-            }
-        }
-        
-        if (!this._batchProcessor && this._batchProcessorModule) {
-            const BatchProcessorCtor = this._batchProcessorModule.BatchProcessor
-                || this._batchProcessorModule.default?.BatchProcessor;
-            if (!BatchProcessorCtor) {
-                this._logger.warn('BatchProcessor chunk missing BatchProcessor export');
-                return null;
-            }
-            this._batchProcessor = new BatchProcessorCtor();
-            this._logger.debug('BatchProcessor instance created');
-        }
-        
-        return this._batchProcessor;
+        return null;
     }
 
     async _applyProgressiveLoadingSetting() {
-        // Load BatchProcessor only when progressive loading is enabled
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const enabled = config.get('progressiveLoading', true);
-        
-        if (!enabled) {
-            this._logger.info('Progressive loading disabled via explorerDates.progressiveLoading - BatchProcessor will not be loaded');
-            this._progressiveLoadingEnabled = false;
-            // Clean up existing batch processor if progressive loading is disabled
-            if (this._batchProcessor) {
-                this._batchProcessor.dispose();
-                this._batchProcessor = null;
-                this._logger.debug('BatchProcessor disposed due to disabled progressive loading');
-            }
-            this._cancelProgressiveWarmupJobs();
-            return;
+        const chunk = await this._getDecorationsAdvancedChunk();
+        if (chunk?.applyProgressiveLoadingSetting) {
+            return chunk.applyProgressiveLoadingSetting(this);
         }
-        
-        // Disable progressive loading in performance mode
-        if (this._performanceMode) {
-            this._logger.info('Progressive loading disabled due to performance mode');
-            this._cancelProgressiveWarmupJobs();
-            this._progressiveLoadingEnabled = false;
-            return;
-        }
-
-        const batchProcessor = await this._loadBatchProcessorIfNeeded();
-        if (!batchProcessor) {
-            this._logger.info('BatchProcessor not available - progressive loading disabled');
-            this._progressiveLoadingEnabled = false;
-            return;
-        }
-
-        this._progressiveLoadingEnabled = true;
-
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-            return;
-        }
-
+        // Fallback: disable progressive loading when chunk missing
+        this._progressiveLoadingEnabled = false;
         this._cancelProgressiveWarmupJobs();
-
-        workspaceFolders.forEach((folder) => {
-            const jobId = this._batchProcessor.processDirectoryProgressively(
-                folder.uri,
-                async (uri) => {
-                    try {
-                        await this.provideFileDecoration(uri);
-                    } catch (error) {
-                        this._logger.debug('Progressive warmup processor failed', error);
-                    }
-                },
-                { background: true, priority: 'low', maxFiles: 500 }
-            );
-            if (jobId) {
-                this._progressiveLoadingJobs.add(jobId);
-            }
-        });
-
-        this._logger.info(`Progressive loading queued for ${workspaceFolders.length} workspace folder(s).`);
     }
 
     _cancelProgressiveWarmupJobs() {
-        if (!this._progressiveLoadingJobs || this._progressiveLoadingJobs.size === 0) {
+        if (this._decorationsAdvancedChunk?.cancelProgressiveWarmupJobs) {
+            this._decorationsAdvancedChunk.cancelProgressiveWarmupJobs(this);
             return;
         }
-
         if (this._batchProcessor) {
             for (const jobId of this._progressiveLoadingJobs) {
                 this._batchProcessor.cancelBatch(jobId);
@@ -2272,6 +2594,14 @@ class FileDateDecorationProvider {
      * Refresh decoration for a specific file
      */
     refreshDecoration(uri) {
+        if (!uri) {
+            return;
+        }
+        const validation = this._validateWorkspaceUri(uri, 'refreshDecoration');
+        if (!validation?.isValid) {
+            return;
+        }
+
         // Clear from both caches to force refresh
         const cacheKey = this._getCacheKey(uri);
         this._decorationCache.delete(cacheKey);
@@ -2291,6 +2621,14 @@ class FileDateDecorationProvider {
      * Clear decoration for a deleted file
      */
     clearDecoration(uri) {
+        if (!uri) {
+            return;
+        }
+        const validation = this._validateWorkspaceUri(uri, 'clearDecoration');
+        if (!validation?.isValid) {
+            return;
+        }
+
         const cacheKey = this._getCacheKey(uri);
         this._decorationCache.delete(cacheKey);
         if (this._advancedCache) {
@@ -2838,6 +3176,86 @@ class FileDateDecorationProvider {
         this._logger.debug(`🧼 Cleared decoration pool (${reason})`);
     }
 
+    _applyReuseCapacitySettings(config) {
+        const poolSetting = config?.get ? config.get('decorationPoolSize') : undefined;
+        const flyweightSetting = config?.get ? config.get('flyweightCacheSize') : undefined;
+        const nextPoolSize = this._coerceCapacitySetting(
+            poolSetting,
+            DEFAULT_DECORATION_POOL_SIZE,
+            128,
+            8192
+        );
+        const nextFlyweightSize = this._coerceCapacitySetting(
+            flyweightSetting,
+            DEFAULT_FLYWEIGHT_CACHE_SIZE,
+            512,
+            16384
+        );
+
+        const poolChanged = nextPoolSize !== this._maxDecorationPoolSize;
+        const flyweightChanged = nextFlyweightSize !== this._badgeFlyweightLimit ||
+            nextFlyweightSize !== this._readableDateFlyweightLimit;
+
+        if (poolChanged) {
+            this._maxDecorationPoolSize = nextPoolSize;
+            this._trimDecorationPoolToLimit();
+            this._logger.info(`Decoration pool capacity set to ${nextPoolSize}`);
+        }
+
+        if (flyweightChanged) {
+            this._badgeFlyweightLimit = nextFlyweightSize;
+            this._readableDateFlyweightLimit = nextFlyweightSize;
+            this._trimFlyweightCacheToLimit(this._badgeFlyweightCache, this._badgeFlyweightOrder, nextFlyweightSize, 'badge');
+            this._trimFlyweightCacheToLimit(this._readableDateFlyweightCache, this._readableDateFlyweightOrder, nextFlyweightSize, 'readable');
+            this._logger.info(`Flyweight cache capacity set to ${nextFlyweightSize}`);
+        }
+
+        return { poolChanged, flyweightChanged };
+    }
+
+    _coerceCapacitySetting(value, fallback, min, max) {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+            return Math.min(Math.max(fallback, min), max);
+        }
+        const normalized = Math.floor(value);
+        if (normalized < min) {
+            return min;
+        }
+        if (normalized > max) {
+            return max;
+        }
+        return normalized;
+    }
+
+    _trimDecorationPoolToLimit() {
+        if (this._decorationPoolOrder.length <= this._maxDecorationPoolSize) {
+            return;
+        }
+        while (this._decorationPoolOrder.length > this._maxDecorationPoolSize) {
+            const oldestKey = this._decorationPoolOrder.shift();
+            if (oldestKey) {
+                this._decorationPool.delete(oldestKey);
+            }
+        }
+        this._logger.debug(`Trimmed decoration pool to ${this._maxDecorationPoolSize} entries`);
+    }
+
+    _trimFlyweightCacheToLimit(cache, order, limit, label) {
+        if (!cache || !order) {
+            return;
+        }
+        if (order.length <= limit) {
+            return;
+        }
+        while (order.length > limit) {
+            const oldestKey = order.shift();
+            if (oldestKey) {
+                cache.delete(oldestKey);
+            }
+        }
+        this._logger.debug(`Trimmed ${label} flyweight cache to ${limit} entries`);
+    }
+
     _purgeLightweightCaches(reason = 'lightweight') {
         if (!this._lightweightMode) {
             return;
@@ -3193,6 +3611,10 @@ class FileDateDecorationProvider {
      * Get Git blame information for a file
      */
     async _getGitBlameInfo(filePath, statMtimeMs = null) {
+        if (DISABLE_GIT_FEATURES) {
+            return null;
+        }
+
         // Load git insights manager when git features are needed
         const gitManager = await this._loadGitInsightsChunk();
         if (!gitManager || typeof gitManager.getGitBlameInfo !== 'function') {
@@ -3381,6 +3803,16 @@ class FileDateDecorationProvider {
         }
     }
 
+    _getScaleConcurrencyLimit() {
+        if (this._lightweightMode || this._performanceModeAuto || this._workspaceScale === 'extreme' || this._performanceMode) {
+            return Math.min(this._maxConcurrentOperationsBase, 10);
+        }
+        if (this._workspaceScale === 'large') {
+            return Math.min(this._maxConcurrentOperationsBase, 14);
+        }
+        return this._maxConcurrentOperationsBase;
+    }
+
     /**
      * Thread-safe wrapper for file operations
      * @param {string} filePath - The file path to lock
@@ -3434,8 +3866,8 @@ class FileDateDecorationProvider {
             this._maxConcurrentOperations = Math.max(5, this._maxConcurrentOperations * 0.5);
             
             setTimeout(() => {
-                this._maxConcurrentOperations = 20;
-                this._logger.info('🔄 Restored normal concurrency limits');
+                this._maxConcurrentOperations = this._getScaleConcurrencyLimit();
+                this._logger.info('🔄 Restored scale-aware concurrency limits');
             }, 60000);
         }
     }
@@ -3519,6 +3951,11 @@ class FileDateDecorationProvider {
 
         if (scheme !== 'file') {
             this._logger.debug(`⏭️ Skipping decoration for ${fileLabel} (unsupported scheme: ${scheme})`);
+            return undefined;
+        }
+
+        const securityValidation = this._validateWorkspaceUri(uri, 'provideFileDecoration');
+        if (!securityValidation?.isValid) {
             return undefined;
         }
 
@@ -3849,17 +4286,20 @@ class FileDateDecorationProvider {
             const processingTime = startTime ? Date.now() - startTime : 0;
             const safeFileName = describeFile(uri);
             const safeUri = getUriPath(uri) || 'unknown-uri';
+            const errorMessage = (error && typeof error.message === 'string') ? error.message : 'Unknown error';
+            const errorStack = (error && typeof error.stack === 'string') ? error.stack : 'No stack available';
+            const errorType = error?.constructor?.name || 'UnknownError';
 
             this._logger.error(`❌ DECORATION ERROR for ${safeFileName}:`, {
-                error: error.message,
-                stack: error.stack?.split('\n')[0],
+                error: errorMessage,
+                stack: errorStack.split('\n')[0] || errorStack,
                 processingTimeMs: processingTime,
                 uri: safeUri
             });
 
-            this._logger.error(`❌ CRITICAL ERROR DETAILS for ${safeFileName}: ${error.message}`);
-            this._logger.error(`❌ Error type: ${error.constructor.name}`);
-            this._logger.error(`❌ Full stack: ${error.stack}`);
+            this._logger.error(`❌ CRITICAL ERROR DETAILS for ${safeFileName}: ${errorMessage}`);
+            this._logger.error(`❌ Error type: ${errorType}`);
+            this._logger.error(`❌ Full stack: ${errorStack}`);
 
             this._logger.info(`❌ RETURNED UNDEFINED: Error occurred for ${safeFileName}`);
             return undefined;
@@ -3905,18 +4345,23 @@ class FileDateDecorationProvider {
         if (!FEATURE_LEVELS.includes(nextLevel)) {
             nextLevel = 'full';
         }
-        if (this._featureLevel === nextLevel && this._featureProfile) {
-            return false;
-        }
+
+        const levelChanged = this._featureLevel !== nextLevel || !this._featureProfile;
         this._featureLevel = nextLevel;
-        this._featureProfile = this._buildFeatureProfile(nextLevel);
-        this._viewportWindowMs = this._featureProfile.viewportWindowMs;
-        this._logger.info(`Feature level set to "${nextLevel}" (${reason})`, {
-            viewportWindowMs: this._viewportWindowMs,
-            applyBackgroundLimits: this._featureProfile.applyBackgroundLimits,
-            backgroundTooltipMode: this._featureProfile.backgroundTooltipMode
-        });
-        return true;
+        const profile = levelChanged ? this._buildFeatureProfile(nextLevel) : this._featureProfile || this._buildFeatureProfile(nextLevel);
+        this._featureProfile = profile;
+        this._viewportWindowMs = profile.viewportWindowMs;
+
+        if (levelChanged) {
+            this._logger.info(`Feature level set to "${nextLevel}" (${reason})`, {
+                viewportWindowMs: this._viewportWindowMs,
+                applyBackgroundLimits: profile.applyBackgroundLimits,
+                backgroundTooltipMode: profile.backgroundTooltipMode
+            });
+        }
+
+        this._applyPerformanceProfile(profile, reason);
+        return levelChanged;
     }
 
     _buildFeatureProfile(level = 'full') {
@@ -3971,6 +4416,133 @@ class FileDateDecorationProvider {
                     backgroundTooltipMode: 'rich',
                     viewportWindowMs: VIEWPORT_DEFAULT_WINDOW_MS
                 };
+        }
+    }
+
+    _computeEffectivePerformanceMode() {
+        return this._performanceModeExplicit || this._lightweightMode || this._performanceModeAuto;
+    }
+
+    _getRefreshIntervalForScale() {
+        if (this._workspaceScale === 'extreme') {
+            return null; // performance mode will disable periodic refresh entirely
+        }
+        if (this._workspaceScale === 'large') {
+            const config = vscode.workspace.getConfiguration('explorerDates');
+            const configuredInterval = config.get('badgeRefreshInterval', 60000);
+            return Math.max(configuredInterval, 90000);
+        }
+        return null;
+    }
+
+    _applyConcurrencyLimit(reason = 'unspecified') {
+        const target = this._getScaleConcurrencyLimit();
+        if (target === this._maxConcurrentOperations) {
+            return;
+        }
+        const previous = this._maxConcurrentOperations;
+        this._maxConcurrentOperations = target;
+        this._logger.info(`Adjusted concurrency cap ${previous} -> ${target} (${reason})`, {
+            workspaceScale: this._workspaceScale,
+            performanceMode: this._performanceMode
+        });
+    }
+
+    async _togglePerformanceMode(enabled, { reason = 'unspecified', refresh = true } = {}) {
+        if (enabled === this._performanceMode) {
+            return;
+        }
+
+        this._performanceMode = enabled;
+        this._logger.info(`Performance mode ${enabled ? 'enabled' : 'disabled'} (${reason})`);
+
+        if (enabled) {
+            this._disposeFileWatchers({ permanent: true });
+            this._logger.info('File watchers disabled for performance mode');
+
+            if (this._refreshTimer) {
+                clearInterval(this._refreshTimer);
+                this._refreshTimer = null;
+                this._logger.info('Periodic refresh disabled for performance mode');
+            }
+        } else {
+            this._setupFileWatcher('performance-mode-toggle');
+            this._logger.info('File watchers enabled (performance mode off)');
+
+            if (!this._refreshTimer) {
+                this._setupPeriodicRefresh();
+                this._logger.info('Periodic refresh enabled (performance mode off)');
+            }
+        }
+
+        if (refresh) {
+            this.refreshAll({ reason: 'performance-mode-change' });
+        }
+
+        if (enabled) {
+            if (this._workspaceIntelligence?.dispose) {
+                this._workspaceIntelligence.dispose();
+                this._workspaceIntelligence = null;
+            }
+        } else if (!this._workspaceIntelligence) {
+            try {
+                const featureFlags = require('./featureFlags');
+                const WorkspaceIntelligenceModule = await featureFlags.workspaceIntelligence();
+                if (WorkspaceIntelligenceModule) {
+                    const { WorkspaceIntelligenceManager } = WorkspaceIntelligenceModule;
+                    this._workspaceIntelligence = new WorkspaceIntelligenceManager(this._fileSystem);
+                    await this._workspaceIntelligence.initialize({
+                        batchProcessor: this._batchProcessor,
+                        enableProgressiveAnalysis: this._shouldEnableProgressiveAnalysis()
+                    });
+
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders?.length) {
+                        await this._workspaceIntelligence.analyzeWorkspace(workspaceFolders, {
+                            maxFiles: this._getIndexerMaxFiles()
+                        });
+                    }
+                }
+            } catch (error) {
+                this._logger.debug('Workspace intelligence reinitialization failed after performance mode toggle', error);
+            }
+        }
+    }
+
+    _applyPerformanceProfile(profile, reason = 'unspecified') {
+        const featureLevel = profile?.level || this._featureLevel;
+
+        // Enable automatic performance mode for extreme workspaces, but keep explicit user intent intact
+        this._performanceModeAuto = this._workspaceScale === 'extreme';
+        const desiredPerformanceMode = this._computeEffectivePerformanceMode();
+
+        if (desiredPerformanceMode !== this._performanceMode) {
+            this._logger.debug('Auto performance mode update', {
+                reason,
+                featureLevel,
+                workspaceScale: this._workspaceScale,
+                desiredPerformanceMode
+            });
+            // Fire and forget to avoid blocking feature profile application
+            this._togglePerformanceMode(desiredPerformanceMode, { reason: `${reason}-auto`, refresh: true })
+                .catch((error) => this._logger.debug('Failed to toggle performance mode automatically', error));
+        }
+
+        this._applyConcurrencyLimit(reason);
+
+        // Stretch periodic refresh cadence for large workspaces when not in performance mode
+        if (!this._performanceMode) {
+            const targetRefresh = this._getRefreshIntervalForScale();
+            const needsUpdate = targetRefresh !== null && targetRefresh !== this._refreshIntervalOverride;
+            const shouldClearOverride = targetRefresh === null && this._refreshIntervalOverride !== null;
+
+            if (needsUpdate) {
+                this._refreshIntervalOverride = targetRefresh;
+                this._setupPeriodicRefresh();
+            } else if (shouldClearOverride) {
+                this._refreshIntervalOverride = null;
+                this._setupPeriodicRefresh();
+            }
         }
     }
 
@@ -4054,11 +4626,11 @@ class FileDateDecorationProvider {
         if (this._advancedCache) {
             baseMetrics.advancedCache = this._advancedCache.getStats();
         }
-        if (this._batchProcessor) {
+        if (this._batchProcessor?.getMetrics) {
             baseMetrics.batchProcessor = this._batchProcessor.getMetrics();
         }
-        if (this._workspaceIntelligence) {
-            const workspaceMetrics = this._workspaceIntelligence.getMetrics();
+        if (this._workspaceIntelligence?.getMetrics) {
+            const workspaceMetrics = this._workspaceIntelligence.getMetrics() || {};
             if (workspaceMetrics.incrementalIndexer) {
                 baseMetrics.incrementalIndexer = workspaceMetrics.incrementalIndexer;
             }
@@ -4111,197 +4683,18 @@ class FileDateDecorationProvider {
     }
 
     /**
-     * Schedule periodic allocation telemetry reports for dev builds.
-     */
-    _scheduleTelemetryReport() {
-        if (!this._allocationTelemetryEnabled || this._telemetryReportTimer) {
-            return;
-        }
-        this._telemetryReportTimer = setTimeout(() => {
-            this._telemetryReportTimer = null;
-            this._reportAllocationTelemetry();
-            this._scheduleTelemetryReport(); // Reschedule
-        }, this._telemetryReportInterval);
-    }
-
-    /**
-     * Report allocation telemetry for dev builds.
-     */
-    _reportAllocationTelemetry() {
-        const telemetry = this.getMetrics().allocationTelemetry;
-        const totalAllocations = telemetry.decorationPool.allocations + 
-                                telemetry.badgeFlyweight.allocations + 
-                                telemetry.readableFlyweight.allocations;
-        const totalReuses = telemetry.decorationPool.reuses + 
-                           telemetry.badgeFlyweight.reuses + 
-                           telemetry.readableFlyweight.reuses;
-        
-        if (totalAllocations > 0 || totalReuses > 0) {
-            this._logger.info('🧮 Allocation telemetry report', {
-                timestamp: new Date().toISOString(),
-                pool: {
-                    allocations: telemetry.decorationPool.allocations,
-                    reuses: telemetry.decorationPool.reuses,
-                    reuseRate: telemetry.decorationPool.reusePercent + '%'
-                },
-                badgeFlyweight: {
-                    allocations: telemetry.badgeFlyweight.allocations,
-                    reuses: telemetry.badgeFlyweight.reuses,
-                    reuseRate: telemetry.badgeFlyweight.reusePercent + '%'
-                },
-                readableFlyweight: {
-                    allocations: telemetry.readableFlyweight.allocations,
-                    reuses: telemetry.readableFlyweight.reuses,
-                    reuseRate: telemetry.readableFlyweight.reusePercent + '%'
-                },
-                summary: {
-                    totalAllocations,
-                    totalReuses,
-                    overallReuseRate: totalAllocations + totalReuses > 0 
-                        ? ((totalReuses / (totalAllocations + totalReuses)) * 100).toFixed(1) + '%'
-                        : '0%'
-                },
-                decorationsProcessed: this._metrics.totalDecorations,
-                cacheHitRate: this.getMetrics().cacheHitRate
-            });
-        }
-    }
-
-    /**
      * Initialize context-dependent systems
      */
     async initializeAdvancedSystems(context) {
+        // Optional advanced systems: only initialize when the chunk is available
         try {
-            this._extensionContext = context;
-            if (this._isWeb) {
-                await this._maybeWarnAboutGitLimitations();
+            const chunk = await this._getDecorationsAdvancedChunk();
+            if (chunk?.initializeAdvancedSystems) {
+                return chunk.initializeAdvancedSystems(this, context);
             }
-
-            // Skip advanced systems in performance mode
-            if (this._performanceMode) {
-                this._logger.info('Performance mode enabled - skipping advanced cache, batch processor, and progressive loading');
-                return;
-            }
-
-            // Initialize advanced cache through feature flags
-            const featureFlags = require('./featureFlags');
-            const AdvancedCacheModule = await featureFlags.advancedCache();
-            if (AdvancedCacheModule) {
-                // Handle various chunk export patterns:
-                // 1. Direct class export
-                // 2. Module with AdvancedCache property 
-                // 3. Function that creates the cache
-                let AdvancedCache = null;
-                
-                if (typeof AdvancedCacheModule === 'function') {
-                    // Check if it's the createAdvancedCache function
-                    if (AdvancedCacheModule.name === 'createAdvancedCache') {
-                        this._advancedCache = AdvancedCacheModule(context);
-                        await this._advancedCache.initialize();
-                        this._logger.info('Advanced cache initialized via factory function');
-                    } else {
-                        // It might be the class itself
-                        try {
-                            this._advancedCache = new AdvancedCacheModule(context);
-                            await this._advancedCache.initialize();
-                            this._logger.info('Advanced cache initialized via direct constructor');
-                        } catch (error) {
-                            this._logger.warn('Failed to instantiate AdvancedCache via direct constructor, disabling advanced cache:', error.message);
-                            this._advancedCache = null;
-                        }
-                    }
-                } else if (AdvancedCacheModule.AdvancedCache) {
-                    // Module with AdvancedCache property
-                    AdvancedCache = AdvancedCacheModule.AdvancedCache;
-                    this._advancedCache = new AdvancedCache(context);
-                    await this._advancedCache.initialize();
-                    this._logger.info('Advanced cache initialized via module property');
-                } else if (AdvancedCacheModule.createAdvancedCache) {
-                    // Module with factory function
-                    this._advancedCache = AdvancedCacheModule.createAdvancedCache(context);
-                    await this._advancedCache.initialize();
-                    this._logger.info('Advanced cache initialized via module factory');
-                } else {
-                    this._logger.warn('AdvancedCache module format not recognized, disabling advanced cache');
-                    this._advancedCache = null;
-                }
-            } else {
-                this._logger.info('Advanced cache disabled by feature flag');
-                this._advancedCache = null;
-            }
-            
-            // Initialize progressive loading setting (which loads BatchProcessor if needed)
-            await this._applyProgressiveLoadingSetting();
-            
-            // Initialize batch processor if it was loaded
-            if (this._batchProcessor) {
-                this._batchProcessor.initialize();
-                this._logger.info('Batch processor initialized');
-            }
-
-            // Initialize workspace intelligence through feature flags
-            const WorkspaceIntelligenceModule = await featureFlags.workspaceIntelligence();
-            if (WorkspaceIntelligenceModule) {
-                try {
-                    // Handle various chunk export patterns
-                    let WorkspaceIntelligenceManager = WorkspaceIntelligenceModule.WorkspaceIntelligenceManager ||
-                                                      WorkspaceIntelligenceModule.default?.WorkspaceIntelligenceManager ||
-                                                      WorkspaceIntelligenceModule;
-                    if (typeof WorkspaceIntelligenceManager === 'function') {
-                        this._workspaceIntelligence = new WorkspaceIntelligenceManager(this._fileSystem);
-                        await this._workspaceIntelligence.initialize({
-                            batchProcessor: this._batchProcessor,
-                            extensionContext: context,
-                            enableProgressiveAnalysis: this._shouldEnableProgressiveAnalysis()
-                        });
-                        
-                        const workspaceFolders = vscode.workspace.workspaceFolders;
-                        if (workspaceFolders?.length) {
-                            await this._workspaceIntelligence.analyzeWorkspace(workspaceFolders, {
-                                maxFiles: this._getIndexerMaxFiles()
-                            });
-                        }
-                        
-                        // Clean up workspace profiles
-                        await this._workspaceIntelligence.cleanupWorkspaceProfiles();
-                        
-                        this._logger.info('Workspace intelligence initialized');
-                    } else {
-                        this._logger.warn('WorkspaceIntelligenceManager not found in chunk, disabling workspace intelligence');
-                        this._workspaceIntelligence = null;
-                    }
-                } catch (error) {
-                    this._logger.warn('Failed to initialize workspace intelligence:', error.message);
-                    this._workspaceIntelligence = null;
-                }
-            } else {
-                this._logger.info('Workspace intelligence disabled by feature flag');
-                this._workspaceIntelligence = null;
-            }
-            
-            // Setup theme integration
-            const config = vscode.workspace.getConfiguration('explorerDates');
-            if (config.get('autoThemeAdaptation', true) && this._themeIntegration?.autoConfigureForTheme) {
-                await this._themeIntegration.autoConfigureForTheme();
-                this._logger.info('Theme integration configured');
-            }
-            
-            // Apply accessibility recommendations if needed
-            if (this._accessibility?.shouldEnhanceAccessibility?.()) {
-                await this._accessibility.applyAccessibilityRecommendations?.();
-                this._logger.info('Accessibility recommendations applied');
-            }
-            
-            // Initialize allocation telemetry for dev builds
-            if (this._allocationTelemetryEnabled) {
-                this._scheduleTelemetryReport();
-                this._logger.info('Allocation telemetry enabled - reports every', this._telemetryReportInterval, 'ms');
-            }
-            
-            this._logger.info('Advanced systems initialized successfully');
+            this._logger.info('Advanced systems chunk unavailable - skipping advanced initialization');
         } catch (error) {
             this._logger.error('Failed to initialize advanced systems', error);
-            // Don't throw - let extension continue with basic functionality
         }
     }
 
@@ -4421,17 +4814,17 @@ class FileDateDecorationProvider {
         this._cancelIncrementalRefreshTimers();
         
         // Dispose advanced systems
-        if (this._advancedCache) {
+        if (this._advancedCache?.dispose) {
             await this._advancedCache.dispose();
         }
         this._cancelProgressiveWarmupJobs();
-        if (this._batchProcessor) {
+        if (this._batchProcessor?.dispose) {
             this._batchProcessor.dispose();
         }
         if (this._accessibility && typeof this._accessibility.dispose === 'function') {
             this._accessibility.dispose();
         }
-        if (this._workspaceIntelligence) {
+        if (this._workspaceIntelligence?.dispose) {
             this._workspaceIntelligence.dispose();
         }
         

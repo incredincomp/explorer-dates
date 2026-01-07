@@ -21,12 +21,19 @@ const stats = fs.statSync(bundlePath);
 const sizeKB = Math.round(stats.size / 1024);
 console.log(`📦 Bundle size: ${sizeKB}KB`);
 
-if (sizeKB < 100) {
+let failed = false;
+
+// Enforce upper bound to avoid silent growth
+if (sizeKB < 50) {
+    console.error('❌ Bundle is unexpectedly small (< 50KB)');
+    failed = true;
+} else if (sizeKB < 100) {
     console.log('✅ Bundle size is optimal (< 100KB)');
 } else if (sizeKB < 200) {
     console.log('✅ Bundle size is reasonable (< 200KB)');
 } else {
-    console.log('⚠️  Bundle size is large (> 200KB)');
+    console.error('❌ Bundle size is large (> 200KB)');
+    failed = true;
 }
 
 // Test 2: Check if bundle is valid JavaScript
@@ -54,6 +61,9 @@ try {
         if (bundleContent.includes(component)) {
             foundComponents++;
             console.log(`✅ Found component: ${component}`);
+        } else {
+            console.error(`❌ Missing component: ${component}`);
+            failed = true;
         }
     });
     
@@ -62,8 +72,18 @@ try {
     }
     
     // Test 3: Check for lazy loading
-    if (bundleContent.includes('getOnboardingManager') || bundleContent.includes('lazy')) {
-        console.log('✅ Lazy loading appears to be implemented');
+    const lazySignals = [
+        'getOnboardingManager',
+        'loadFeatureModule',
+        'chunkLoader',
+        'loadChunk'
+    ];
+    const hasLazy = lazySignals.some((token) => bundleContent.includes(token));
+    if (hasLazy) {
+        console.log('✅ Lazy loading markers found');
+    } else {
+        console.error('❌ Lazy loading markers not found');
+        failed = true;
     }
     
 } catch (error) {
@@ -78,9 +98,21 @@ if (fs.existsSync(vsixPath)) {
     const vsixStats = fs.statSync(vsixPath);
     const vsixSizeKB = Math.round(vsixStats.size / 1024);
     console.log(`📦 VSIX package size: ${vsixSizeKB}KB`);
+    if (vsixSizeKB < 100 || vsixSizeKB > 600) {
+        console.error('❌ VSIX size outside expected range (100KB-600KB)');
+        failed = true;
+    } else {
+        console.log('✅ VSIX package size within expected range');
+    }
     console.log('✅ VSIX package ready for installation');
 } else {
-    console.log('⚠️  VSIX package not found - run "npm run package" to create it');
+    console.error('❌ VSIX package not found - run "npm run package" to create it');
+    failed = true;
+}
+
+if (failed) {
+    console.error('\n❌ Bundle validation failed');
+    process.exit(1);
 }
 
 console.log('\n🎉 Bundle validation complete!');

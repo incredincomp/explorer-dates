@@ -15,6 +15,11 @@ const fs = require('fs');
 const path = require('path');
 const { performance, PerformanceObserver, constants: perfConstants } = require('perf_hooks');
 const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const {
+    resolveMemoryProfile,
+    applyProfileEnv,
+    buildMemoryTestSettings
+} = require('./helpers/memoryProfiles');
 const inspector = require('inspector');
 const v8 = require('v8');
 
@@ -25,16 +30,18 @@ if (typeof global.gc !== 'function') {
     process.exit(1);
 }
 
-const ITERATIONS = Number(process.env.MEMORY_SOAK_ITERATIONS || 250);
-// Tighter default guardrail for leak detection; raise with MEMORY_SOAK_MAX_DELTA_MB if needed.
-const MAX_HEAP_DELTA_MB = Number(process.env.MEMORY_SOAK_MAX_DELTA_MB || 24);
-const SOFT_HEAP_DELTA_MB = Number(process.env.MEMORY_SOAK_SOFT_DELTA_MB || 1);
-const BATCH_DELAY_MS = Number(process.env.MEMORY_SOAK_DELAY_MS || 10);
+const memoryProfile = resolveMemoryProfile({ defaultProfile: '250k' });
+applyProfileEnv(memoryProfile);
+
+const {
+    iterations: ITERATIONS,
+    hitIterations: HIT_PHASE_ITERATIONS,
+    delayMs: BATCH_DELAY_MS,
+    maxDeltaMb: MAX_HEAP_DELTA_MB,
+    softDeltaMb: SOFT_HEAP_DELTA_MB,
+    concurrency: WORKER_CONCURRENCY
+} = buildMemoryTestSettings(memoryProfile);
 const INCLUDE_HIT_PHASE = process.env.MEMORY_SOAK_INCLUDE_HITS !== 'false';
-const HIT_PHASE_ITERATIONS = Number(
-    process.env.MEMORY_SOAK_HIT_ITERATIONS || Math.max(50, Math.floor(ITERATIONS * 0.4))
-);
-const WORKER_CONCURRENCY = Math.max(1, Number(process.env.MEMORY_SOAK_CONCURRENCY || 1));
 const MISS_PHASE_DURATION_TARGET_MS = Math.max(0, Number(process.env.MEMORY_SOAK_DURATION_MS || 0));
 
 const shouldForceStressLogProfile = !process.env.EXPLORER_DATES_LOG_PROFILE && BATCH_DELAY_MS === 0;
@@ -43,12 +50,14 @@ if (shouldForceStressLogProfile) {
 }
 const ACTIVE_LOG_PROFILE = (process.env.EXPLORER_DATES_LOG_PROFILE || 'default').toLowerCase();
 const FORCE_CACHE_BYPASS = process.env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
-const SCENARIO_LABEL = process.env.MEMORY_SOAK_LABEL
-    || (FORCE_CACHE_BYPASS ? 'forced-cache-bypass' : 'default');
 const runTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+const profileTag = memoryProfile.key.replace(/[^a-z0-9-]/gi, '') || 'profile';
 const logDir = path.join(workspaceRoot, 'logs');
-const logFilePath = path.join(logDir, `memory-soak-${runTimestamp}.json`);
+const logFilePath = path.join(logDir, `memory-soak-${profileTag}-${runTimestamp}.json`);
 const historyFilePath = path.join(logDir, 'memory-soak-history.json');
+const baseScenarioLabel = process.env.MEMORY_SOAK_LABEL
+    || (FORCE_CACHE_BYPASS ? 'forced-cache-bypass' : 'default');
+const SCENARIO_LABEL = `${baseScenarioLabel}-${profileTag}`;
 const runMetadata = {
     iterations: ITERATIONS,
     maxDeltaMb: MAX_HEAP_DELTA_MB,
@@ -60,15 +69,23 @@ const runMetadata = {
     logProfile: ACTIVE_LOG_PROFILE,
     logProfileAutoEnabled: shouldForceStressLogProfile,
     forceCacheBypass: FORCE_CACHE_BYPASS,
-    scenario: SCENARIO_LABEL
+    scenario: SCENARIO_LABEL,
+    workspaceProfile: memoryProfile.key,
+    workspaceFileCount: memoryProfile.fileCount
 };
+
+console.log(`\n🏗️ Workspace profile: ${memoryProfile.label} (${memoryProfile.fileCount.toLocaleString()} files)`);
+if (memoryProfile.description) {
+    console.log(`   ${memoryProfile.description}`);
+}
 
 const mockInstall = createMockVscode({
     config: {
-        'explorerDates.badgeRefreshInterval': 1500,
+        'explorerDates.badgeRefreshInterval': memoryProfile.badgeRefreshInterval ?? 1500,
         'explorerDates.showDateDecorations': true,
         'explorerDates.colorScheme': 'recency'
     },
+    mockWorkspaceFileCount: memoryProfile.fileCount,
     sampleWorkspace: workspaceRoot
 });
 
@@ -149,9 +166,13 @@ if (typeof PerformanceObserver === 'function') {
     try {
         gcObserver = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
+                const detail = entry?.detail || entry;
+                const kind = detail?.kind ?? entry?.kind;
+                const flags = detail?.flags ?? entry?.flags ?? 0;
+
                 gcStats.total++;
                 gcStats.durationMs = Number((gcStats.durationMs + entry.duration).toFixed(2));
-                switch (entry.kind) {
+                switch (kind) {
                     case perfConstants?.NODE_PERFORMANCE_GC_MAJOR:
                         gcStats.major++;
                         break;
@@ -168,7 +189,7 @@ if (typeof PerformanceObserver === 'function') {
                         break;
                 }
                 if (perfConstants?.NODE_PERFORMANCE_GC_FLAGS_FORCED &&
-                    (entry.flags & perfConstants.NODE_PERFORMANCE_GC_FLAGS_FORCED)) {
+                    (flags & perfConstants.NODE_PERFORMANCE_GC_FLAGS_FORCED)) {
                     gcStats.forced++;
                 }
             }
@@ -322,35 +343,80 @@ function updateSoftThresholdHistory(delta) {
 }
 
 async function capturePerformanceMemory(label) {
-    if (!performance || typeof performance.measureMemory !== 'function') {
+    const timestamp = new Date().toISOString();
+
+    const recordSnapshot = (bytes, source) => {
+        const usedBytes = typeof bytes?.jsHeapUsed === 'number'
+            ? bytes.jsHeapUsed
+            : typeof bytes === 'number'
+                ? bytes
+                : process.memoryUsage().heapUsed;
+
+        const measurement = {
+            bytes: {
+                jsHeapUsed: usedBytes,
+                total: bytes?.total || bytes?.totalHeap || bytes?.total_heap_size,
+                heapLimit: bytes?.heapLimit || bytes?.heap_limit || bytes?.heap_size_limit
+            },
+            source
+        };
+
+        const summary = { label, timestamp, measurement };
+        perfSnapshots.push(summary);
+        const usedMb = (usedBytes / (1024 * 1024)).toFixed(2);
+        console.log(`   • Perf memory snapshot (${label}, ${source}): ${usedMb} MB`);
+        return summary;
+    };
+
+    const logOnce = (message) => {
         if (!perfWarningLogged) {
-            console.warn('⚠️ performance.measureMemory() is unavailable in this Node version; skipping perf snapshots.');
+            console.warn(message);
             perfWarningLogged = true;
         }
-        return null;
+    };
+
+    try {
+        if (typeof performance?.measureUserAgentSpecificMemory === 'function') {
+            const measurement = await performance.measureUserAgentSpecificMemory();
+            const bytes = measurement?.bytes || measurement;
+            return recordSnapshot({
+                jsHeapUsed: bytes?.jsHeapUsed ?? bytes?.usedJSHeapSize,
+                total: bytes?.total,
+                heapLimit: bytes?.jsHeapTotal ?? bytes?.heapTotal
+            }, 'measureUserAgentSpecificMemory');
+        }
+    } catch (error) {
+        logOnce(`⚠️ Failed to capture performance.measureUserAgentSpecificMemory() snapshot: ${error.message}`);
     }
 
     try {
-        const measurement = await performance.measureMemory();
-        const summary = {
-            label,
-            timestamp: new Date().toISOString(),
-            measurement
-        };
-        perfSnapshots.push(summary);
-        const usedBytes = typeof measurement?.bytes?.jsHeapUsed === 'number'
-            ? measurement.bytes.jsHeapUsed
-            : measurement?.usedJSHeapSize || 0;
-        const usedMb = (usedBytes / (1024 * 1024)).toFixed(2);
-        console.log(`   • Perf memory snapshot (${label}): ${usedMb} MB`);
-        return summary;
-    } catch (error) {
-        if (!perfWarningLogged) {
-            console.warn(`⚠️ Failed to capture performance.measureMemory() snapshot: ${error.message}`);
-            perfWarningLogged = true;
+        if (typeof performance?.measureMemory === 'function') {
+            const measurement = await performance.measureMemory();
+            const bytes = measurement?.bytes || measurement;
+            return recordSnapshot({
+                jsHeapUsed: bytes?.jsHeapUsed ?? bytes?.usedJSHeapSize,
+                total: bytes?.total,
+                heapLimit: bytes?.jsHeapTotal ?? bytes?.heapTotal
+            }, 'measureMemory');
         }
-        return null;
+    } catch (error) {
+        logOnce(`⚠️ Failed to capture performance.measureMemory() snapshot: ${error.message}`);
     }
+
+    try {
+        if (typeof v8?.getHeapStatistics === 'function') {
+            const stats = v8.getHeapStatistics();
+            return recordSnapshot({
+                jsHeapUsed: stats?.used_heap_size,
+                total: stats?.total_heap_size,
+                heapLimit: stats?.heap_size_limit
+            }, 'v8.getHeapStatistics');
+        }
+    } catch (error) {
+        logOnce(`⚠️ Failed to capture v8 heap statistics: ${error.message}`);
+    }
+
+    return recordSnapshot(process.memoryUsage().heapUsed, 'process.memoryUsage');
 }
 
 function persistSoakLog(payload) {

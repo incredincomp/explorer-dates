@@ -59,7 +59,11 @@ async function testDefaultLoaders() {
         try {
             // This should attempt chunk resolver first (fail), then try source file
             const result = await featureFlags.loadFeatureModule('smartWatcherFallback');
-            console.log('✅ loadFeatureModule works with default loaders (result may be null due to missing chunk file)');
+            assert(
+                result && typeof result.SmartWatcherFallback === 'function',
+                'loadFeatureModule should return SmartWatcherFallback exports'
+            );
+            console.log('✅ loadFeatureModule resolved smartWatcherFallback via default loaders');
             passed++;
         } catch (error) {
             console.error('❌ loadFeatureModule with default loaders:', error.message);

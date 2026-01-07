@@ -225,6 +225,26 @@ function createReadOnlyWorkspaceFs(fileTypeEnum) {
     };
 
     return {
+        async readDirectory(target) {
+            const targetPath = toFsPath(target);
+            try {
+                const entries = await fsp.readdir(targetPath, { withFileTypes: true });
+                return entries.map((entry) => {
+                    let entryType = fileTypeEnum.File;
+                    if (typeof entry.isDirectory === 'function' && entry.isDirectory()) {
+                        entryType = fileTypeEnum.Directory;
+                    } else if (typeof entry.isSymbolicLink === 'function' && entry.isSymbolicLink()) {
+                        entryType = fileTypeEnum.SymbolicLink ?? fileTypeEnum.File;
+                    }
+                    return [entry.name, entryType];
+                });
+            } catch (error) {
+                if (error && error.code === 'ENOENT') {
+                    return [];
+                }
+                throw error;
+            }
+        },
         async readFile(target) {
             const targetPath = toFsPath(target);
             return fsp.readFile(targetPath);
@@ -345,6 +365,7 @@ function createWebVscodeMock(options = {}) {
     const workspaceFolderConfigStore = { ...normalizeExplorerConfig(workspaceFolderConfigValues) };
     const appliedUpdates = [];
     const commandCalls = [];
+    const commandRegistry = new Map();
     let fileWatcherCount = 0;
 
     const resolveWorkspaceFolderValue = (fullKey) => {
@@ -519,9 +540,23 @@ function createWebVscodeMock(options = {}) {
             }
         },
         commands: {
-            registerCommand: () => ({ dispose() {} }),
+            registerCommand(commandId, handler) {
+                commandRegistry.set(commandId, handler);
+                return {
+                    dispose() {
+                        commandRegistry.delete(commandId);
+                    }
+                };
+            },
+            async getCommands(_filterInternal = true) {
+                return Array.from(commandRegistry.keys());
+            },
             executeCommand(command, ...args) {
                 commandCalls.push({ command, args });
+                const handler = commandRegistry.get(command);
+                if (handler) {
+                    return Promise.resolve(handler(...args));
+                }
                 return Promise.resolve();
             }
         },

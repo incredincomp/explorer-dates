@@ -9,6 +9,7 @@ process.env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT = '10';
 process.env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS = '12345';
 
 const { createMockVscode } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
     const mockInstall = createMockVscode({
@@ -54,4 +55,4 @@ async function main() {
 main().catch((error) => {
     console.error('❌ Memory shedding test failed:', error);
     process.exitCode = 1;
-});
+}).finally(scheduleExit);

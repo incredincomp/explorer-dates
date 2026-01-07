@@ -3,6 +3,7 @@ const { getLogger } = require('./utils/logger');
 const { generateWorkspaceKey, detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('./utils/workspaceDetection');
 const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RESTART_REQUIRED_SETTINGS } = require('./presetDefinitions');
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
+const { WORKSPACE_SCALE_LARGE_THRESHOLD, WORKSPACE_SCALE_EXTREME_THRESHOLD } = require('./constants');
 
 const logger = getLogger();
 
@@ -17,6 +18,8 @@ class RuntimeConfigManager {
         this._restartDebounceTimer = null;
         this._pendingRestartKey = 'explorerDates.pendingRestart';
         this._suggestionHistoryKey = 'explorerDates.suggestionHistory';
+        this._presetBackupKey = 'explorerDates.presetBackup';
+        this._lastPresetKey = 'explorerDates.lastPreset';
         this._settings = getSettingsCoordinator();
         
         this._setupConfigurationWatcher();
@@ -115,7 +118,7 @@ class RuntimeConfigManager {
         
         switch (action) {
             case 'Apply Settings':
-                await this._applyPreset(recommendedPreset.id);
+                await this._applyPreset(recommendedPreset.id, recommendedPreset);
                 return { accepted: true, preset: detectedProfile };
             case 'Show Details':
                 await this.showPresetComparison(currentSettings, recommendedPreset);
@@ -128,16 +131,26 @@ class RuntimeConfigManager {
     /**
      * Applies a preset configuration
      */
-    async _applyPreset(presetId) {
-        const preset = PRESET_DEFINITIONS[presetId];
+    async _applyPreset(presetId, presetDefinition = null) {
+        const preset = presetDefinition || PRESET_DEFINITIONS[presetId];
         if (!preset) {
             throw new Error(`Unknown preset: ${presetId}`);
         }
         
-        const applied = await this._settings.applySettings(preset.settings, {
-            scope: 'workspace',
-            reason: `apply-preset:${presetId}`
-        });
+        const currentSettings = this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
+        await this._savePresetBackup(presetId, currentSettings);
+        
+        let applied;
+        try {
+            applied = await this._settings.applySettings(preset.settings, {
+                scope: 'workspace',
+                reason: `apply-preset:${presetId}`
+            });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to apply "${preset.name}" preset: ${error.message}`);
+            logger.error(`Preset application failed for ${presetId}:`, error);
+            throw error;
+        }
         const changedSettings = applied
             .filter(result => result.updated)
             .map(result => result.key.replace('explorerDates.', ''));
@@ -152,6 +165,51 @@ class RuntimeConfigManager {
             preset,
             requiresRestart: changedSettings.some(key => RESTART_REQUIRED_SETTINGS.has(key)),
             estimatedBundleSize: this._calculateCurrentBundleSize()
+        };
+    }
+
+    /**
+     * Restores the previously applied preset from backup
+     */
+    async restorePreviousPreset(options = {}) {
+        const backup = this._globalState.get(this._presetBackupKey, null);
+        if (!backup?.settings) {
+            if (!options.silent) {
+                vscode.window.showInformationMessage('No previous preset available to restore.');
+            }
+            return { restored: false, reason: 'no-backup' };
+        }
+
+        let applied;
+        try {
+            applied = await this._settings.applySettings(backup.settings, {
+                scope: 'workspace',
+                reason: 'restore-previous-preset'
+            });
+        } catch (error) {
+            if (!options.silent) {
+                vscode.window.showErrorMessage(`Failed to restore previous preset: ${error.message}`);
+            }
+            logger.error('Preset rollback failed:', error);
+            throw error;
+        }
+
+        const changedSettings = applied
+            .filter(result => result.updated)
+            .map(result => result.key.replace('explorerDates.', ''));
+
+        await this._globalState.update(this._pendingRestartKey, []);
+        await this._globalState.update(this._presetBackupKey, null);
+        await this._globalState.update(this._lastPresetKey, backup.previousPreset || null);
+
+        if (!options.silent) {
+            vscode.window.showInformationMessage('Previous preset restored.');
+        }
+
+        return {
+            restored: true,
+            changedSettings,
+            restoredPreset: backup.previousPreset || 'unknown'
         };
     }
     
@@ -200,7 +258,7 @@ class RuntimeConfigManager {
         switch (selected.action) {
             case 'apply':
                 if (selected.preset) {
-                    await this._applyPreset(selected.preset.id);
+                    await this._applyPreset(selected.preset.id, selected.preset);
                 }
                 break;
             case 'browse':
@@ -245,7 +303,7 @@ class RuntimeConfigManager {
             );
             
             if (confirmed === 'Apply') {
-                await this._applyPreset(selected.preset.id);
+                await this._applyPreset(selected.preset.id, selected.preset);
             }
         }
     }
@@ -325,6 +383,26 @@ class RuntimeConfigManager {
     /**
      * Helper methods
      */
+    async _savePresetBackup(appliedPresetId, previousSettings = {}) {
+        if (!this._globalState || typeof this._globalState.update !== 'function') {
+            return;
+        }
+        const previousPreset = this._globalState.get(this._lastPresetKey, null);
+        const previousBackup = this._globalState.get(this._presetBackupKey, null);
+        const previousTimestampValue = previousBackup?.timestamp ? Date.parse(previousBackup.timestamp) : null;
+        const nextTimestampValue = Number.isFinite(previousTimestampValue)
+            ? Math.max(Date.now(), previousTimestampValue + 1)
+            : Date.now();
+        const payload = {
+            timestamp: new Date(nextTimestampValue).toISOString(),
+            appliedPreset: appliedPresetId,
+            previousPreset: previousPreset || 'unknown',
+            settings: { ...previousSettings }
+        };
+        await this._globalState.update(this._presetBackupKey, payload);
+        await this._globalState.update(this._lastPresetKey, appliedPresetId);
+    }
+    
     _calculateCurrentBundleSize(overrides = null, baseSettings = null) {
         const sourceSettings = baseSettings
             ? { ...baseSettings }
@@ -397,8 +475,8 @@ class RuntimeConfigManager {
     }
     
     _getFileCountTier(fileCount) {
-        if (fileCount >= 50000) return 'extreme';
-        if (fileCount >= 10000) return 'large';
+        if (fileCount >= WORKSPACE_SCALE_EXTREME_THRESHOLD) return 'extreme';
+        if (fileCount >= WORKSPACE_SCALE_LARGE_THRESHOLD) return 'large';
         if (fileCount >= 1000) return 'medium';
         return 'small';
     }

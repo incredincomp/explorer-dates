@@ -130,7 +130,7 @@ async function testBundleOptimization() {
     
     try {
         // Check if bundle files exist
-        const distPath = path.join(__dirname, 'dist');
+        const distPath = path.join(__dirname, '..', 'dist');
         const bundleFiles = ['extension.js', 'extension.web.js'];
         
         console.log('📁 Bundle File Analysis:');

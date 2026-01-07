@@ -2,7 +2,8 @@
 /* eslint-disable no-unused-vars */
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
     let testsRun = 0;
@@ -26,11 +27,19 @@ async function main() {
         await runTest('Invalid Configuration Values', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': null, // Invalid null value
+                    'explorerDates.dateDecorationFormat': null, // Invalid null value
                     'explorerDates.badgePriority': 'invalid-option', // Invalid enum
                     'explorerDates.cacheTimeout': -1, // Invalid negative number
                     'explorerDates.maxCacheSize': 'not-a-number', // Invalid type
-                    'explorerDates.performanceMode': false // Keep valid to ensure decoration works
+                    'explorerDates.performanceMode': false, // Keep valid to ensure decoration works
+                    'explorerDates.security.enforceWorkspaceBoundaries': 'invalid-flag',
+                    'explorerDates.security.allowedExtraPaths': [
+                        path.join(path.sep, 'tmp', 'external-fixture'),
+                        42
+                    ],
+                    'explorerDates.security.logThrottleWindowMs': -250,
+                    'explorerDates.security.maxWarningsPerFile': -5,
+                    'explorerDates.security.allowTestPaths': 'maybe'
                 }
             });
             const { vscode } = mockInstall;
@@ -51,6 +60,10 @@ async function main() {
                 // The test passes if it doesn't throw an error, even if decoration is null
                 assert(true, 'Should handle invalid config without throwing');
                 
+                if (Array.isArray(provider._securityAllowedExtraPaths)) {
+                    const sanitized = provider._securityAllowedExtraPaths.every((entry) => typeof entry === 'string');
+                    assert(sanitized, 'Security extra paths should be sanitized to strings');
+                }
             } catch (error) {
                 throw new Error(`Should not throw error with invalid config: ${error.message}`);
             }
@@ -76,10 +89,11 @@ async function main() {
             // Mock configuration that simulates parsing errors
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.customSettings': '{malformed json}', // Invalid JSON
-                    'explorerDates.excludePatterns': ['\\'], // Invalid regex pattern
-                    'explorerDates.timestampFormat': '{{invalid}}', // Invalid format string
+                    'explorerDates.customColors': '{malformed json}', // Invalid object payload
+                    'explorerDates.excludedPatterns': ['\\'], // Invalid regex pattern
+                    'explorerDates.templateSyncPath': { not: 'a-path' }, // Invalid path structure
                     'explorerDates.colorScheme': { broken: undefined }, // Invalid object structure
+                    'explorerDates.security.allowedExtraPaths': ['\u0000bad-path'] // Dangerous characters
                 }
             });
             const { vscode } = mockInstall;
@@ -100,8 +114,8 @@ async function main() {
         await runTest('Rapid Configuration Changes', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': 'relative',
-                    'explorerDates.enableColors': true
+                    'explorerDates.dateDecorationFormat': 'relative-short',
+                    'explorerDates.colorScheme': 'recency'
                 }
             });
             const { vscode } = mockInstall;
@@ -120,8 +134,8 @@ async function main() {
             for (let i = 0; i < 10; i++) {
                 // Trigger config change event
                 mockInstall.triggerConfigChange({
-                    'explorerDates.dateFormat': i % 2 === 0 ? 'relative' : 'absolute',
-                    'explorerDates.enableColors': i % 3 === 0
+                    'explorerDates.dateDecorationFormat': i % 2 === 0 ? 'smart' : 'absolute-long',
+                    'explorerDates.colorScheme': i % 3 === 0 ? 'vibrant' : 'subtle'
                 });
                 
                 // Small delay to simulate real-world timing
@@ -145,8 +159,8 @@ async function main() {
             const mockInstall = createMockVscode({
                 config: {
                     // User settings
-                    'explorerDates.dateFormat': 'relative',
-                    'explorerDates.enableColors': true,
+                    'explorerDates.dateDecorationFormat': 'relative-short',
+                    'explorerDates.colorScheme': 'recency',
                     'explorerDates.badgePriority': 'time'
                 }
             });
@@ -163,8 +177,8 @@ async function main() {
             
             // Simulate workspace settings overriding user settings
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'absolute',
-                'explorerDates.enableColors': false,
+                'explorerDates.dateDecorationFormat': 'absolute-long',
+                'explorerDates.colorScheme': 'vibrant',
                 'explorerDates.badgePriority': 'author'
             });
             
@@ -181,8 +195,8 @@ async function main() {
         await runTest('Settings Rollback Scenarios', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': 'relative',
-                    'explorerDates.enableColors': true
+                    'explorerDates.dateDecorationFormat': 'relative-long',
+                    'explorerDates.colorScheme': 'recency'
                 }
             });
             const { vscode } = mockInstall;
@@ -198,8 +212,8 @@ async function main() {
             
             // Change to invalid settings
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'invalid-format',
-                'explorerDates.enableColors': 'not-boolean',
+                'explorerDates.dateDecorationFormat': 'invalid-format',
+                'explorerDates.colorScheme': { mode: 'invalid' },
                 'explorerDates.badgePriority': null
             });
             
@@ -212,8 +226,8 @@ async function main() {
             
             // Rollback to valid settings
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'absolute',
-                'explorerDates.enableColors': false
+                'explorerDates.dateDecorationFormat': 'absolute-short',
+                'explorerDates.colorScheme': 'file-type'
             });
             
             // Allow configuration change to process
@@ -230,13 +244,15 @@ async function main() {
             const mockInstall = createMockVscode({
                 config: {
                     // Test various schema violations
-                    'explorerDates.dateFormat': 123, // Wrong type
-                    'explorerDates.enableColors': 'yes', // Invalid boolean string
+                    'explorerDates.dateDecorationFormat': 123, // Wrong type
+                    'explorerDates.colorScheme': { complex: 'object' }, // Invalid structure
                     'explorerDates.cacheTimeout': 'forever', // Non-numeric timeout
-                    'explorerDates.excludePatterns': 'not-an-array', // Wrong type for array
+                    'explorerDates.excludedPatterns': 'not-an-array', // Wrong type for array
                     'explorerDates.badgePriority': { complex: 'object' }, // Object instead of string
                     'explorerDates.maxCacheSize': Infinity, // Invalid number value
-                    'explorerDates.refreshInterval': NaN // Invalid number value
+                    'explorerDates.badgeRefreshInterval': NaN, // Invalid number value
+                    'explorerDates.security.enforceWorkspaceBoundaries': 'sometimes',
+                    'explorerDates.security.allowedExtraPaths': [null]
                 }
             });
             const { vscode } = mockInstall;
@@ -260,7 +276,7 @@ async function main() {
         await runTest('Configuration Event Flooding', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': 'relative'
+                    'explorerDates.dateDecorationFormat': 'relative-short'
                 }
             });
             const { vscode } = mockInstall;
@@ -276,8 +292,8 @@ async function main() {
                 promises.push((async (index) => {
                     // Trigger config change
                     mockInstall.triggerConfigChange({
-                        'explorerDates.dateFormat': index % 2 === 0 ? 'relative' : 'absolute',
-                        'explorerDates.enableColors': index % 3 === 0
+                        'explorerDates.dateDecorationFormat': index % 2 === 0 ? 'relative-long' : 'absolute-short',
+                        'explorerDates.colorScheme': index % 3 === 0 ? 'vibrant' : 'none'
                     });
                     
                     // Small delay to avoid overwhelming the system
@@ -301,8 +317,8 @@ async function main() {
         await runTest('Configuration Memory Consistency', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': 'relative',
-                    'explorerDates.enableColors': true
+                    'explorerDates.dateDecorationFormat': 'relative-short',
+                    'explorerDates.colorScheme': 'recency'
                 }
             });
             const { vscode } = mockInstall;
@@ -317,7 +333,7 @@ async function main() {
             
             // Change config
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'absolute'
+                'explorerDates.dateDecorationFormat': 'absolute-long'
             });
             
             // Allow change to process
@@ -328,7 +344,7 @@ async function main() {
             
             // Change back
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'relative'
+                'explorerDates.dateDecorationFormat': 'relative-short'
             });
             
             // Allow change to process
@@ -352,8 +368,8 @@ async function main() {
         await runTest('Configuration Inheritance Edge Cases', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': undefined, // Explicitly undefined
-                    'explorerDates.enableColors': null, // Explicitly null
+                    'explorerDates.dateDecorationFormat': undefined, // Explicitly undefined
+                    'explorerDates.colorScheme': null, // Explicitly null
                 }
             });
             const { vscode } = mockInstall;
@@ -369,8 +385,8 @@ async function main() {
             
             // Change to partially defined config
             mockInstall.triggerConfigChange({
-                'explorerDates.dateFormat': 'absolute',
-                'explorerDates.enableColors': undefined
+                'explorerDates.dateDecorationFormat': 'absolute-long',
+                'explorerDates.colorScheme': undefined
             });
             
             // Allow change to process
@@ -382,10 +398,60 @@ async function main() {
             provider.dispose();
         });
 
+        await runTest('Security Boundary Configuration Updates', async () => {
+            const initialExtraPath = path.join(path.sep, 'tmp', 'explorer-dates-trusted');
+            const mockInstall = createMockVscode({
+                config: {
+                    'explorerDates.security.enforceWorkspaceBoundaries': true,
+                    'explorerDates.security.enableBoundaryEnforcement': true,
+                    'explorerDates.security.allowedExtraPaths': [initialExtraPath],
+                    'explorerDates.security.allowTestPaths': false,
+                    'explorerDates.security.logThrottleWindowMs': 5,
+                    'explorerDates.security.maxWarningsPerFile': 2
+                }
+            });
+            const { vscode } = mockInstall;
+            const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
+
+            const provider = new FileDateDecorationProvider();
+            
+            const workspaceFile = vscode.Uri.file(path.join(mockInstall.sampleWorkspace, 'security-initial.js'));
+            await provider.provideFileDecoration(workspaceFile);
+            
+            assert(Array.isArray(provider._securityAllowedExtraPaths), 'Security paths should initialize as an array');
+            assert(provider._securityAllowedExtraPaths.length >= 1, 'Initial extra security path should be tracked');
+            
+            const relaxedPath = path.join(mockInstall.sampleWorkspace, '..', 'sandbox-fixtures');
+            const normalizedRelaxedPath = path.normalize(relaxedPath);
+            
+            mockInstall.triggerConfigChange({
+                'explorerDates.security.enforceWorkspaceBoundaries': false,
+                'explorerDates.security.enableBoundaryEnforcement': false,
+                'explorerDates.security.allowedExtraPaths': [relaxedPath],
+                'explorerDates.security.logThrottleWindowMs': 0,
+                'explorerDates.security.maxWarningsPerFile': 0
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 10));
+            await provider.provideFileDecoration(workspaceFile);
+            
+            assert.strictEqual(
+                provider._securityEnforceWorkspaceBoundaries,
+                false,
+                'Security enforcement flag should update based on configuration'
+            );
+            assert(
+                provider._securityAllowedExtraPaths.some((entry) => entry === normalizedRelaxedPath),
+                'Updated allowed path should be normalized and tracked'
+            );
+            
+            provider.dispose();
+        });
+
         await runTest('Configuration Performance Under Load', async () => {
             const mockInstall = createMockVscode({
                 config: {
-                    'explorerDates.dateFormat': 'relative',
+                    'explorerDates.dateDecorationFormat': 'relative-short',
                     'explorerDates.performanceMode': false
                 }
             });
@@ -407,7 +473,7 @@ async function main() {
                 if (index % 3 === 0) {
                     // Trigger config change during processing
                     mockInstall.triggerConfigChange({
-                        'explorerDates.dateFormat': index % 2 === 0 ? 'relative' : 'absolute'
+                        'explorerDates.dateDecorationFormat': index % 2 === 0 ? 'relative-long' : 'absolute-short'
                     });
                     
                     // Allow change to process
@@ -431,6 +497,68 @@ async function main() {
             provider.dispose();
         });
 
+        await runTest('Runtime Configuration Manager Toggle Coverage', async () => {
+            const toggleDefaults = {
+                'explorerDates.enableOnboardingSystem': false,
+                'explorerDates.enableAnalysisCommands': false,
+                'explorerDates.enableExportReporting': false,
+                'explorerDates.enableExtensionApi': false,
+                'explorerDates.enableWorkspaceTemplates': false,
+                'explorerDates.enableAdvancedCache': false,
+                'explorerDates.enableWorkspaceIntelligence': false,
+                'explorerDates.enableIncrementalWorkers': false
+            };
+            const mockInstall = createMockVscode({
+                config: {
+                    ...toggleDefaults,
+                    'explorerDates.performanceMode': false
+                }
+            });
+            const context = createExtensionContext();
+            const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+            const manager = new RuntimeConfigManager(context);
+            
+            try {
+                const initialState = await manager.getCurrentRuntimeState();
+                Object.keys(toggleDefaults).forEach((key) => {
+                    const snapshotKey = key.startsWith('explorerDates.')
+                        ? key
+                        : `explorerDates.${key}`;
+                    assert.strictEqual(
+                        initialState.currentSettings[snapshotKey],
+                        toggleDefaults[key],
+                        `${snapshotKey} should reflect configured value`
+                    );
+                });
+                
+                mockInstall.triggerConfigChange({
+                    'explorerDates.enableOnboardingSystem': true,
+                    'explorerDates.enableAdvancedCache': true,
+                    'explorerDates.performanceMode': true
+                });
+                
+                const pending = context.globalState.get('explorerDates.pendingRestart', []);
+                assert(pending.includes('enableOnboardingSystem'), 'onboarding toggle should queue restart');
+                assert(pending.includes('enableAdvancedCache'), 'advanced cache toggle should queue restart');
+                assert(pending.includes('performanceMode'), 'performance mode toggle should queue restart');
+                
+                const refreshedState = await manager.getCurrentRuntimeState();
+                assert.strictEqual(
+                    refreshedState.currentSettings['explorerDates.enableOnboardingSystem'],
+                    true,
+                    'Runtime state should pick up new onboarding toggle'
+                );
+                assert.strictEqual(
+                    refreshedState.currentSettings['explorerDates.enableAdvancedCache'],
+                    true,
+                    'Runtime state should pick up new cache toggle'
+                );
+            } finally {
+                manager.dispose();
+                mockInstall.dispose();
+            }
+        });
+
         console.log(`\n🎉 Configuration edge case tests completed: ${testsPassed}/${testsRun} passed`);
 
         if (testsPassed !== testsRun) {
@@ -448,7 +576,7 @@ if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error);
         process.exit(1);
-    });
+    }).finally(scheduleExit);
 }
 
 module.exports = { main };

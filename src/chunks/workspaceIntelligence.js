@@ -26,15 +26,20 @@ class WorkspaceIntelligenceManager {
         }
 
         const { batchProcessor, enableProgressiveAnalysis } = options;
+        const hasProgressiveApi = !!(batchProcessor?.processDirectoryProgressively);
 
         // Initialize incremental indexer
         if (!this._incrementalIndexer) {
             this._incrementalIndexer = new IncrementalIndexer(this._fileSystem);
         }
         this._incrementalIndexer.initialize({ 
-            batchProcessor,
+            batchProcessor: hasProgressiveApi ? batchProcessor : null,
             enableProgressiveAnalysis
         });
+
+        if (batchProcessor && !hasProgressiveApi) {
+            this._logger.warn('BatchProcessor missing progressive API; workspace indexing disabled');
+        }
 
         // Initialize smart exclusion manager
         if (!this._smartExclusion) {
@@ -55,7 +60,7 @@ class WorkspaceIntelligenceManager {
 
         try {
             // Start incremental indexing
-            if (this._incrementalIndexer) {
+            if (this._incrementalIndexer?.startInitialIndex) {
                 await this._incrementalIndexer.startInitialIndex(workspaceFolders, {
                     maxFiles: options.maxFiles || 2000
                 });

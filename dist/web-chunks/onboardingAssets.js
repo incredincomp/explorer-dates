@@ -1,5 +1,5 @@
 var module = { exports: {} }; var exports = module.exports; (function() {
-var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,module)=>{var vscode=require("vscode"),isWebRuntime=process.env.VSCODE_WEB==="true",inspectValue=isWebRuntime?r=>{if(typeof r=="string")return r;try{return JSON.stringify(r,null,2)}catch{return"<<unable to serialize log arg>>"}}:eval("require")("util").inspect,DEFAULT_LOG_PROFILE="default",SUPPORTED_PROFILES=new Set(["default","stress","soak"]),LOG_LEVEL_ORDER=["debug","info","warn","error"],DEFAULT_CONSOLE_LEVEL="warn",Logger=class{constructor(){this.e=vscode.window.createOutputChannel("Explorer Dates"),this.d=!1,this.r=null,this.o=(process.env.EXPLORER_DATES_LOG_PROFILE||DEFAULT_LOG_PROFILE).toLowerCase(),SUPPORTED_PROFILES.has(this.o)||(this.o=DEFAULT_LOG_PROFILE),this.i=new Map,this.f=DEFAULT_CONSOLE_LEVEL,this.g(),this.r=vscode.workspace.onDidChangeConfiguration(e=>{(e.affectsConfiguration("explorerDates.enableLogging")||e.affectsConfiguration("explorerDates.consoleLogLevel"))&&this.g()})}g(){let e=vscode.workspace.getConfiguration("explorerDates");this.d=e.get("enableLogging",!1);let t=(e.get("consoleLogLevel",DEFAULT_CONSOLE_LEVEL)||"").toLowerCase();this.f=LOG_LEVEL_ORDER.includes(t)?t:DEFAULT_CONSOLE_LEVEL}setLogProfile(e=DEFAULT_LOG_PROFILE){let t=(e||DEFAULT_LOG_PROFILE).toLowerCase();this.o=SUPPORTED_PROFILES.has(t)?t:DEFAULT_LOG_PROFILE,this.resetThrottle()}resetThrottle(e){if(e){this.i.delete(e);return}this.i.clear()}debug(e,...t){this.d&&this.n("debug",null,e,t)}info(e,...t){this.n("info",null,e,t)}infoWithOptions(e,t,...i){this.n("info",e||null,t,i)}warn(e,...t){this.n("warn",null,e,t)}error(e,t,...i){let s=`[${new Date().toISOString()}] [ERROR] ${e}`;this.e.appendLine(s),t instanceof Error?(this.e.appendLine(`Error: ${t.message}`),t.stack&&this.e.appendLine(`Stack: ${t.stack}`)):t&&this.e.appendLine(this.l(t));let o=this.v(i);o.length>0&&o.forEach(n=>this.e.appendLine(this.l(n))),this.u("error",s,[t,...o])}show(){this.e.show()}clear(){this.e.clear()}dispose(){this.e.dispose(),this.r&&(this.r.dispose(),this.r=null);let e="__explorerDatesLogger";typeof global<"u"&&global[e]===this?global[e]=null:typeof globalThis<"u"&&globalThis[e]===this?globalThis[e]=null:typeof window<"u"&&window[e]===this&&(window[e]=null),loggerInstance===this&&(loggerInstance=null)}n(e,t,i,a){if(e==="debug"&&!this.d||this.h(e,t))return;let o=`[${new Date().toISOString()}] [${e.toUpperCase()}] ${i}`;this.e.appendLine(o);let n=this.v(a);n.length>0&&n.forEach(l=>this.e.appendLine(this.l(l))),this.u(e,o,n)}v(e){return!e||e.length===0?[]:e.map(t=>{if(typeof t!="function")return t;try{return t()}catch(i){return`<<log arg threw: ${i.message}>>`}})}l(e){try{return typeof e=="string"?e:typeof e=="object"?JSON.stringify(e,null,2):inspectValue(e)}catch(t){return`<<failed to serialize log arg: ${t.message}>>`}}h(e,t){if(e!=="info"||!t||!t.throttleKey)return!1;let i=(t.profile||"stress").toLowerCase();if(!this.b(i))return!1;let a=Number(t.throttleLimit)||50,s=t.throttleKey,o=this.i.get(s)||{count:0,suppressed:0,noticeLogged:!1};if(o.count<a)return o.count+=1,this.i.set(s,o),!1;if(o.suppressed+=1,!o.noticeLogged){o.noticeLogged=!0;let n=`[${new Date().toISOString()}] [INFO] \u23F8\uFE0F Suppressing further logs for "${s}" after ${a} entries (profile=${this.o})`;this.e.appendLine(n),this.u("info",n)}return this.i.set(s,o),!0}b(e){let t=this.o||DEFAULT_LOG_PROFILE;return e==="default"?t===DEFAULT_LOG_PROFILE:t===e}m(e){let t=LOG_LEVEL_ORDER.indexOf(this.f),i=LOG_LEVEL_ORDER.indexOf(e);return t===-1||i===-1?!1:i>=t}u(e,t,i=[]){if(!this.m(e))return;(e==="warn"?console.warn:e==="error"?console.error:console.log).call(console,t,...i)}},GLOBAL_LOGGER_KEY="__explorerDatesLogger";function getLogger(){return typeof global<"u"?(global[GLOBAL_LOGGER_KEY]||(global[GLOBAL_LOGGER_KEY]=new Logger),global[GLOBAL_LOGGER_KEY]):typeof globalThis<"u"?(globalThis[GLOBAL_LOGGER_KEY]||(globalThis[GLOBAL_LOGGER_KEY]=new Logger),globalThis[GLOBAL_LOGGER_KEY]):typeof window<"u"?(window[GLOBAL_LOGGER_KEY]||(window[GLOBAL_LOGGER_KEY]=new Logger),window[GLOBAL_LOGGER_KEY]):(loggerInstance||(loggerInstance=new Logger),loggerInstance)}var loggerInstance=null;module.exports={Logger,getLogger}});var{getLogger:p}=d(),c=class{constructor(){this.p=p(),this.t=null,this.s=!1}async initialize(){if(!this.s)try{this.t={setupWizardTemplate:this.L(),featureTourTemplate:this.x(),whatsNewTemplate:this.w(),sharedStyles:this.a(),sharedScripts:this.c()},this.s=!0,this.p.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(e){throw this.p.error("Failed to initialize onboarding assets",e),e}}async getSetupWizardHTML(e){return await this.initialize(),this.E(this.t.setupWizardTemplate,e)}async getFeatureTourHTML(){return await this.initialize(),this.t.featureTourTemplate}async getWhatsNewHTML(e){return await this.initialize(),this.y(this.t.whatsNewTemplate,e)}E(e,t){let i=Object.entries(t).map(([s,o])=>`
+var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,module)=>{var vscode=require("vscode"),isWebRuntime=process.env.VSCODE_WEB==="true",inspectValue=isWebRuntime?r=>{if(typeof r=="string")return r;try{return JSON.stringify(r,null,2)}catch{return"<<unable to serialize log arg>>"}}:eval("require")("util").inspect,DEFAULT_LOG_PROFILE="default",SUPPORTED_PROFILES=new Set(["default","stress","soak"]),LOG_LEVEL_ORDER=["debug","info","warn","error"],DEFAULT_CONSOLE_LEVEL="warn",TEST_CONSOLE_LEVEL=process.env.EXPLORER_DATES_TEST_MODE==="1"?"warn":null,Logger=class{constructor(){this.e=vscode.window.createOutputChannel("Explorer Dates"),this.r=!1,this.n=null,this.a=process.env.EXPLORER_DATES_TEST_MODE==="1",this.o=(process.env.EXPLORER_DATES_LOG_PROFILE||DEFAULT_LOG_PROFILE).toLowerCase(),SUPPORTED_PROFILES.has(this.o)||(this.o=DEFAULT_LOG_PROFILE),this.i=new Map,this.f=DEFAULT_CONSOLE_LEVEL,this.g(),this.n=vscode.workspace.onDidChangeConfiguration(e=>{(e.affectsConfiguration("explorerDates.enableLogging")||e.affectsConfiguration("explorerDates.consoleLogLevel"))&&this.g()})}g(){let e=vscode.workspace.getConfiguration("explorerDates");this.r=e.get("enableLogging",!1);let t=(process.env.EXPLORER_DATES_LOG_LEVEL||"").toLowerCase(),i=(e.get("consoleLogLevel",DEFAULT_CONSOLE_LEVEL)||"").toLowerCase(),n=TEST_CONSOLE_LEVEL||t||i||DEFAULT_CONSOLE_LEVEL;this.f=LOG_LEVEL_ORDER.includes(n)?n:DEFAULT_CONSOLE_LEVEL,TEST_CONSOLE_LEVEL&&(this.r=!1)}setLogProfile(e=DEFAULT_LOG_PROFILE){let t=(e||DEFAULT_LOG_PROFILE).toLowerCase();this.o=SUPPORTED_PROFILES.has(t)?t:DEFAULT_LOG_PROFILE,this.resetThrottle()}resetThrottle(e){if(e){this.i.delete(e);return}this.i.clear()}debug(e,...t){this.r&&this.c("debug",null,e,t)}info(e,...t){this.c("info",null,e,t)}infoWithOptions(e,t,...i){this.c("info",e||null,t,i)}warn(e,...t){this.c("warn",null,e,t)}error(e,t,...i){let s=`[${new Date().toISOString()}] [ERROR] ${e}`;this.a||(this.e.appendLine(s),t instanceof Error?(this.e.appendLine(`Error: ${t.message}`),t.stack&&this.e.appendLine(`Stack: ${t.stack}`)):t&&this.e.appendLine(this.u(t)));let o=this.v(i);o.length>0&&!this.a&&o.forEach(d=>this.e.appendLine(this.u(d)));let a=[];t!=null&&a.push(t),o.length>0&&a.push(...o),this.p("error",s,a)}show(){this.e.show()}clear(){this.e.clear()}dispose(){this.e.dispose(),this.n&&(this.n.dispose(),this.n=null);let e="__explorerDatesLogger";typeof global<"u"&&global[e]===this?global[e]=null:typeof globalThis<"u"&&globalThis[e]===this?globalThis[e]=null:typeof globalThis<"u"&&globalThis.window?.[e]===this&&(globalThis.window[e]=null),loggerInstance===this&&(loggerInstance=null)}c(e,t,i,n){if(e==="debug"&&!this.r||this.h(e,t))return;let o=`[${new Date().toISOString()}] [${e.toUpperCase()}] ${i}`;this.a||this.e.appendLine(o);let a=this.v(n);a.length>0&&!this.a&&a.forEach(d=>this.e.appendLine(this.u(d))),this.p(e,o,a)}v(e){return!e||e.length===0?[]:e.map(t=>{if(typeof t!="function")return t;try{return t()}catch(i){return`<<log arg threw: ${i.message}>>`}})}u(e){try{return typeof e=="string"?e:typeof e=="object"?JSON.stringify(e,null,2):inspectValue(e)}catch(t){return`<<failed to serialize log arg: ${t.message}>>`}}h(e,t){if(e!=="info"||!t||!t.throttleKey)return!1;let i=(t.profile||"stress").toLowerCase();if(!this.b(i))return!1;let n=Number(t.throttleLimit)||50,s=t.throttleKey,o=this.i.get(s)||{count:0,suppressed:0,noticeLogged:!1};if(o.count<n)return o.count+=1,this.i.set(s,o),!1;if(o.suppressed+=1,!o.noticeLogged){o.noticeLogged=!0;let a=`[${new Date().toISOString()}] [INFO] \u23F8\uFE0F Suppressing further logs for "${s}" after ${n} entries (profile=${this.o})`;this.e.appendLine(a),this.p("info",a)}return this.i.set(s,o),!0}b(e){let t=this.o||DEFAULT_LOG_PROFILE;return e==="default"?t===DEFAULT_LOG_PROFILE:t===e}m(e){let t=LOG_LEVEL_ORDER.indexOf(this.f),i=LOG_LEVEL_ORDER.indexOf(e);return t===-1||i===-1?!1:i>=t}p(e,t,i=[]){if(!this.m(e))return;(e==="warn"?console.warn:e==="error"?console.error:console.log).call(console,t,...i)}},GLOBAL_LOGGER_KEY="__explorerDatesLogger";function getLogger(){return typeof global<"u"?(global[GLOBAL_LOGGER_KEY]||(global[GLOBAL_LOGGER_KEY]=new Logger),global[GLOBAL_LOGGER_KEY]):typeof globalThis<"u"?(globalThis[GLOBAL_LOGGER_KEY]||(globalThis[GLOBAL_LOGGER_KEY]=new Logger),globalThis.window&&(globalThis.window[GLOBAL_LOGGER_KEY]=globalThis[GLOBAL_LOGGER_KEY]),globalThis[GLOBAL_LOGGER_KEY]):(loggerInstance||(loggerInstance=new Logger),loggerInstance)}var loggerInstance=null;module.exports={Logger,getLogger}});var{getLogger:p}=l(),c=class{constructor(){this._logger=p(),this.t=null,this.s=!1}async initialize(){if(!this.s)try{this.t={setupWizardTemplate:this.L(),featureTourTemplate:this.E(),whatsNewTemplate:this.x(),sharedStyles:this.d(),sharedScripts:this.l()},this.s=!0,this._logger.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(e){throw this._logger.error("Failed to initialize onboarding assets",e),e}}async getSetupWizardHTML(e){return await this.initialize(),this.O(this.t.setupWizardTemplate,e)}async getFeatureTourHTML(){return await this.initialize(),this.t.featureTourTemplate}async getWhatsNewHTML(e){return await this.initialize(),this.w(this.t.whatsNewTemplate,e)}O(e,t){let i=Object.entries(t).map(([s,o])=>`
             <div class="preset-option" data-preset="${s}" 
                  onmouseenter="previewConfiguration({preset: '${s}'})" 
                  onmouseleave="clearPreview()">
@@ -14,14 +14,14 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
             <div class="more-options">
                 <p><strong>Need more options?</strong> Try the <a href="#" onclick="showAllPresets()">Power User</a> or <a href="#" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
             </div>
-        `).replace("{{PRESETS_JSON}}",JSON.stringify(t))}y(e,t){return e.replace(/{{VERSION}}/g,t)}L(){return`
+        `).replace("{{PRESETS_JSON}}",JSON.stringify(t))}w(e,t){return e.replace(/{{VERSION}}/g,t)}L(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Quick Setup</title>
                 <style>
-                    ${this.a()}
+                    ${this.d()}
                     .preset-option {
                         border: 2px solid var(--vscode-widget-border);
                         border-radius: 8px;
@@ -96,7 +96,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 </div>
 
                 <script>
-                    ${this.c()}
+                    ${this.l()}
                     
                     // Specific setup wizard functionality
                     let selectedPreset = null;
@@ -160,14 +160,14 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 <\/script>
             </body>
             </html>
-        `}x(){return`
+        `}E(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Feature Tour</title>
                 <style>
-                    ${this.a()}
+                    ${this.d()}
                     .feature-grid {
                         display: grid;
                         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -308,7 +308,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 </div>
 
                 <script>
-                    ${this.c()}
+                    ${this.l()}
 
                     function openSetting(setting) {
                         vscode.postMessage({
@@ -326,7 +326,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 <\/script>
             </body>
             </html>
-        `}w(){return`
+        `}x(){return`
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -334,7 +334,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Explorer Dates - What's New</title>
                 <style>
-                    ${this.a()}
+                    ${this.d()}
                     
                     .feature {
                         margin-bottom: 25px;
@@ -446,7 +446,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 </div>
 
                 <script>
-                    ${this.c()}
+                    ${this.l()}
 
                     function tryFeature(feature) {
                         vscode.postMessage({
@@ -469,7 +469,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
                 <\/script>
             </body>
             </html>
-        `}a(){return`
+        `}d(){return`
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 padding: 20px;
@@ -527,7 +527,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var d=u((exports,m
             .btn.secondary:hover {
                 background: var(--vscode-button-secondaryHoverBackground);
             }
-        `}c(){return`
+        `}l(){return`
             const vscode = acquireVsCodeApi();
-        `}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this.s,templateCount:this.t?Object.keys(this.t).length:0,loaded:this.s}}dispose(){this.t=null,this.s=!1,this.p.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets:c,createOnboardingAssets:()=>new c,getMemoryInfo:(()=>{let r=null;return()=>(r||(r=new c),r.getMemoryInfo())})()};
-})(); (globalThis.__explorerDatesChunks = globalThis.__explorerDatesChunks || {})["onboardingAssets"] = module.exports;
+        `}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this.s,templateCount:this.t?Object.keys(this.t).length:0,loaded:this.s}}dispose(){this.t=null,this.s=!1,this._logger.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets:c,createOnboardingAssets:()=>new c,getMemoryInfo:(()=>{let r=null;return()=>(r||(r=new c),r.getMemoryInfo())})()};
+})(); (function(){const primaryKey="explorerDatesChunks";const legacyKey="__explorerDatesChunks";const registry=(globalThis[primaryKey]=globalThis[primaryKey]||globalThis[legacyKey]||(globalThis[legacyKey]={}));registry["onboardingAssets"]=module.exports;})();

@@ -26,13 +26,20 @@ try {
         'require("vscode")'
     ];
     
+    let missingPattern = false;
     patterns.forEach(pattern => {
         if (bundleContent.includes(pattern)) {
             console.log(`✅ Found: ${pattern}`);
         } else {
             console.log(`❌ Missing: ${pattern}`);
+            missingPattern = true;
         }
     });
+
+    if (missingPattern) {
+        console.error('❌ Bundle validation failed: required patterns missing');
+        process.exit(1);
+    }
     
     console.log('\n📦 Bundle Summary:');
     console.log(`   Size: ${Math.round(bundleContent.length / 1024)}KB`);

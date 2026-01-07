@@ -206,6 +206,11 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.restorePreviousPreset",
+        "title": "Restore Previous Preset",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.configureRuntime",
         "title": "Configure Runtime Chunks",
         "category": "Explorer Dates"
@@ -228,11 +233,6 @@
       {
         "command": "explorerDates.organizeSettings",
         "title": "Organize Explorer Dates Settings",
-        "category": "Explorer Dates"
-      },
-      {
-        "command": "explorerDates.resetToDefaults",
-        "title": "Reset Settings to Defaults",
         "category": "Explorer Dates"
       },
       {
@@ -402,7 +402,7 @@
         "explorerDates.forceEnableForLargeWorkspaces": {
           "type": "boolean",
           "default": false,
-          "description": "Suppress the automatic large workspace warning (50,000+ files). Set to true to keep current settings without being prompted to enable performance mode.",
+          "description": "Suppress the automatic large workspace warning (250,000+ files). Set to true to keep current settings without being prompted to enable performance mode.",
           "scope": "window"
         },
         "explorerDates.featureLevel": {
@@ -474,6 +474,47 @@
             "scss"
           ],
           "description": "File extensions that smart file watching prioritizes (omit the leading dot).",
+          "scope": "window"
+        },
+        "explorerDates.security.enforceWorkspaceBoundaries": {
+          "type": "boolean",
+          "default": true,
+          "description": "Block Explorer Dates from touching files outside the currently opened workspace folders. Disable only for controlled migrations or external automation that already sandboxes file access.",
+          "scope": "window"
+        },
+        "explorerDates.security.enableBoundaryEnforcement": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preferred flag for workspace boundary enforcement. When left at the default value, Explorer Dates enforces boundaries in production and relaxes them automatically in test/dev environments.",
+          "scope": "window"
+        },
+        "explorerDates.security.allowedExtraPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Absolute paths that should be treated as trusted workspace roots (e.g., shared fixture folders, migration temp directories). Entries support OS-specific path syntax and are normalized at runtime.",
+          "scope": "window"
+        },
+        "explorerDates.security.allowTestPaths": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically relax workspace boundary enforcement in test environments (EXPLORER_DATES_TEST_MODE=1 or NODE_ENV=test) so harnesses can create temp files outside the workspace.",
+          "scope": "window"
+        },
+        "explorerDates.security.logThrottleWindowMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 0,
+          "description": "Minimum time window (in milliseconds) before Explorer Dates logs repeated security warnings for the same file. Increase this value to suppress noisy, repeated entries.",
+          "scope": "window"
+        },
+        "explorerDates.security.maxWarningsPerFile": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Maximum number of security warnings Explorer Dates will log per file/path per session. Set to 0 for unlimited warnings, or raise the limit for verbose auditing.",
           "scope": "window"
         },
         "explorerDates.enableSmartWatcherFallbacks": {
@@ -609,6 +650,22 @@
           "minimum": 100,
           "maximum": 50000,
           "description": "Maximum number of cached file decorations",
+          "scope": "window"
+        },
+        "explorerDates.decorationPoolSize": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 128,
+          "maximum": 8192,
+          "description": "Maximum number of decoration instances to keep pooled for reuse. Higher values reduce allocations in large workspaces at the cost of a small, fixed memory footprint.",
+          "scope": "window"
+        },
+        "explorerDates.flyweightCacheSize": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 512,
+          "maximum": 16384,
+          "description": "Maximum number of flyweight badge/readable strings to cache. Larger values reduce string churn in workspaces with diverse timestamp ranges.",
           "scope": "window"
         },
         "explorerDates.colorScheme": {
@@ -953,7 +1010,8 @@
   "scripts": {
     "lint": "eslint src extension.js esbuild.js esbuild-federation.js",
     "test": "npm run test:suite",
-    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:incremental-workers-flag && npm run test:workspace-scale && npm run test:workspace-detection-heuristics && npm run test:smart-watchers && npm run test:smart-watcher-fallback && npm run test:viewport-gating && npm run test:feature-level-regrets && npm run test:indexer-fallback && npm run test:memory-shedding && npm run test:workspace-intelligence-chunk && npm run test:onboarding-assets-chunking && npm run test:wasm-profiling && npm run test:chunk-mapping && npm run test:web-bundle-smoke && npm run test:filesystem-errors && npm run test:git-integration-failures && npm run test:resource-cleanup && npm run test:configuration-edge-cases && npm run test:multi-workspace-scenarios && npm run test:vscode-api-edge-cases && npm run test:race-condition-scenarios && npm run test:performance-under-load && npm run test:cross-platform-compatibility && npm run test:performance-mode && npm run test:periodic-refresh && npm run test:memory-isolation && npm run test:memory-isolation-forced-miss && npm run test:memory-isolation-matrix && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:runtime-management && npm run test:preset-ui-flows && npm run test:quickpick-regressions && npm run test:restart-batching && npm run test:team-config-persistence && npm run test:chunk-loading-failures && npm run test:preset-application-paths && npm run test:restart-batching-deterministic && npm run test:mock-isolation && npm run test:feature-flags && npm run test:default-loaders && npm run test:git-gating && npm run test:settings-migration && npm run test:theme-integration && npm run test:real-workspace-exercise && npm run test:analyze-matrix && npm run test:batch-processor-chunking",
+    "test:log": "npm run test:suite | tee logs/test-run-$(date +%Y%m%d-%H%M%S).log",
+    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:incremental-workers-flag && npm run test:workspace-scale && npm run test:workspace-detection-heuristics && npm run test:smart-watchers && npm run test:smart-watcher-fallback && npm run test:viewport-gating && npm run test:feature-level-regrets && npm run test:indexer-fallback && npm run test:memory-shedding && npm run test:workspace-intelligence-chunk && npm run test:onboarding-assets-chunking && npm run test:wasm-profiling && npm run test:chunk-mapping && npm run test:web-bundle-smoke && npm run test:filesystem-errors && npm run test:git-integration-failures && npm run test:resource-cleanup && npm run test:configuration-edge-cases && npm run test:multi-workspace-scenarios && npm run test:vscode-api-edge-cases && npm run test:race-condition-scenarios && npm run test:performance-under-load && npm run test:cross-platform-compatibility && npm run test:performance-mode && npm run test:periodic-refresh && npm run test:memory-isolation && npm run test:memory-isolation-forced-miss && npm run test:memory-isolation-matrix && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:runtime-management && npm run test:preset-ui-flows && npm run test:quickpick-regressions && npm run test:restart-batching && npm run test:team-config-persistence && npm run test:chunk-loading-failures && npm run test:preset-application-paths && npm run test:restart-batching-deterministic && npm run test:mock-isolation && npm run test:feature-flags && npm run test:default-loaders && npm run test:git-gating && npm run test:settings-migration && npm run test:theme-integration && npm run test:real-workspace-exercise && npm run test:analyze-matrix && npm run test:batch-processor-chunking && npm run test:security-utils && npm run test:performance-regression",
     "test:config": "node tests/verify-config.js",
     "test:config-scenarios": "node tests/test-configuration-scenarios.js",
     "test:feature-gates": "node tests/test-feature-gates.js",
@@ -976,7 +1034,7 @@
     "test:indexer-fallback": "node tests/test-indexer-fallback.js",
     "test:memory-shedding": "node tests/test-memory-shedding.js",
     "test:workspace-intelligence-chunk": "node tests/test-workspace-intelligence-chunk.js",
-    "test:onboarding-assets-chunking": "node tests/test-onboarding-assets-chunking.js",
+    "test:onboarding-assets-chunking": "npm run build:chunks && node tests/test-onboarding-assets-chunking.js",
     "test:wasm-profiling": "node tests/test-wasm-profiling.js",
     "test:chunk-mapping": "node tests/test-chunk-mapping.js",
     "test:web-bundle-smoke": "node tests/test-web-bundle-smoke.js",
@@ -988,7 +1046,7 @@
     "test:memory-isolation-forced-miss": "node --expose-gc tests/test-memory-isolation-forced-miss.js",
     "test:memory-isolation-matrix": "node --expose-gc tests/test-memory-isolation-matrix.js",
     "test:flows": "node tests/exercise-flows.js",
-    "test:bundle": "node tests/test-bundle.js",
+    "test:bundle": "npm run build:prod && node tests/test-bundle.js",
     "test:verify-bundle": "node tests/verify-bundle.js",
     "test:runtime-management": "node tests/test-runtime-management.js",
     "test:preset-ui-flows": "node tests/test-preset-ui-flows.js",
@@ -1007,24 +1065,31 @@
     "test:real-workspace-exercise": "node tests/test-real-workspace-exercise.js",
     "test:analyze-matrix": "node tests/analyze-matrix.js",
     "test:batch-processor-chunking": "node tests/batchProcessor.chunking.test.js",
+    "test:security-utils": "node tests/test-security-utils.js",
+    "test:chunk-availability": "node tests/test-chunk-availability.js",
+    "test:production-parity": "node tests/test-production-parity.js",
+    "test:performance-regression": "node tests/test-performance-regression.js",
+    "test:critical": "npm run test:preset-application-paths && npm run test:team-config-persistence && npm run test:chunk-loading-failures",
+    "setup:baseline-variables": "node scripts/setup-baseline-variables.js",
+    "test:with-baselines": "node scripts/test-with-baselines.js",
     "test:memory": "node --expose-gc tests/test-memory-soak.js",
     "test:memory-fuzz": "node --expose-gc tests/test-memory-fuzz.js",
     "test:memory-soak": "EXPLORER_DATES_MEMORY_SHEDDING=1 EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB=2 node --expose-gc tests/test-memory-soak.js",
     "test:memory-lightweight": "EXPLORER_DATES_LIGHTWEIGHT_MODE=1 node --expose-gc tests/test-memory-soak.js",
-    "compile": "node esbuild.js",
-    "compile:federation": "node esbuild-federation.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
+    "test:memory-suite": "npm-run-all --sequential test:memory test:memory-isolation test:memory-fuzz test:memory-isolation-matrix test:analyze-matrix",
+    "test:memory-matrix": "node scripts/run-memory-profiles.js",
+    "build": "node esbuild.js",
+    "build:prod": "node esbuild.js --production",
+    "build:chunks": "node esbuild-federation.js --chunks --production",
+    "build:federation": "node esbuild-federation.js --production",
+    "watch": "npm-run-all -p watch:dev watch:chunks",
+    "watch:dev": "node esbuild.js --watch",
     "watch:chunks": "node esbuild-federation.js --chunks --watch",
-    "watch:federation": "node esbuild-federation.js --watch",
-    "vscode:prepublish": "npm run package-bundle",
-    "package": "vsce package",
-    "package:core": "node esbuild.js --production",
-    "package-bundle": "npm-run-all --sequential package:core package-chunks",
-    "package-bundle:federation": "node esbuild-federation.js --production",
-    "package-chunks": "node esbuild-federation.js --chunks --production",
-    "watch-chunks": "node esbuild-federation.js --chunks --watch",
-    "build:analysis": "npm run package-bundle && npm run package-chunks",
+    "watch-chunks": "npm run watch:chunks",
+    "package": "npm-run-all --sequential build:prod build:chunks",
+    "package-chunks": "npm run build:chunks",
+    "package:vsix": "vsce package",
+    "vscode:prepublish": "npm run package",
     "publish": "vsce publish",
     "format:settings": "node scripts/sort-settings.js"
   },

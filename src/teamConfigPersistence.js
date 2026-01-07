@@ -43,6 +43,7 @@ class TeamConfigPersistenceManager {
         this._lastTeamConfigPath = null;
         this._lastProfileId = null;
         this._ephemeralConfigs = new Map();
+        this._ephemeralNoticeShown = new Set();
         this._configWatcher = null;
         this._changeTimeout = null;
         this._settings = getSettingsCoordinator();
@@ -264,16 +265,7 @@ class TeamConfigPersistenceManager {
                 throw error;
             }
             logger.warn('Workspace directory is not writable; continuing with ephemeral storage', { code: error.code });
-            
-            // Enhanced user notification for permission errors
-            if (error.code === 'EACCES' || error.code === 'EPERM') {
-                vscode.window.showWarningMessage(
-                    'Explorer Dates team configuration cannot be saved due to file permissions. ' +
-                    'Configuration will be stored temporarily and may be lost when VS Code restarts. ' +
-                    'Contact your administrator to enable write access to the workspace folder.',
-                    'Understood'
-                );
-            }
+            this._notifyEphemeralStorageWarning(error);
         }
         
         try {
@@ -1409,8 +1401,27 @@ class TeamConfigPersistenceManager {
     
     _shouldUseEphemeralStorage(error) {
         if (!error) return false;
-        const restrictedCodes = new Set(['EACCES', 'EPERM', 'EROFS', 'ENOENT']);
-        return process.env.EXPLORER_DATES_TEST_MODE === '1' && restrictedCodes.has(error.code);
+        const restrictedCodes = new Set(['EACCES', 'EPERM', 'EROFS', 'ENOSPC']);
+        return restrictedCodes.has(error.code);
+    }
+
+    _notifyEphemeralStorageWarning(error) {
+        const code = error?.code || 'generic';
+        if (this._ephemeralNoticeShown.has(code)) {
+            return;
+        }
+        this._ephemeralNoticeShown.add(code);
+        const reasonCode = error?.code;
+        let detail;
+        if (reasonCode === 'ENOSPC') {
+            detail = 'Explorer Dates team configuration could not be saved because the disk is full.';
+        } else {
+            detail = 'Explorer Dates team configuration could not be saved because the workspace is read-only or permissions are restricted.';
+        }
+        vscode.window.showWarningMessage(
+            `${detail} Changes will be kept in memory until VS Code restarts, so they may be lost.`,
+            'Understood'
+        );
     }
     
     async _persistTeamConfig(uri, dataObject) {
@@ -1418,11 +1429,13 @@ class TeamConfigPersistenceManager {
         try {
             await this._fs.writeFile(uri, payload, 'utf8');
             this._ephemeralConfigs.delete(this._getConfigKey(uri));
+            this._resetEphemeralWarnings();
         } catch (error) {
             if (this._shouldUseEphemeralStorage(error)) {
                 const snapshot = JSON.parse(payload);
                 this._ephemeralConfigs.set(this._getConfigKey(uri), snapshot);
                 logger.warn('Stored team configuration in ephemeral memory due to filesystem restriction', { code: error.code });
+                this._notifyEphemeralStorageWarning(error);
                 return;
             }
             
@@ -1443,6 +1456,14 @@ class TeamConfigPersistenceManager {
             
             throw error;
         }
+    }
+
+    _resetEphemeralWarnings() {
+        if (this._ephemeralNoticeShown.size === 0) {
+            return;
+        }
+        this._ephemeralNoticeShown.clear();
+        logger.debug('Filesystem write succeeded after restriction; warning prompts reset');
     }
 }
 

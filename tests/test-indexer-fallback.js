@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { createMockVscode } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 // Patch the vscode import before loading the indexer so tests run headless
 const mockInstall = createMockVscode();
@@ -92,4 +93,4 @@ async function main() {
 main().catch((error) => {
     console.error('❌ Incremental indexer fallback tests failed:', error);
     process.exitCode = 1;
-});
+}).finally(scheduleExit);

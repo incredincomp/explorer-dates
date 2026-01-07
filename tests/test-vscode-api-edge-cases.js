@@ -847,7 +847,13 @@ async function testConfigurationChangeTimingIssues() {
 
 // Run all tests
 runAllTests()
-    .then(() => {
+    .then(({ passed, total }) => {
+        const allPassed = passed === total;
+        if (!allPassed) {
+            console.error(`\n❌ VS Code API edge cases tests failed: ${passed}/${total} passed`);
+            process.exit(1);
+            return;
+        }
         console.log('\n🎉 VS Code API edge cases tests completed');
     })
     .catch((error) => {

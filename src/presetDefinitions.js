@@ -32,6 +32,7 @@ const PRESET_DEFINITIONS = {
             'explorerDates.enableAdvancedCache': false,
             'explorerDates.enableWorkspaceIntelligence': false,
             'explorerDates.enableIncrementalWorkers': false,
+            'explorerDates.performanceMode': true,
             'explorerDates.showDateDecorations': true,
             'explorerDates.dateDecorationFormat': 'relative-short'
         },

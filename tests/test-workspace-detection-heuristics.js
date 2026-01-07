@@ -4,6 +4,9 @@ const assert = require('assert');
 const path = require('path');
 const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
 
+// Allow workspace scans to consider the higher large/extreme thresholds without truncation
+process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULTS = '500000';
+
 async function runWorkspaceDetectionTests() {
     console.log('🧪 Running workspace detection heuristics tests...');
     
@@ -53,7 +56,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             remoteName: 'ssh-remote',
             uiKind: 1, // Desktop
-            mockWorkspaceFileCount: 15000
+            mockWorkspaceFileCount: 300000
         });
         
         const { detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('../src/utils/workspaceDetection');
@@ -74,7 +77,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             remoteName: 'codespaces',
             uiKind: 1, // Desktop
-            mockWorkspaceFileCount: 75000
+            mockWorkspaceFileCount: 450000
         });
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');
@@ -114,7 +117,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             uiKind: 2, // Web
             remoteName: undefined,
-            mockWorkspaceFileCount: 12000
+            mockWorkspaceFileCount: 300000
         });
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');
@@ -132,7 +135,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             uiKind: 2, // Web
             remoteName: undefined,
-            mockWorkspaceFileCount: 60000
+            mockWorkspaceFileCount: 450000
         });
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');
@@ -358,7 +361,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             uiKind: 1, // Desktop
             remoteName: undefined,
-            mockWorkspaceFileCount: 15000
+            mockWorkspaceFileCount: 300000
         });
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');
@@ -376,7 +379,7 @@ async function runWorkspaceDetectionTests() {
         const mock = createMockVscode({
             uiKind: 1, // Desktop
             remoteName: undefined,
-            mockWorkspaceFileCount: 55000
+            mockWorkspaceFileCount: 450000
         });
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');

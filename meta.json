@@ -1,0 +1,953 @@
+{
+  "inputs": {
+    "src/utils/logger.js": {
+      "bytes": 11102,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/localization.js": {
+      "bytes": 6535,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/env.js": {
+      "bytes": 223,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/pathUtils.js": {
+      "bytes": 2212,
+      "imports": [
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/errors.js": {
+      "bytes": 2211,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/dateHelpers.js": {
+      "bytes": 5920,
+      "imports": [
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/filesystem/FileSystemAdapter.js": {
+      "bytes": 7553,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/env.js",
+          "kind": "require-call",
+          "original": "../utils/env"
+        },
+        {
+          "path": "src/utils/pathUtils.js",
+          "kind": "require-call",
+          "original": "../utils/pathUtils"
+        },
+        {
+          "path": "src/utils/errors.js",
+          "kind": "require-call",
+          "original": "../utils/errors"
+        },
+        {
+          "path": "src/utils/dateHelpers.js",
+          "kind": "require-call",
+          "original": "../utils/dateHelpers"
+        },
+        {
+          "path": "fs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/constants.js": {
+      "bytes": 1020,
+      "imports": [],
+      "format": "cjs"
+    },
+    "src/utils/formatters.js": {
+      "bytes": 865,
+      "imports": [
+        {
+          "path": "src/constants.js",
+          "kind": "require-call",
+          "original": "../constants"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/securityUtils.js": {
+      "bytes": 16430,
+      "imports": [
+        {
+          "path": "src/utils/pathUtils.js",
+          "kind": "require-call",
+          "original": "./pathUtils"
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./logger"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/presetDefinitions.js": {
+      "bytes": 8086,
+      "imports": [
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/shared/chunkMap.js": {
+      "bytes": 1780,
+      "imports": [
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/featureFlags.js": {
+      "bytes": 19227,
+      "imports": [
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./utils/logger"
+        },
+        {
+          "path": "src/presetDefinitions.js",
+          "kind": "require-call",
+          "original": "./presetDefinitions"
+        },
+        {
+          "path": "src/shared/chunkMap.js",
+          "kind": "require-call",
+          "original": "./shared/chunkMap"
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/fileDateDecorationProvider.js": {
+      "bytes": 195641,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./utils/logger"
+        },
+        {
+          "path": "src/utils/localization.js",
+          "kind": "require-call",
+          "original": "./utils/localization"
+        },
+        {
+          "path": "src/filesystem/FileSystemAdapter.js",
+          "kind": "require-call",
+          "original": "./filesystem/FileSystemAdapter"
+        },
+        {
+          "path": "src/utils/formatters.js",
+          "kind": "require-call",
+          "original": "./utils/formatters"
+        },
+        {
+          "path": "src/utils/pathUtils.js",
+          "kind": "require-call",
+          "original": "./utils/pathUtils"
+        },
+        {
+          "path": "src/constants.js",
+          "kind": "require-call",
+          "original": "./constants"
+        },
+        {
+          "path": "src/utils/env.js",
+          "kind": "require-call",
+          "original": "./utils/env"
+        },
+        {
+          "path": "src/utils/dateHelpers.js",
+          "kind": "require-call",
+          "original": "./utils/dateHelpers"
+        },
+        {
+          "path": "src/utils/securityUtils.js",
+          "kind": "require-call",
+          "original": "./utils/securityUtils"
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./featureFlags"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/settingsCoordinator.js": {
+      "bytes": 10528,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/commands/coreCommands.js": {
+      "bytes": 24075,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/filesystem/FileSystemAdapter.js",
+          "kind": "require-call",
+          "original": "../filesystem/FileSystemAdapter"
+        },
+        {
+          "path": "src/utils/pathUtils.js",
+          "kind": "require-call",
+          "original": "../utils/pathUtils"
+        },
+        {
+          "path": "src/utils/dateHelpers.js",
+          "kind": "require-call",
+          "original": "../utils/dateHelpers"
+        },
+        {
+          "path": "src/utils/settingsCoordinator.js",
+          "kind": "require-call",
+          "original": "../utils/settingsCoordinator"
+        },
+        {
+          "path": "src/utils/securityUtils.js",
+          "kind": "require-call",
+          "original": "../utils/securityUtils"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/commands/onboardingCommands.js": {
+      "bytes": 2254,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/settingsOrganizer.js": {
+      "bytes": 12120,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./logger"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/commands/migrationCommands.js": {
+      "bytes": 18451,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/settingsCoordinator.js",
+          "kind": "require-call",
+          "original": "../utils/settingsCoordinator"
+        },
+        {
+          "path": "src/utils/settingsOrganizer.js",
+          "kind": "require-call",
+          "original": "../utils/settingsOrganizer"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/templateStore.js": {
+      "bytes": 1812,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "util",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/settingsMigration.js": {
+      "bytes": 20155,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./logger"
+        },
+        {
+          "path": "src/utils/settingsCoordinator.js",
+          "kind": "require-call",
+          "original": "./settingsCoordinator"
+        },
+        {
+          "path": "src/utils/settingsOrganizer.js",
+          "kind": "require-call",
+          "original": "./settingsOrganizer"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/utils/workspaceDetection.js": {
+      "bytes": 4306,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./logger"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/runtimeConfigManager.js": {
+      "bytes": 19735,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./utils/logger"
+        },
+        {
+          "path": "src/utils/workspaceDetection.js",
+          "kind": "require-call",
+          "original": "./utils/workspaceDetection"
+        },
+        {
+          "path": "src/presetDefinitions.js",
+          "kind": "require-call",
+          "original": "./presetDefinitions"
+        },
+        {
+          "path": "src/utils/settingsCoordinator.js",
+          "kind": "require-call",
+          "original": "./utils/settingsCoordinator"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/teamConfigPersistence.js": {
+      "bytes": 54914,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./utils/logger"
+        },
+        {
+          "path": "src/filesystem/FileSystemAdapter.js",
+          "kind": "require-call",
+          "original": "./filesystem/FileSystemAdapter"
+        },
+        {
+          "path": "src/presetDefinitions.js",
+          "kind": "require-call",
+          "original": "./presetDefinitions"
+        },
+        {
+          "path": "src/utils/settingsCoordinator.js",
+          "kind": "require-call",
+          "original": "./utils/settingsCoordinator"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/commands/runtimeCommands.js": {
+      "bytes": 8411,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "../utils/logger"
+        },
+        {
+          "path": "src/runtimeConfigManager.js",
+          "kind": "require-call",
+          "original": "../runtimeConfigManager"
+        },
+        {
+          "path": "src/teamConfigPersistence.js",
+          "kind": "require-call",
+          "original": "../teamConfigPersistence"
+        },
+        {
+          "path": "src/presetDefinitions.js",
+          "kind": "require-call",
+          "original": "../presetDefinitions"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "extension.js": {
+      "bytes": 37517,
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/fileDateDecorationProvider.js",
+          "kind": "require-call",
+          "original": "./src/fileDateDecorationProvider"
+        },
+        {
+          "path": "src/utils/logger.js",
+          "kind": "require-call",
+          "original": "./src/utils/logger"
+        },
+        {
+          "path": "src/utils/localization.js",
+          "kind": "require-call",
+          "original": "./src/utils/localization"
+        },
+        {
+          "path": "src/filesystem/FileSystemAdapter.js",
+          "kind": "require-call",
+          "original": "./src/filesystem/FileSystemAdapter"
+        },
+        {
+          "path": "src/commands/coreCommands.js",
+          "kind": "require-call",
+          "original": "./src/commands/coreCommands"
+        },
+        {
+          "path": "src/commands/onboardingCommands.js",
+          "kind": "require-call",
+          "original": "./src/commands/onboardingCommands"
+        },
+        {
+          "path": "src/commands/migrationCommands.js",
+          "kind": "require-call",
+          "original": "./src/commands/migrationCommands"
+        },
+        {
+          "path": "src/utils/templateStore.js",
+          "kind": "require-call",
+          "original": "./src/utils/templateStore"
+        },
+        {
+          "path": "src/utils/settingsMigration.js",
+          "kind": "require-call",
+          "original": "./src/utils/settingsMigration"
+        },
+        {
+          "path": "src/utils/errors.js",
+          "kind": "require-call",
+          "original": "./src/utils/errors"
+        },
+        {
+          "path": "src/utils/dateHelpers.js",
+          "kind": "require-call",
+          "original": "./src/utils/dateHelpers"
+        },
+        {
+          "path": "src/constants.js",
+          "kind": "require-call",
+          "original": "./src/constants"
+        },
+        {
+          "path": "fs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "src/featureFlags.js",
+          "kind": "require-call",
+          "original": "./src/featureFlags"
+        },
+        {
+          "path": "src/shared/chunkMap.js",
+          "kind": "require-call",
+          "original": "./src/shared/chunkMap"
+        },
+        {
+          "path": "src/commands/runtimeCommands.js",
+          "kind": "require-call",
+          "original": "./src/commands/runtimeCommands"
+        },
+        {
+          "path": "<runtime>",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "cjs"
+    },
+    "src/extension.web.js": {
+      "bytes": 137,
+      "imports": [
+        {
+          "path": "extension.js",
+          "kind": "require-call",
+          "original": "../extension"
+        }
+      ],
+      "format": "cjs"
+    }
+  },
+  "outputs": {
+    "dist/extension.web.js.map": {
+      "imports": [],
+      "exports": [],
+      "inputs": {},
+      "bytes": 197929
+    },
+    "dist/extension.web.js": {
+      "imports": [
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "fs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "util",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vscode",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "fs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        }
+      ],
+      "exports": [],
+      "entryPoint": "src/extension.web.js",
+      "inputs": {
+        "src/utils/logger.js": {
+          "bytesInOutput": 6598
+        },
+        "src/utils/localization.js": {
+          "bytesInOutput": 4963
+        },
+        "src/utils/env.js": {
+          "bytesInOutput": 296
+        },
+        "src/utils/pathUtils.js": {
+          "bytesInOutput": 2052
+        },
+        "src/utils/errors.js": {
+          "bytesInOutput": 1594
+        },
+        "src/utils/dateHelpers.js": {
+          "bytesInOutput": 3088
+        },
+        "src/filesystem/FileSystemAdapter.js": {
+          "bytesInOutput": 4872
+        },
+        "src/constants.js": {
+          "bytesInOutput": 733
+        },
+        "src/utils/formatters.js": {
+          "bytesInOutput": 714
+        },
+        "src/utils/securityUtils.js": {
+          "bytesInOutput": 7761
+        },
+        "src/presetDefinitions.js": {
+          "bytesInOutput": 5885
+        },
+        "src/shared/chunkMap.js": {
+          "bytesInOutput": 1341
+        },
+        "src/featureFlags.js": {
+          "bytesInOutput": 13562
+        },
+        "src/fileDateDecorationProvider.js": {
+          "bytesInOutput": 118751
+        },
+        "src/utils/settingsCoordinator.js": {
+          "bytesInOutput": 7283
+        },
+        "src/commands/coreCommands.js": {
+          "bytesInOutput": 16969
+        },
+        "src/commands/onboardingCommands.js": {
+          "bytesInOutput": 1871
+        },
+        "src/utils/settingsOrganizer.js": {
+          "bytesInOutput": 8068
+        },
+        "src/commands/migrationCommands.js": {
+          "bytesInOutput": 13529
+        },
+        "src/utils/templateStore.js": {
+          "bytesInOutput": 1462
+        },
+        "src/utils/settingsMigration.js": {
+          "bytesInOutput": 12863
+        },
+        "src/utils/workspaceDetection.js": {
+          "bytesInOutput": 2703
+        },
+        "src/runtimeConfigManager.js": {
+          "bytesInOutput": 12491
+        },
+        "src/teamConfigPersistence.js": {
+          "bytesInOutput": 32067
+        },
+        "src/commands/runtimeCommands.js": {
+          "bytesInOutput": 5777
+        },
+        "extension.js": {
+          "bytesInOutput": 23071
+        },
+        "src/extension.web.js": {
+          "bytesInOutput": 111
+        }
+      },
+      "bytes": 310805
+    }
+  }
+}

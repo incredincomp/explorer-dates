@@ -6,6 +6,8 @@
  */
 
 const { performance } = require('perf_hooks');
+const fs = require('fs');
+const path = require('path');
 
 // Set up VS Code mock
 const { createMockVscode } = require('./helpers/mockVscode');
@@ -43,7 +45,6 @@ async function testWasmProfilingSystem() {
         
         // Load the incremental workers chunk
         const workersChunk = loadChunkForTesting('incrementalWorkers');
-        
         addResult('Incremental workers chunk loads', !!workersChunk);
         
         if (!workersChunk) {
@@ -52,8 +53,16 @@ async function testWasmProfilingSystem() {
         }
         
         // Check if the chunk has the IndexWorkerHost
-        const hasIndexWorkerHost = workersChunk.IndexWorkerHost || workersChunk.createIndexWorkerHost;
-        addResult('Has IndexWorkerHost', !!hasIndexWorkerHost);
+        const hostCtor = workersChunk.IndexWorkerHost;
+        const hostFactory = workersChunk.createIndexWorkerHost;
+        const hasIndexWorkerHost = typeof hostCtor === 'function';
+        addResult('Exports IndexWorkerHost constructor', hasIndexWorkerHost);
+        const exposesFactory = typeof hostFactory === 'function';
+        addResult(
+            'Exports worker host factory (optional)',
+            exposesFactory || hasIndexWorkerHost,
+            exposesFactory ? undefined : 'factory not exported'
+        );
         
         // Test that the worker host file contains profiling code
         const fs = require('fs');
@@ -83,6 +92,35 @@ async function testWasmProfilingSystem() {
         // Check that the WASM path configuration exists
         const hasWasmPath = workerHostContent.includes('digest.wasm');
         addResult('Has WASM path configuration', hasWasmPath);
+
+        // Validate built chunk artifacts exist and contain profiling code
+        const chunkTargets = [
+            { label: 'Node', file: path.join(__dirname, '../dist/chunks/incrementalWorkers.js') },
+            { label: 'Web', file: path.join(__dirname, '../dist/web-chunks/incrementalWorkers.js') }
+        ];
+
+        const chunkMarkers = ['IndexWorkerHost', 'performanceStats', 'wasmTotalTime'];
+
+        for (const target of chunkTargets) {
+            const exists = fs.existsSync(target.file);
+            addResult(`${target.label} incremental workers chunk exists`, exists, target.file);
+
+            if (!exists) {
+                continue;
+            }
+
+            const stats = fs.statSync(target.file);
+            const sizeKb = Math.round(stats.size / 1024);
+            addResult(`${target.label} incremental workers chunk non-empty`, sizeKb > 2, `${sizeKb}KB`);
+
+            const contents = fs.readFileSync(target.file, 'utf8');
+            const missingMarkers = chunkMarkers.filter((marker) => !contents.includes(marker));
+            addResult(
+                `${target.label} incremental workers chunk exports profiling code`,
+                missingMarkers.length === 0,
+                missingMarkers.length ? `Missing markers: ${missingMarkers.join(', ')}` : undefined
+            );
+        }
         
     } catch (error) {
         addResult('WASM profiling system test', false, error.message);
@@ -95,25 +133,30 @@ async function testChunkOptimizations() {
     try {
         // Test that core chunk was removed from federation config
         const { federationConfig } = require('../src/moduleFederation');
-        
-        const hasOldCoreChunk = federationConfig.chunks.hasOwnProperty('core');
-        addResult('Removed redundant core chunk', !hasOldCoreChunk);
-        
-        const chunkCount = Object.keys(federationConfig.chunks).length;
-        addResult('Expected chunk count', chunkCount === 14, `${chunkCount}/14 chunks`);
-        
-        // Test that chunk map still works
         const { getAllChunkNames } = require('../src/shared/chunkMap');
+
         const chunkNames = getAllChunkNames();
-        
+        const hasOldCoreChunk = Object.prototype.hasOwnProperty.call(federationConfig.chunks, 'core');
+        addResult('Removed redundant core chunk', !hasOldCoreChunk);
+
+        const chunkCount = Object.keys(federationConfig.chunks).length;
+        const expectedCount = chunkNames.length;
+        addResult('Expected chunk count', chunkCount === expectedCount, `${chunkCount}/${expectedCount} chunks`);
+
+        // Test that chunk map still works
         const allChunksInFederation = chunkNames.every(name => 
-            federationConfig.chunks.hasOwnProperty(name));
+            Object.prototype.hasOwnProperty.call(federationConfig.chunks, name));
         addResult('All chunk map entries in federation', allChunksInFederation);
-        
+
         // Verify no core chunk in chunk map either
         const hasCoreInMap = chunkNames.includes('core');
         addResult('No core chunk in chunk map', !hasCoreInMap);
-        
+
+        // Ensure new decorationsAdvanced chunk is represented
+        const hasDecorationsAdvanced = chunkNames.includes('decorationsAdvanced') &&
+            Object.prototype.hasOwnProperty.call(federationConfig.chunks, 'decorationsAdvanced');
+        addResult('decorationsAdvanced chunk registered', hasDecorationsAdvanced);
+
     } catch (error) {
         addResult('Chunk optimizations test', false, error.message);
     }

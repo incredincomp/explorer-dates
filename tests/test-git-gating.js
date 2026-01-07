@@ -178,7 +178,10 @@ function runTests() {
 
 // Export for use in other test files
 if (require.main === module) {
-    runTests();
+    const ok = runTests();
+    if (!ok) {
+        process.exit(1);
+    }
 }
 
 module.exports = {

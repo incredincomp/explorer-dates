@@ -13,11 +13,13 @@ const CHUNK_MAP = {
     extensionApi: 'src/chunks/extension-api-chunk',
     advancedCache: 'src/chunks/advancedCache-chunk',
     batchProcessor: 'src/chunks/batchProcessor-chunk',
+    decorationsAdvanced: 'src/chunks/decorations-advanced',
     workspaceIntelligence: 'src/chunks/workspaceIntelligence',
     incrementalWorkers: 'src/chunks/incrementalWorkers',
     uiAdapters: 'src/chunks/ui-adapters',
     gitInsights: 'src/chunks/gitInsights-chunk',
-    smartWatcherFallback: 'src/chunks/smartWatcherFallback-chunk'
+    smartWatcherFallback: 'src/chunks/smartWatcherFallback-chunk',
+    runtimeManagement: 'src/chunks/runtime-management'
 };
 
 /**

@@ -1,7 +1,40 @@
 const esbuild = require('esbuild');
+const path = require('path');
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const alwaysReservedProps = ['activate', 'deactivate', 'provideFileDecoration', 'dispose', 'exports'];
+const crossChunkPrivateProps = [
+  '_accessibility',
+  '_advancedCache',
+  '_allocationTelemetryEnabled',
+  '_batchProcessor',
+  '_batchProcessorModule',
+  '_enableWatcherFallbacks',
+  '_extensionContext',
+  '_fileSystem',
+  '_getIndexerMaxFiles',
+  '_isWeb',
+  '_logger',
+  '_maybeWarnAboutGitLimitations',
+  '_metrics',
+  '_performanceMode',
+  '_progressiveLoadingEnabled',
+  '_progressiveLoadingJobs',
+  '_shouldEnableProgressiveAnalysis',
+  '_smartWatcherFallbackManager',
+  '_telemetryReportInterval',
+  '_telemetryReportTimer',
+  '_themeIntegration',
+  '_workspaceIntelligence'
+];
+const reservePropsPattern = new RegExp(
+  `^(${[...alwaysReservedProps, ...crossChunkPrivateProps].map(escapeRegex).join('|')})$`
+);
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const metafileArg = process.argv.find(arg => arg.startsWith('--metafile='));
+const metafilePath = metafileArg ? path.resolve(metafileArg.split('=')[1]) : null;
 
 /**
  * @type {import('esbuild').Plugin}
@@ -41,9 +74,9 @@ const sharedOptions = {
   drop: production ? ['console', 'debugger'] : [],
   dropLabels: production ? ['DEV', 'DEBUG', 'TEST'] : [], // Drop labeled development blocks
   ignoreAnnotations: false, // Respect pure annotations
-  metafile: production, // Generate metafile for analysis
+  metafile: production || !!metafilePath, // Allow explicit metafile output in dev
   mangleProps: production ? /^_/ : undefined, // Mangle private properties in production
-  reserveProps: production ? /^(activate|deactivate|provideFileDecoration|dispose|exports)$/ : undefined,
+  reserveProps: production ? reservePropsPattern : undefined,
   mangleQuoted: production ? true : false, // Also mangle quoted properties
   pure: production ? [
     'console.log', 'console.debug', 'console.trace', 'console.info', 
@@ -67,6 +100,7 @@ const sharedOptions = {
     'worker_threads', 'cluster', 'net', 'http', 'https', 'url', 'querystring', // Additional Node.js modules
     './chunks/onboarding-chunk', './chunks/reporting-chunk', './chunks/templates-chunk',
     './chunks/analysis-chunk', './chunks/advancedCache-chunk', './chunks/batchProcessor-chunk',
+    './chunks/decorations-advanced', './chunks/runtime-management',
     './chunks/workspaceIntelligence', './chunks/extension-api-chunk', './chunks/ui-adapters',
     './chunks/gitInsights-chunk', './chunks/incrementalWorkers', './chunks/smartWatcherFallback-chunk',
     './chunks/diagnostics-chunk' // Mark chunks as external to prevent double bundling
@@ -122,6 +156,17 @@ async function buildAll() {
           }
         } catch {
           // Silent fallback if analysis fails
+        }
+      }
+
+      // Persist metafile if requested explicitly
+      if (metafilePath && result.metafile) {
+        try {
+          const fs = require('fs');
+          fs.writeFileSync(metafilePath, JSON.stringify(result.metafile, null, 2));
+          console.log(`📝 Metafile written to ${metafilePath}`);
+        } catch (error) {
+          console.error(`❌ Failed to write metafile: ${error.message}`);
         }
       }
     }

@@ -58,25 +58,37 @@ function formatAllocationLine(label, stats = {}) {
     return `      ${label}: ${reusePercent}% reuse (${reuses}/${total})`;
 }
 
+function scenarioMatches(expected, observed) {
+    if (!expected || !observed) return false;
+    const normalizedExpected = String(expected).toLowerCase();
+    const normalizedObserved = String(observed).toLowerCase();
+    if (normalizedObserved === normalizedExpected) {
+        return true;
+    }
+    return normalizedObserved.startsWith(`${normalizedExpected}-`);
+}
+
 function findLatestLogByScenario(scenario) {
     const files = fs.readdirSync(logsDir);
     const matching = [];
-    
+
     for (const file of files) {
         if (!file.startsWith('memory-soak-') || !file.endsWith('.json')) continue;
+        const fullPath = path.join(logsDir, file);
         try {
-            const content = JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf8'));
-            if (content.runMetadata?.scenario === scenario) {
-                matching.push({ file, time: fs.statSync(path.join(logsDir, file)).mtime });
+            const content = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+            const recordedScenario = content.runMetadata?.scenario;
+            if (scenarioMatches(scenario, recordedScenario)) {
+                matching.push({ file: fullPath, time: fs.statSync(fullPath).mtime });
             }
         } catch {
             // skip unparseable files
         }
     }
-    
+
     if (matching.length === 0) return null;
     matching.sort((a, b) => b.time - a.time);
-    return path.join(logsDir, matching[0].file);
+    return matching[0].file;
 }
 
 function extractMetrics(logPath) {
@@ -130,6 +142,7 @@ function extractMetrics(logPath) {
 console.log('📊 Phase 3 Isolation Matrix Analysis\n');
 
 const results = {};
+let failureCount = 0;
 scenarioLabels.forEach(label => {
     const name = scenarioNames[label];
     const logPath = findLatestLogByScenario(label);
@@ -138,6 +151,7 @@ scenarioLabels.forEach(label => {
     if (!metrics) {
         console.log(`⚠️  ${name}: No log found`);
         results[name] = null;
+        failureCount++;
         return;
     }
     
@@ -210,6 +224,7 @@ names.forEach(name => {
     const m = results[name];
     if (!m) {
         console.log(`| ${name} | — | — | — | — | — | — | — |`);
+        failureCount++;
         return;
     }
     
@@ -244,3 +259,8 @@ if (control && poolOnly && flyOnly && neither) {
 }
 
 console.log('\n✅ Matrix analysis complete');
+
+if (failureCount > 0) {
+    console.error(`❌ Matrix analysis failed: ${failureCount} missing or invalid scenario(s)`);
+    process.exit(1);
+}

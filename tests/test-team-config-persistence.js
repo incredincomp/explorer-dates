@@ -1,9 +1,9 @@
 /**
  * Comprehensive tests for Team Configuration Persistence
  * 
- * This test suite provides targeted coverage for the team sharing scaffold
- * in teamConfigPersistence.js. Tests are structured to validate behavior
- * once the TODO implementations are completed.
+ * This suite exercises the full team sharing implementation in
+ * teamConfigPersistence.js, covering persistence, conflict
+ * management, schema validation, and failure recovery.
  * 
  * Test Categories:
  * 1. Profile saving/loading
@@ -82,43 +82,30 @@ async function testProfileSavingAndLoading() {
     };
 
     // Test 1: Profile saving
-    try {
-        const savePath = await manager.saveTeamProfiles(testProfiles);
-        
-        // Should return actual URI path for team config file
-        assert.ok(savePath, 'saveTeamProfiles should return a file path');
-        assert.ok(savePath.toString().includes('.explorer-dates-profiles.json'), 
-            'Save path should point to team config file');
-        
-        console.log('✅ Profile saving structure validated');
-    } catch (error) {
-        // Handle ephemeral storage case for test environments
-        if (error.message.includes('EACCES') || error.message.includes('filesystem restriction')) {
-            console.log('ℹ️  Profile saved to ephemeral storage due to test environment constraints');
-        } else {
-            throw error;
-        }
-    }
+    const savePath = await manager.saveTeamProfiles(testProfiles);
+    
+    // Should return actual URI path for team config file
+    assert.ok(savePath, 'saveTeamProfiles should return a file path');
+    assert.ok(savePath.toString().includes('.explorer-dates-profiles.json'), 
+        'Save path should point to team config file');
+    
+    console.log('✅ Profile saving structure validated');
 
     // Test 2: Profile loading  
-    try {
-        const loadedProfiles = await manager.loadTeamProfiles();
-        
-        if (loadedProfiles === null) {
-            console.log('ℹ️  Profile loading: No team config file exists (expected for fresh test)');
-        } else {
-            // Validate loaded profiles structure
-            assert.ok(typeof loadedProfiles === 'object', 'loadTeamProfiles should return object');
-            assert.ok('development' in loadedProfiles, 'Should contain development profile');
-            assert.ok('production' in loadedProfiles, 'Should contain production profile');
-            assert.ok(loadedProfiles.development.settings, 'Profiles should have settings');
-            console.log('✅ Profile loading with data validated');
-        }
-        
-        console.log('✅ Profile loading structure validated');
-    } catch (error) {
-        console.log('ℹ️  Profile loading error (expected in test environment):', error.message);
+    const loadedProfiles = await manager.loadTeamProfiles();
+    
+    if (loadedProfiles === null) {
+        console.log('ℹ️  Profile loading: No team config file exists (expected for fresh test)');
+    } else {
+        // Validate loaded profiles structure
+        assert.ok(typeof loadedProfiles === 'object', 'loadTeamProfiles should return object');
+        assert.ok('development' in loadedProfiles, 'Should contain development profile');
+        assert.ok('production' in loadedProfiles, 'Should contain production profile');
+        assert.ok(loadedProfiles.development.settings, 'Profiles should have settings');
+        console.log('✅ Profile loading with data validated');
     }
+    
+    console.log('✅ Profile loading structure validated');
 
     // Test 3: Team configuration existence check
     const hasTeamConfig = await manager.hasTeamConfiguration();
@@ -786,32 +773,19 @@ async function testErrorHandlingAndEdgeCases() {
         fs.rmSync(tempCorruptedWorkspace, { recursive: true, force: true });
     } catch (cleanupError) { /* ignore cleanup errors */ }
 
-    // Test 3: Team profiles with no workspace - test the error condition by
-    // testing the scenario where the method would encounter the check
+    // Test 3: Team profiles with no workspace should throw an error immediately
+    const managerNoWs = new TeamConfigPersistenceManager(context);
+    const profiles = { test: { name: 'test' } };
+    const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
+    vscode.workspace.workspaceFolders = null;
     try {
-        const managerNoWs = new TeamConfigPersistenceManager(context);
-        
-        // Since the scaffold logs but doesn't actually check workspace yet,
-        // we test the error message structure that should be thrown
-        const profiles = { test: { name: 'test' } };
-        
-        // This currently logs and returns placeholder, but when implemented
-        // it should throw an error for no workspace
-        const result = await managerNoWs.saveTeamProfiles(profiles);
-        
-        // Current scaffold behavior: returns a path even without workspace
-        // TODO: When implemented, this should throw an error
-        console.log('ℹ️  Workspace validation: Will be implemented with actual file operations');
-        
-    } catch (error) {
-        // If an error is thrown, validate it's the expected type
-        if (error.message.includes('No workspace folders') || 
-            error.message.includes('workspace') ||
-            error.message.includes('vscode')) {
-            console.log('✅ Error handling structure validated');
-        } else {
-            throw error; // Re-throw unexpected errors
-        }
+        await assert.rejects(
+            () => managerNoWs.saveTeamProfiles(profiles),
+            (error) => typeof error?.message === 'string' && error.message.includes('No workspace folders'),
+            'Should throw descriptive error when attempting to save without a workspace'
+        );
+    } finally {
+        vscode.workspace.workspaceFolders = originalWorkspaceFolders;
     }
 
     // Test 4: Error handling - test logical paths that are actually implemented
@@ -858,15 +832,32 @@ async function testErrorHandlingAndEdgeCases() {
     
     // Force filesystem failure by mocking ensureDirectory to throw EACCES
     const originalEnsureDirectory = ephemeralManager._fs.ensureDirectory;
+    const originalEphemeralWriteFile = ephemeralManager._fs.writeFile;
     ephemeralManager._fs.ensureDirectory = async () => {
         const error = new Error('permission denied');
         error.code = 'EACCES';
         throw error;
     };
+    ephemeralManager._fs.writeFile = async () => {
+        const error = new Error('EACCES: permission denied, open readonly');
+        error.code = 'EACCES';
+        throw error;
+    };
+    const originalShowWarningMessage = vscode.window.showWarningMessage;
+    const warningMessages = [];
+    vscode.window.showWarningMessage = async function(message, ...args) {
+        warningMessages.push(message);
+        return originalShowWarningMessage.call(this, message, ...args);
+    };
     
     try {
         // This should trigger ephemeral storage
         await ephemeralManager.saveTeamProfiles(mockEphemeralProfiles);
+        
+        assert.ok(
+            warningMessages.some(message => message.includes('kept in memory')),
+            'Should notify user that team configuration is stored in memory only'
+        );
         
         // Verify ephemeral storage was used
         const hasEphemeral = ephemeralManager._ephemeralConfigs.size > 0;
@@ -886,6 +877,8 @@ async function testErrorHandlingAndEdgeCases() {
         console.log('ℹ️  Ephemeral storage test error:', error.message);
     } finally {
         ephemeralManager._fs.ensureDirectory = originalEnsureDirectory;
+        ephemeralManager._fs.writeFile = originalEphemeralWriteFile;
+        vscode.window.showWarningMessage = originalShowWarningMessage;
     }
     
     console.log('✅ Error handling and edge cases validated');
@@ -970,7 +963,13 @@ async function testFilesystemErrorScenarios() {
     console.log('Testing partial write failure scenarios...');
     
     const originalWriteFile2 = manager._fs.writeFile;
-    let partialWriteError = false;
+    let diskFallbackHandled = false;
+    const diskWarningMessages = [];
+    const originalShowWarningMessage2 = vscode.window.showWarningMessage;
+    vscode.window.showWarningMessage = async function(message, ...args) {
+        diskWarningMessages.push(message);
+        return originalShowWarningMessage2.call(this, message, ...args);
+    };
     
     manager._fs.writeFile = async (filePath, data) => {
         // Simulate disk full error during write
@@ -982,19 +981,25 @@ async function testFilesystemErrorScenarios() {
     
     try {
         await manager.saveTeamProfiles(testProfiles);
-    } catch (error) {
-        if (error.message.includes('ENOSPC') || error.message.includes('no space left')) {
-            partialWriteError = true;
-            console.log('✅ ENOSPC disk full error properly caught');
-        } else {
-            // Re-throw unexpected errors
-            throw error;
-        }
+        diskFallbackHandled = manager._ephemeralConfigs.size > 0;
+        
+        assert.ok(
+            diskWarningMessages.some(message => message.includes('kept in memory')),
+            'Should notify user when disk-full fallback stores config in memory'
+        );
+        
+        const diskProfiles = await manager.loadTeamProfiles();
+        assert.ok(diskProfiles, 'Should load profiles from in-memory cache after disk-full error');
+        assert.ok('readonly-test' in diskProfiles, 'In-memory cache should contain saved profile');
+        
+        console.log('✅ ENOSPC disk full fallback handled with in-memory cache');
+        
     } finally {
         manager._fs.writeFile = originalWriteFile2;
+        vscode.window.showWarningMessage = originalShowWarningMessage2;
     }
     
-    assert.ok(partialWriteError, 'Should handle partial write failures');
+    assert.ok(diskFallbackHandled, 'Should handle partial write failures using in-memory storage');
     
     // Test 3: Corrupted JSON on disk
     console.log('Testing corrupted JSON handling...');
@@ -1472,6 +1477,56 @@ async function testSchemaValidationAndVersioning() {
     console.log('✅ Schema validation structure prepared');
 }
 
+/**
+ * Test that ephemeral warning notices reset after a successful write
+ */
+async function testEphemeralWarningReset() {
+    console.log('Testing ephemeral warning reset after recovery...');
+    
+    const context = createExtensionContext();
+    const manager = new TeamConfigPersistenceManager(context);
+    
+    const testProfiles = {
+        recovery: {
+            name: 'Recovery Profile',
+            settings: {
+                'explorerDates.enableWorkspaceTemplates': true
+            }
+        }
+    };
+    
+    const originalWriteFile = manager._fs.writeFile;
+    const originalShowWarningMessage = vscode.window.showWarningMessage;
+    let warningsShown = 0;
+    
+    manager._fs.writeFile = async () => {
+        const error = new Error('Read-only workspace');
+        error.code = 'EACCES';
+        throw error;
+    };
+    
+    vscode.window.showWarningMessage = async (message, ...options) => {
+        warningsShown += 1;
+        return originalShowWarningMessage.call(this, message, ...options);
+    };
+    
+    try {
+        await manager.saveTeamProfiles(testProfiles);
+        assert.ok(manager._ephemeralNoticeShown.size > 0, 'Ephemeral warning should be tracked after failure');
+        assert.ok(warningsShown > 0, 'User should be warned about in-memory fallback');
+        
+        manager._fs.writeFile = async () => {};
+        await manager.saveTeamProfiles(testProfiles);
+        
+        assert.strictEqual(manager._ephemeralNoticeShown.size, 0, 'Warning cache should reset once write succeeds');
+    } finally {
+        manager._fs.writeFile = originalWriteFile;
+        vscode.window.showWarningMessage = originalShowWarningMessage;
+    }
+    
+    console.log('✅ Ephemeral warning reset verified');
+}
+
 async function main() {
     console.log('🧪 Starting comprehensive team configuration persistence tests...');
     
@@ -1483,18 +1538,17 @@ async function main() {
         await testFullTeamConfigWorkflow();
         await testErrorHandlingAndEdgeCases();
         await testFilesystemErrorScenarios();
+        await testEphemeralWarningReset();
         await testErrorRecoveryAndUserNotification();
         await testSchemaValidationAndVersioning();
         
         console.log('\n🎯 Team configuration persistence tests completed successfully!');
-        console.log('📝 Tests are structured and ready for when TODO implementations are completed.');
-        console.log('🔧 Priority areas for implementation:');
-        console.log('   1. saveTeamProfiles() - File writing with proper JSON structure');
-        console.log('   2. loadTeamProfiles() - File reading with schema validation');
-        console.log('   3. _detectConfigConflicts() - Settings comparison logic');
-        console.log('   4. _showConflictDetails() - Rich conflict resolution UI');
-        console.log('   5. _applyTeamConfiguration() - Settings application with backup');
-        console.log('   6. _documentUserOverrides() - Override documentation system');
+        console.log('📊 Coverage highlights:');
+        console.log('   • Profile persistence (save/load/update/delete) with schema validation');
+        console.log('   • Conflict detection, resolution prompts, and override documentation');
+        console.log('   • Team configuration application and end-to-end workflow validation');
+        console.log('   • Filesystem, network, and permission failure recovery (including ephemeral fallback)');
+        console.log('   • User notification flows plus schema/version edge cases');
         
     } catch (error) {
         console.error('❌ Team configuration persistence tests failed:', error);

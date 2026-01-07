@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const { createMockVscode } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
     const mockInstall = createMockVscode({
@@ -36,4 +37,4 @@ async function main() {
 main().catch((error) => {
     console.error('❌ Feature level regrets test failed:', error);
     process.exitCode = 1;
-});
+}).finally(scheduleExit);

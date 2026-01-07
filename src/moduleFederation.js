@@ -38,11 +38,13 @@ function getChunkIncludes(chunkName) {
         extensionApi: ['src/extensionApi.js'],
         advancedCache: ['src/advancedCache.js'],
         batchProcessor: ['src/batchProcessor.js'],
+        decorationsAdvanced: ['src/fileDateDecorationProvider.js'],
         workspaceIntelligence: ['src/incrementalIndexer.js', 'src/smartExclusion.js'],
         incrementalWorkers: ['src/workers/indexWorkerHost.js'],
         uiAdapters: ['src/themeIntegration.js', 'src/accessibility.js'],
         gitInsights: ['src/chunks/git-insights-chunk.js'],
-        smartWatcherFallback: ['src/smartWatcherFallback.js']
+        smartWatcherFallback: ['src/smartWatcherFallback.js'],
+        runtimeManagement: ['src/commands/runtimeCommands.js']
     };
     return includesMap[chunkName] || [];
 }

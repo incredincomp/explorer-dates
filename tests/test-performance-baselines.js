@@ -14,6 +14,7 @@ const {
 } = require('../src/presetDefinitions');
 const { CHUNK_MAP } = require('../src/shared/chunkMap');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { BaselineManager } = require('./baseline-manager');
 
 const artifactsDir = path.join(__dirname, 'artifacts', 'performance');
 const trendFile = path.join(artifactsDir, 'baseline-trend.json');
@@ -22,6 +23,41 @@ const BUNDLE_DRIFT_THRESHOLD = 0.05; // 5% built bundle drift
 const DECORATION_DRIFT_FLOOR_MS = 5; // ignore smaller absolute deltas to avoid timer noise
 const FILE_STAT_DRIFT_FLOOR_MS = 2;
 const MAX_HISTORY = 20;
+const DECORATION_TOLERANCE = Number(process.env.EXPLORER_DATES_DECORATION_TOLERANCE || DRIFT_THRESHOLD);
+const FILE_STAT_TOLERANCE = Number(process.env.EXPLORER_DATES_FILE_STAT_TOLERANCE || DRIFT_THRESHOLD);
+const BUNDLE_TOLERANCE = Number(process.env.EXPLORER_DATES_BUNDLE_TOLERANCE || BUNDLE_DRIFT_THRESHOLD);
+const BUNDLE_MIN_DELTA_KB = Number(process.env.EXPLORER_DATES_BUNDLE_MIN_DELTA_KB || 10);
+
+const baselineManager = new BaselineManager({
+    metrics: {
+        decoration_latency_ms: {
+            label: 'Decoration latency',
+            unit: 'ms',
+            tolerancePct: DECORATION_TOLERANCE,
+            minRegressionDelta: DECORATION_DRIFT_FLOOR_MS
+        },
+        file_stat_latency_ms: {
+            label: 'File stat latency',
+            unit: 'ms',
+            tolerancePct: FILE_STAT_TOLERANCE,
+            minRegressionDelta: FILE_STAT_DRIFT_FLOOR_MS
+        }
+    }
+});
+
+baselineManager.defineMetric('bundle_node_total_kb', {
+    label: 'Node bundle size',
+    unit: 'KB',
+    tolerancePct: BUNDLE_TOLERANCE,
+    minRegressionDelta: BUNDLE_MIN_DELTA_KB
+});
+
+baselineManager.defineMetric('bundle_web_total_kb', {
+    label: 'Web bundle size',
+    unit: 'KB',
+    tolerancePct: BUNDLE_TOLERANCE,
+    minRegressionDelta: BUNDLE_MIN_DELTA_KB
+});
 
 const baselineResults = {
     bundleSizes: null,
@@ -45,8 +81,8 @@ async function pathExists(targetPath) {
 async function readBuiltBundleSnapshot() {
     const chunkNames = Object.keys(CHUNK_MAP || {});
     const snapshot = {
-        node: { totalKB: 0, chunks: {}, missing: [] },
-        web: { totalKB: 0, chunks: {}, missing: [] }
+        node: { totalKB: 0, chunks: {}, missing: [], zeroByte: [] },
+        web: { totalKB: 0, chunks: {}, missing: [], zeroByte: [] }
     };
 
     for (const target of ['node', 'web']) {
@@ -64,6 +100,9 @@ async function readBuiltBundleSnapshot() {
                 const sizeKB = Number((stats.size / 1024).toFixed(2));
                 snapshot[target].chunks[chunkName] = sizeKB;
                 snapshot[target].totalKB += sizeKB;
+                if (stats.size === 0) {
+                    snapshot[target].zeroByte.push(chunkName);
+                }
             } catch (error) {
                 if (error.code === 'ENOENT') {
                     snapshot[target].chunks[chunkName] = null;
@@ -222,8 +261,59 @@ async function testPresetBundleSizes() {
         baselineResults.builtBundles = await readBuiltBundleSnapshot();
         const missingNode = baselineResults.builtBundles.node.missing.length;
         const missingWeb = baselineResults.builtBundles.web.missing.length;
-        if (missingNode || missingWeb) {
-            console.warn(`⚠️ Missing built chunks - node: ${missingNode}, web: ${missingWeb}`);
+        const zeroNode = baselineResults.builtBundles.node.zeroByte.length;
+        const zeroWeb = baselineResults.builtBundles.web.zeroByte.length;
+        const formatChunkList = (chunks) => (chunks.length ? chunks.join(', ') : 'none');
+        if (missingNode || missingWeb || zeroNode || zeroWeb) {
+            console.warn(
+                `⚠️ Chunk health check — missing (node:${missingNode}, web:${missingWeb}), zero-byte (node:${zeroNode}, web:${zeroWeb})`
+            );
+            if (missingNode) {
+                console.warn(`   Missing node chunks: ${formatChunkList(baselineResults.builtBundles.node.missing)}`);
+            }
+            if (missingWeb) {
+                console.warn(`   Missing web chunks: ${formatChunkList(baselineResults.builtBundles.web.missing)}`);
+            }
+            if (zeroNode) {
+                console.warn(`   Zero-byte node chunks: ${formatChunkList(baselineResults.builtBundles.node.zeroByte)}`);
+            }
+            if (zeroWeb) {
+                console.warn(`   Zero-byte web chunks: ${formatChunkList(baselineResults.builtBundles.web.zeroByte)}`);
+            }
+        }
+        assert.strictEqual(
+            missingNode,
+            0,
+            `Missing node chunk artifacts: ${formatChunkList(baselineResults.builtBundles.node.missing)} (run "npm run package-chunks")`
+        );
+        assert.strictEqual(
+            missingWeb,
+            0,
+            `Missing web chunk artifacts: ${formatChunkList(baselineResults.builtBundles.web.missing)} (run "npm run package-chunks")`
+        );
+        assert.strictEqual(
+            zeroNode,
+            0,
+            `Zero-byte node chunk artifacts detected: ${formatChunkList(baselineResults.builtBundles.node.zeroByte)} (rebuild the chunks)`
+        );
+        assert.strictEqual(
+            zeroWeb,
+            0,
+            `Zero-byte web chunk artifacts detected: ${formatChunkList(baselineResults.builtBundles.web.zeroByte)} (rebuild the chunks)`
+        );
+        if (Number.isFinite(baselineResults.builtBundles?.node?.totalKB)) {
+            baselineManager.record(
+                'bundle_node_total_kb',
+                Number(baselineResults.builtBundles.node.totalKB.toFixed(2)),
+                { missingChunks: missingNode, zeroByteChunks: zeroNode }
+            );
+        }
+        if (Number.isFinite(baselineResults.builtBundles?.web?.totalKB)) {
+            baselineManager.record(
+                'bundle_web_total_kb',
+                Number(baselineResults.builtBundles.web.totalKB.toFixed(2)),
+                { missingChunks: missingWeb, zeroByteChunks: zeroWeb }
+            );
         }
     });
 }
@@ -268,6 +358,10 @@ async function testDecorationLatencyBaseline() {
                 sampleCount: measurements.length,
                 timestamp: new Date().toISOString()
             };
+            baselineManager.record('decoration_latency_ms', baselineResults.decorationLatency.avgDecorationMs, {
+                samples: measurements.length
+            });
+            baselineManager.record('file_stat_latency_ms', baselineResults.decorationLatency.avgFileStatMs);
             if (!baselineResults.bundleSizes) {
                 throw new Error('Bundle size snapshot unavailable; performance trend cannot be recorded');
             }
@@ -290,6 +384,40 @@ async function main() {
     try {
         await testPresetBundleSizes();
         await testDecorationLatencyBaseline();
+
+        const results = await baselineManager.evaluate();
+        const regressions = [];
+
+        results.forEach((result) => {
+            if (result.status === 'missing-baseline') {
+                console.log(`ℹ️ ${result.label}: ${result.message}`);
+                return;
+            }
+            if (result.status === 'regressed') {
+                regressions.push(result);
+                console.warn(`⚠️ ${result.label}: ${result.message}`);
+                return;
+            }
+            console.log(`📊 ${result.label}: ${result.message}`);
+        });
+
+        const shouldUpdateBaselines = process.env.EXPLORER_DATES_UPDATE_PERF_BASELINES === '1';
+        if (shouldUpdateBaselines) {
+            const updateRemote = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+            await baselineManager.syncBaselines({ updateRemote, updateLocal: true });
+            console.log(`📝 Baselines updated${updateRemote ? ' (GitHub + local)' : ' (local only)'}`);
+        }
+
+        if (regressions.length) {
+            const summary = regressions
+                .map((result) => {
+                    const unit = result.unit || '';
+                    return ` - ${result.message} (baseline ${result.baseline}${unit})`;
+                })
+                .join('\n');
+            throw new Error(`Performance baseline regressions detected:\n${summary}`);
+        }
+
         console.log('\n📈 Performance baseline tests completed successfully');
     } catch (error) {
         console.error('\n❌ Performance baseline tests failed:', error);

@@ -52,7 +52,8 @@ async function testTelemetry() {
     console.log('📈 Current allocation metrics:', provider.getMetrics().allocationTelemetry);
         // Manually trigger a telemetry report to see output
     console.log('📊 Triggering manual telemetry report...');
-    provider._reportAllocationTelemetry();
+    const chunk = await provider._getDecorationsAdvancedChunk();
+    chunk?.reportAllocationTelemetry?.(provider);
         // Wait for telemetry report
     console.log('⏱️  Waiting for telemetry report...');
     await new Promise(resolve => setTimeout(resolve, 3000));

@@ -70,27 +70,29 @@ setTimeout(async () => {
         process.exit(1);
     }
     
-    // Test 3: Verify cache is cleared during refresh
-    console.log('\n📋 Test 3: Verify cache is cleared during refresh');
+    // Test 3: Verify cache marks stale entries for refresh during periodic cycle
+    console.log('\n📋 Test 3: Verify stale cache entries are marked for refresh');
     
-    // Add something to cache
+    // Insert a deliberately stale cache entry
+    const staleTimestamp = Date.now() - (provider._cacheTimeout || 60000) - 1000;
     provider._decorationCache.set('test-key', {
         decoration: new vscode.FileDecoration('5m'),
-        timestamp: Date.now()
+        timestamp: staleTimestamp
     });
     
-    const cacheSize = provider._decorationCache.size;
-    console.log(`   Added test item to cache (size: ${cacheSize})`);
+    console.log(`   Added stale cache entry (timestamp offset: ${Date.now() - staleTimestamp}ms)`);
     
     // Wait for another refresh cycle
     setTimeout(async () => {
-        const newCacheSize = provider._decorationCache.size;
-        console.log(`   Cache size after refresh: ${newCacheSize}`);
+        const refreshedEntry = provider._decorationCache.get('test-key');
+        const wasMarkedForRefresh = !refreshedEntry || refreshedEntry.forceRefresh === true;
         
-        if (newCacheSize === 0) {
-            console.log('   ✅ Cache was cleared during periodic refresh');
+        if (wasMarkedForRefresh) {
+            console.log('   ✅ Stale cache entry was marked for refresh or evicted');
         } else {
-            console.log('   ⚠️  Cache still has items (this may be OK if items were added after clear)');
+            console.log('   ❌ Stale cache entry was not marked for refresh');
+            await provider.dispose();
+            process.exit(1);
         }
         
         // Test 4: Verify dispose cleans up timer

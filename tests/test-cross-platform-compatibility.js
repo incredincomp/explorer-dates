@@ -19,6 +19,7 @@ const path = require('path');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
 
 // Platform detection utilities
+const { scheduleExit } = require('./helpers/forceExit');
 const isWindows = process.platform === 'win32';
 const isMacOS = process.platform === 'darwin';
 const isLinux = process.platform === 'linux';
@@ -289,7 +290,6 @@ async function testUriSchemeCompatibility() {
                     query: '',
                     fragment: ''
                 };
-                
                 const decoration = await provider.provideFileDecoration(uri, { isCancellationRequested: false });
                 results.push({ 
                     scheme: uriTest.scheme, 
@@ -618,7 +618,7 @@ if (require.main === module) {
     main().catch(error => {
         console.error('Cross-platform test suite crashed:', error);
         process.exit(1);
-    });
+    }).finally(scheduleExit);
 }
 
 module.exports = { main };

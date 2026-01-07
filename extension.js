@@ -9,8 +9,9 @@ const { registerOnboardingCommands } = require('./src/commands/onboardingCommand
 const { registerMigrationCommands } = require('./src/commands/migrationCommands');
 const { initializeTemplateStore } = require('./src/utils/templateStore');
 const { SettingsMigrationManager } = require('./src/utils/settingsMigration');
-const { ExtensionError, ERROR_CODES } = require('./src/utils/errors');
+const { ExtensionError, ERROR_CODES, ChunkLoadError, handleChunkFailure } = require('./src/utils/errors');
 const { ensureDate } = require('./src/utils/dateHelpers');
+const { WEB_CHUNK_GLOBAL_KEY, LEGACY_WEB_CHUNK_GLOBAL_KEY } = require('./src/constants');
 const isWebEnvironment = typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
 let nodeFs = null;
 let nodePath = null;
@@ -28,6 +29,20 @@ if (!isWebEnvironment) {
     }
 }
 const AUTO_SUGGESTION_DELAY_MS = 3000;
+const CRITICAL_CHUNKS = ['incrementalWorkers'];
+
+function resolveDefaultDistPath() {
+    if (!nodePath || typeof nodePath.basename !== 'function' || typeof nodePath.join !== 'function') {
+        return null;
+    }
+    const currentDirName = nodePath.basename(__dirname);
+    if (currentDirName === 'dist') {
+        return __dirname;
+    }
+    return nodePath.join(__dirname, 'dist');
+}
+
+const DEFAULT_DIST_PATH = resolveDefaultDistPath();
 // Lazy load large modules to reduce initial bundle size
 // const { OnboardingManager } = require('./src/onboarding');
 // const { WorkspaceTemplatesManager } = require('./src/workspaceTemplates');
@@ -37,6 +52,9 @@ const AUTO_SUGGESTION_DELAY_MS = 3000;
 let fileDateProvider;
 let logger;
 let l10n;
+let runtimeAutoSuggestionTimer = null;
+let activeRuntimeManager = null;
+let activeTeamPersistenceManager = null;
 
 function getActiveLogger() {
     if (!logger) {
@@ -50,7 +68,9 @@ function getActiveLogger() {
  * Implements module federation for maximum bundle optimization
  */
 
+const { registerFeatureFlagsGlobal } = require('./src/utils/featureFlagsBridge');
 const featureFlagsModule = require('./src/featureFlags');
+registerFeatureFlagsGlobal(featureFlagsModule);
 const featureFlags = featureFlagsModule;  // Get all exported methods including spread ones
 const { setFeatureChunkResolver } = featureFlagsModule;
 const { generateDevLoaderMap } = require('./src/shared/chunkMap');
@@ -85,10 +105,11 @@ const sourceChunkLoader = (() => {
 
 const chunkLoader = {
     loadedChunks: new Map(),
-    distPath: nodePath ? __dirname : null,
+    distPath: DEFAULT_DIST_PATH,
     extensionUri: null,
     webChunkPromises: new Map(),
     _webLoadedScripts: new Set(),
+    _missingChunks: new Set(),
 
     initialize(context) {
         if (nodePath) {
@@ -141,6 +162,38 @@ const chunkLoader = {
         }
     },
 
+    assertChunkArtifacts(chunkNames = []) {
+        if (!nodeFs || !this.distPath || !Array.isArray(chunkNames) || chunkNames.length === 0) {
+            return;
+        }
+        const missing = chunkNames.filter((name) => !this._hasChunkArtifacts(name));
+        if (missing.length > 0) {
+            const error = new ChunkLoadError(
+                missing.join(', '),
+                'missing built artifacts',
+                {
+                    recoverable: false,
+                    context: {
+                        chunkNames: missing,
+                        distPath: this.distPath,
+                        fix: 'Run "npm run package-chunks" before packaging or testing.'
+                    }
+                }
+            );
+            handleChunkFailure(missing.join(', '), error, { userFacing: true });
+            throw error;
+        }
+    },
+
+    _hasChunkArtifacts(chunkName) {
+        if (!nodeFs || !this.distPath) {
+            return true;
+        }
+        const nodeChunkPath = nodePath.join(this.distPath, 'chunks', `${chunkName}.js`);
+        const webChunkPath = nodePath.join(this.distPath, 'web-chunks', `${chunkName}.js`);
+        return nodeFs.existsSync(nodeChunkPath) && nodeFs.existsSync(webChunkPath);
+    },
+
     _loadNodeChunk(chunkName) {
         if (nodeFs && nodePath && this.distPath) {
             const builtChunkPath = nodePath.join(this.distPath, 'chunks', `${chunkName}.js`);
@@ -166,6 +219,7 @@ const chunkLoader = {
             return sourceChunkLoader(chunkName);
         }
 
+        this._markChunkMissing(chunkName);
         return null;
     },
 
@@ -183,8 +237,8 @@ const chunkLoader = {
         if (!this.webChunkPromises.has(chunkName)) {
             const promise = (async () => {
                 await this._ensureWebChunkScript(chunkName);
-                const registry = globalThis.__explorerDatesChunks || {};
-                const chunk = registry[chunkName];
+                const registry = this._getWebChunkRegistry();
+                const chunk = registry?.[chunkName];
                 if (!chunk) {
                     throw new Error(`Web chunk ${chunkName} failed to register`);
                 }
@@ -204,11 +258,58 @@ const chunkLoader = {
         if (!vscode.workspace?.fs || !webTextDecoder) {
             throw new Error('Workspace FS or TextDecoder unavailable for web chunk loading');
         }
-        const raw = await vscode.workspace.fs.readFile(chunkUri);
-        const source = webTextDecoder.decode(raw);
-        const evaluator = new Function(source);
-        evaluator.call(globalThis);
-        this._webLoadedScripts.add(chunkName);
+        try {
+            const raw = await vscode.workspace.fs.readFile(chunkUri);
+            const source = webTextDecoder.decode(raw);
+            const evaluator = new Function(source);
+            evaluator.call(globalThis);
+            this._syncChunkRegistryKeys();
+            this._webLoadedScripts.add(chunkName);
+        } catch (error) {
+            this._markChunkMissing(chunkName);
+            throw error;
+        }
+    },
+
+    _getWebChunkRegistry() {
+        const registry =
+            globalThis[WEB_CHUNK_GLOBAL_KEY] ||
+            globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] ||
+            null;
+        if (registry) {
+            this._syncChunkRegistryKeys();
+        }
+        return registry;
+    },
+
+    _syncChunkRegistryKeys() {
+        const registry =
+            globalThis[WEB_CHUNK_GLOBAL_KEY] ||
+            globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] ||
+            {};
+        if (!globalThis[WEB_CHUNK_GLOBAL_KEY]) {
+            globalThis[WEB_CHUNK_GLOBAL_KEY] = registry;
+        }
+        if (!globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY]) {
+            globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] = registry;
+        }
+    },
+
+    _markChunkMissing(chunkName) {
+        if (this._missingChunks.has(chunkName)) {
+            return;
+        }
+        this._missingChunks.add(chunkName);
+        const error = new ChunkLoadError(chunkName, 'artifact unavailable', {
+            recoverable: false,
+            context: {
+                chunkName,
+                distPath: this.distPath,
+                fix: 'Run "npm run package-chunks" to rebuild runtime chunks.'
+            }
+        });
+        getActiveLogger().error(error.message, error);
+        handleChunkFailure(chunkName, error, { userFacing: false });
     }
 };
 
@@ -347,6 +448,17 @@ function ensureExtensionApiManager(context) {
     return extensionApiManagerPromise;
 }
 
+function raiseChunkUnavailable(featureLabel, chunkName) {
+    const message = `${featureLabel} is not available because the required "${chunkName}" runtime chunk failed to load. Reinstall Explorer Dates or run "npm run package-chunks" and reload VS Code.`;
+    getActiveLogger().warn(message, { chunkName });
+    vscode.window.showErrorMessage(message);
+    const error = new ChunkLoadError(chunkName, 'chunk missing at runtime', {
+        recoverable: false,
+        context: { featureLabel }
+    });
+    throw error;
+}
+
 
 
 
@@ -415,6 +527,7 @@ async function activate(context) {
         context.subscriptions.push(l10n);
         initializeTemplateStore(context);
         chunkLoader.initialize(context);
+        chunkLoader.assertChunkArtifacts(CRITICAL_CHUNKS);
         setFeatureChunkResolver((chunkName) => chunkLoader.loadChunk(chunkName));
         
         logger.info('Explorer Dates: Extension activated');
@@ -580,7 +693,7 @@ async function activate(context) {
         });
 
         // Register migration commands
-        const migrationSubscriptions = registerMigrationCommands({
+        const migrationSubscriptions = await registerMigrationCommands({
             context,
             logger,
             getSettingsMigrationManager: () => Promise.resolve(settingsMigrationManager)
@@ -598,27 +711,25 @@ async function activate(context) {
                 console.log('DEBUG: calling get with key enableWorkspaceTemplates, default true');
                 if (!workspaceTemplatesCurrentlyEnabled) {
                     vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to use this command.');
-                    return;
+                    throw new Error('Workspace templates feature disabled via settings.');
                 }
                 
                 // Verify chunk availability before proceeding
                 const workspaceTemplatesChunk = await featureFlags.workspaceTemplates();
                 if (!workspaceTemplatesChunk) {
-                    vscode.window.showWarningMessage('Workspace templates feature is not available. The required module failed to load.');
-                    logger.warn('openTemplateManager command executed but workspaceTemplates chunk is unavailable');
-                    return;
+                    raiseChunkUnavailable('Workspace templates', 'workspaceTemplates');
                 }
                 
                 const templatesManager = await ensureWorkspaceTemplatesManager(context);
                 if (!templatesManager) {
-                    vscode.window.showWarningMessage('Workspace templates module unavailable.');
-                    return;
+                    raiseChunkUnavailable('Workspace templates', 'workspaceTemplates');
                 }
                 await templatesManager.showTemplateManager();
                 logger.info('Template manager opened');
             } catch (error) {
                 logger.error('Failed to open template manager', error);
                 vscode.window.showErrorMessage(`Failed to open template manager: ${error.message}`);
+                throw error;
             }
         });
         context.subscriptions.push(openTemplateManager);
@@ -629,7 +740,11 @@ async function activate(context) {
                 const workspaceTemplatesCurrentlyEnabled = currentFeatureConfig.get('enableWorkspaceTemplates', true);
                 if (!workspaceTemplatesCurrentlyEnabled) {
                     vscode.window.showInformationMessage('Workspace templates are disabled. Enable explorerDates.enableWorkspaceTemplates to save templates.');
-                    return;
+                    throw new Error('Workspace templates feature disabled via settings.');
+                }
+                const workspaceTemplatesChunk = await featureFlags.workspaceTemplates();
+                if (!workspaceTemplatesChunk) {
+                    raiseChunkUnavailable('Workspace templates', 'workspaceTemplates');
                 }
                 const name = await vscode.window.showInputBox({ 
                     prompt: 'Enter template name',
@@ -642,8 +757,7 @@ async function activate(context) {
                     }) || '';
                     const templatesManager = await ensureWorkspaceTemplatesManager(context);
                     if (!templatesManager) {
-                        vscode.window.showWarningMessage('Workspace templates module unavailable.');
-                        return;
+                        raiseChunkUnavailable('Workspace templates', 'workspaceTemplates');
                     }
                     await templatesManager.saveCurrentConfiguration(name, description);
                 }
@@ -651,6 +765,7 @@ async function activate(context) {
             } catch (error) {
                 logger.error('Failed to save template', error);
                 vscode.window.showErrorMessage(`Failed to save template: ${error.message}`);
+                throw error;
             }
         });
         context.subscriptions.push(saveTemplate);
@@ -660,27 +775,25 @@ async function activate(context) {
             try {
                 if (!reportingEnabled) {
                     vscode.window.showInformationMessage('Reporting features are disabled. Enable explorerDates.enableExportReporting to generate reports.');
-                    return;
+                    throw new Error('Reporting features disabled via settings.');
                 }
                 
                 // Verify chunk availability before proceeding
                 const exportReportingChunk = await featureFlags.exportReporting();
                 if (!exportReportingChunk) {
-                    vscode.window.showWarningMessage('Export reporting feature is not available. The required module failed to load.');
-                    logger.warn('generateReport command executed but exportReporting chunk is unavailable');
-                    return;
+                    raiseChunkUnavailable('Export reporting', 'exportReporting');
                 }
                 
                 const reportingManager = await getExportReportingManager();
                 if (!reportingManager) {
-                    vscode.window.showWarningMessage('Reporting system unavailable.');
-                    return;
+                    raiseChunkUnavailable('Export reporting', 'exportReporting');
                 }
                 await reportingManager.showReportDialog();
                 logger.info('Report generation started');
             } catch (error) {
                 logger.error('Failed to generate report', error);
                 vscode.window.showErrorMessage(`Failed to generate report: ${error.message}`);
+                throw error;
             }
         });
         context.subscriptions.push(generateReport);
@@ -690,15 +803,13 @@ async function activate(context) {
             try {
                 if (!apiEnabled) {
                     vscode.window.showInformationMessage('Explorer Dates API is disabled via settings.');
-                    return;
+                    throw new Error('Explorer Dates API disabled via settings.');
                 }
                 
                 // Verify chunk availability before proceeding
                 const extensionApiChunk = await featureFlags.extensionApi();
                 if (!extensionApiChunk) {
-                    vscode.window.showWarningMessage('Extension API feature is not available. The required module failed to load.');
-                    logger.warn('showApiInfo command executed but extensionApi chunk is unavailable');
-                    return;
+                    raiseChunkUnavailable('Extension API', 'extensionApi');
                 }
 
                 const panel = vscode.window.createWebviewPanel(
@@ -724,6 +835,7 @@ async function activate(context) {
             } catch (error) {
                 logger.error('Failed to show API information', error);
                 vscode.window.showErrorMessage(`Failed to show API information: ${error.message}`);
+                throw error;
             }
         });
         context.subscriptions.push(showApiInfo);
@@ -760,21 +872,49 @@ async function activate(context) {
         logger.info('Explorer Dates: Date decorations ready');
 
         // Initialize runtime chunk management system
+        const loadRuntimeCommands = async () => {
+            const runtimeChunk = await featureFlags.loadFeatureModule('runtimeManagement');
+            if (runtimeChunk?.registerRuntimeCommands) {
+                return runtimeChunk.registerRuntimeCommands;
+            }
+            // Runtime commands are chunked; skip loading when the chunk is unavailable to keep the core bundle slim
+            logger.warn('Runtime chunk missing; runtime commands not initialized');
+            return null;
+        };
+
         try {
-            const { registerRuntimeCommands } = require('./src/commands/runtimeCommands');
-            const { runtimeManager, teamPersistenceManager } = registerRuntimeCommands(context);
-            
-            // Schedule auto-suggestion check after activation (3-second delay)
-            setTimeout(async () => {
-                try {
-                    await runtimeManager.checkAutoSuggestion();
-                    await teamPersistenceManager.validateTeamConfiguration();
-                } catch (error) {
-                    logger.debug('Runtime system auto-suggestion failed:', error);
+            const registerRuntimeCommands = await loadRuntimeCommands();
+            if (registerRuntimeCommands) {
+                const { runtimeManager, teamPersistenceManager } = registerRuntimeCommands(context);
+
+                if (activeRuntimeManager?.dispose) {
+                    activeRuntimeManager.dispose();
                 }
-            }, AUTO_SUGGESTION_DELAY_MS);
-            
-            logger.info('Runtime chunk management system initialized');
+                if (activeTeamPersistenceManager?.dispose) {
+                    activeTeamPersistenceManager.dispose();
+                }
+                activeRuntimeManager = runtimeManager;
+                activeTeamPersistenceManager = teamPersistenceManager;
+
+                // Schedule auto-suggestion check after activation (3-second delay)
+                const shouldScheduleAutoSuggestion = process.env.EXPLORER_DATES_TEST_MODE !== '1';
+                if (shouldScheduleAutoSuggestion) {
+                    runtimeAutoSuggestionTimer = setTimeout(async () => {
+                        try {
+                            await runtimeManager.checkAutoSuggestion();
+                            await teamPersistenceManager.validateTeamConfiguration();
+                        } catch (error) {
+                            logger.debug('Runtime system auto-suggestion failed:', error);
+                        }
+                    }, AUTO_SUGGESTION_DELAY_MS);
+                } else {
+                    logger.debug('Skipping runtime auto-suggestion timer in test mode');
+                }
+
+                logger.info('Runtime chunk management system initialized');
+            } else {
+                logger.warn('Runtime chunk management system unavailable');
+            }
         } catch (error) {
             logger.error('Failed to initialize runtime chunk management:', error);
         }
@@ -798,6 +938,21 @@ async function activate(context) {
 async function deactivate() {
     try {
         getActiveLogger().info('Explorer Dates extension is being deactivated');
+
+        if (runtimeAutoSuggestionTimer) {
+            clearTimeout(runtimeAutoSuggestionTimer);
+            runtimeAutoSuggestionTimer = null;
+        }
+
+        if (activeRuntimeManager?.dispose) {
+            activeRuntimeManager.dispose();
+            activeRuntimeManager = null;
+        }
+
+        if (activeTeamPersistenceManager?.dispose) {
+            activeTeamPersistenceManager.dispose();
+            activeTeamPersistenceManager = null;
+        }
         
         // Clean up resources
         if (fileDateProvider && typeof fileDateProvider.dispose === 'function') {

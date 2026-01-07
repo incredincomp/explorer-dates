@@ -22,6 +22,19 @@ function registerRuntimeCommands(context) {
                 vscode.window.showErrorMessage(`Failed to apply preset: ${error.message}`);
             }
         }),
+
+        // Restore previous preset from backup
+        vscode.commands.registerCommand('explorerDates.restorePreviousPreset', async () => {
+            try {
+                const result = await runtimeManager.restorePreviousPreset();
+                if (!result.restored) {
+                    logger.info('No preset backup available to restore');
+                }
+            } catch (error) {
+                logger.error('Restore previous preset command failed:', error);
+                vscode.window.showErrorMessage(`Failed to restore previous preset: ${error.message}`);
+            }
+        }),
         
         // Show runtime configuration optimizer
         vscode.commands.registerCommand('explorerDates.configureRuntime', async () => {

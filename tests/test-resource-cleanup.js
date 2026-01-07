@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
     const mockInstall = createMockVscode({
@@ -329,7 +330,7 @@ if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error);
         process.exit(1);
-    });
+    }).finally(scheduleExit);
 }
 
 module.exports = { main };

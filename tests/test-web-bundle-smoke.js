@@ -33,6 +33,9 @@ async function runWebSmokeTest() {
         await webBundle.activate(context);
         await webBundle.deactivate();
 
+        const registeredCommands = await harness.vscode.commands.getCommands(true);
+        assert.ok(Array.isArray(registeredCommands), 'Web bundle should expose command registry');
+
         const gitContextCall = harness.commandCalls.find(
             (call) =>
                 call.command === 'setContext' &&
@@ -70,6 +73,7 @@ async function runWebSmokeTest() {
         process.exitCode = 1;
     } finally {
         harness.restore();
+        process.exit(process.exitCode ?? 0);
     }
 }
 

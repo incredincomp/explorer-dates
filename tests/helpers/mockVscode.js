@@ -2,11 +2,17 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const Module = require('module');
+const { registerFeatureFlagsGlobal } = require('../../src/utils/featureFlagsBridge');
 
 const FORCE_WORKSPACE_FS_ENV = 'EXPLORER_DATES_FORCE_VSCODE_FS';
 const TEST_MODE_ENV = 'EXPLORER_DATES_TEST_MODE';
 const CHUNK_TIMEOUT_ENV = 'EXPLORER_DATES_CHUNK_TIMEOUT';
 const GLOBAL_VSCODE_SYMBOL = '__explorerDatesVscode';
+const CHUNK_ALIAS_MAP = {
+    exportReporting: 'reporting',
+    workspaceTemplates: 'templates',
+    analysisCommands: 'analysis'
+};
 const originalModuleLoad = Module._load;
 let sharedVscodeMock = null;
 let hookInstalled = false;
@@ -23,6 +29,19 @@ const pkg = require(path.join(workspaceRoot, 'package.json'));
 const MAX_LOG_ENTRIES = Number(process.env.MOCK_VSCODE_MAX_LOG_ENTRIES || 200);
 
 const configurationProperties = pkg?.contributes?.configuration?.properties || {};
+
+function ensureFeatureFlagsRegistered() {
+    try {
+        if (typeof globalThis !== 'undefined' && globalThis.__explorerDatesFeatureFlags) {
+            return globalThis.__explorerDatesFeatureFlags;
+        }
+        const featureFlags = require('../../src/featureFlags');
+        registerFeatureFlagsGlobal(featureFlags);
+        return featureFlags;
+    } catch {
+        return null;
+    }
+}
 
 function cloneDefault(value) {
     if (Array.isArray(value)) {
@@ -297,8 +316,35 @@ function createConfiguration(
 
 function createFileSystemApi(mock, options = {}) {
     const mockDirectoryContents = options.mockDirectoryContents || {};
-    
-    return {
+    const activeStats = new Map();
+    let statCounter = 0;
+
+    const recordStatStart = (uri) => {
+        const id = `stat-${Date.now()}-${statCounter++}`;
+        activeStats.set(id, {
+            id,
+            path: uri?.fsPath || uri?.path || '<unknown>',
+            startedAt: Date.now()
+        });
+        return id;
+    };
+
+    const recordStatEnd = (id) => {
+        activeStats.delete(id);
+    };
+
+    const shouldUseVirtualStat = (targetPath) => {
+        if (!targetPath) {
+            return true;
+        }
+        const base = path.basename(targetPath);
+        if (base === '.explorer-dates-profiles.json') {
+            return true;
+        }
+        return !fs.existsSync(targetPath);
+    };
+
+    const api = {
         async readDirectory(uri) {
             const dirPath = uri.fsPath;
             
@@ -308,7 +354,7 @@ function createFileSystemApi(mock, options = {}) {
             }
             
             try {
-                const entries = await fsp.readdir(uri.fsPath, { withFileTypes: true });
+                const entries = fs.readdirSync(uri.fsPath, { withFileTypes: true });
                 return entries.map((entry) => [
                     entry.name,
                     entry.isDirectory() ? mock.FileType.Directory : mock.FileType.File
@@ -321,12 +367,17 @@ function createFileSystemApi(mock, options = {}) {
             }
         },
         async stat(uri) {
+            const token = recordStatStart(uri);
             try {
-                const stats = await fsp.stat(uri.fsPath);
+                const targetPath = uri.fsPath;
+                if (shouldUseVirtualStat(targetPath)) {
+                    return createVirtualFileStat(mock, targetPath);
+                }
+                const stats = fs.statSync(targetPath);
                 return {
                     type: stats.isDirectory() ? mock.FileType.Directory : mock.FileType.File,
-                    ctime: stats.ctimeMs,
-                    mtime: stats.mtimeMs,
+                    ctime: stats.ctimeMs ?? stats.ctime?.getTime?.(),
+                    mtime: stats.mtimeMs ?? stats.mtime?.getTime?.(),
                     size: stats.size,
                     birthtime: stats.birthtimeMs ?? (stats.birthtime ? stats.birthtime.getTime() : stats.ctimeMs)
                 };
@@ -335,29 +386,47 @@ function createFileSystemApi(mock, options = {}) {
                     return createVirtualFileStat(mock, uri.fsPath);
                 }
                 throw error;
+            } finally {
+                recordStatEnd(token);
             }
         },
         async readFile(uri) {
+            const targetPath = uri.fsPath;
             try {
-                return await fsp.readFile(uri.fsPath);
+                if (fs.existsSync(targetPath)) {
+                    return fs.readFileSync(targetPath);
+                }
+                return Buffer.from(createVirtualFileContent(targetPath));
             } catch (error) {
                 if (error.code === 'ENOENT') {
-                    return Buffer.from(createVirtualFileContent(uri.fsPath));
+                    return Buffer.from(createVirtualFileContent(targetPath));
                 }
                 throw error;
             }
         },
         async writeFile(uri, data) {
-            await fsp.mkdir(path.dirname(uri.fsPath), { recursive: true });
-            await fsp.writeFile(uri.fsPath, data);
+            fs.mkdirSync(path.dirname(uri.fsPath), { recursive: true });
+            fs.writeFileSync(uri.fsPath, data);
         },
         async createDirectory(uri) {
-            await fsp.mkdir(uri.fsPath, { recursive: true });
+            fs.mkdirSync(uri.fsPath, { recursive: true });
         },
         async delete(uri, options = {}) {
-            await fsp.rm(uri.fsPath, { recursive: options.recursive ?? false, force: true });
+            try {
+                fs.rmSync(uri.fsPath, { recursive: options.recursive ?? false, force: true });
+            } catch (error) {
+                if (error.code === 'ERR_FS_EISDIR' || error.code === 'EISDIR') {
+                    fs.rmdirSync(uri.fsPath, { recursive: options.recursive ?? false });
+                } else {
+                    throw error;
+                }
+            }
         }
     };
+    
+    api._getActiveStats = () => Array.from(activeStats.values());
+
+    return api;
 }
 
 /**
@@ -855,7 +924,7 @@ function createMockVscode(options = {}) {
                 const targetPath = defaultUri && path.isAbsolute(defaultUri)
                     ? defaultUri
                     : path.join(workspaceRoot, 'tests', 'artifacts', 'reports', 'configuration-report.json');
-                await fsp.mkdir(path.dirname(targetPath), { recursive: true });
+                fs.mkdirSync(path.dirname(targetPath), { recursive: true });
                 return VSCodeUri.file(targetPath);
             },
             withProgress: async (_, task) => task(() => {})
@@ -868,6 +937,9 @@ function createMockVscode(options = {}) {
                         commandRegistry.delete(commandId);
                     }
                 };
+            },
+            async getCommands(_filterInternal = true) {
+                return Array.from(commandRegistry.keys());
             },
             async executeCommand(commandId, ...args) {
                 if (commandId === 'setContext') {
@@ -966,7 +1038,8 @@ function createMockVscode(options = {}) {
         }
     };
 
-    mock.workspace.fs = createFileSystemApi(mock, { mockDirectoryContents });
+    const workspaceFs = createFileSystemApi(mock, { mockDirectoryContents });
+    mock.workspace.fs = workspaceFs;
 
     // Theme change helpers so tests can simulate VS Code notifications
     const themeEmitter = new mock.EventEmitter();
@@ -1029,12 +1102,16 @@ function createMockVscode(options = {}) {
     };
 
     installModuleHook();
-    
+
     // Handle isolation: create separate mock instances when requested
     let actualVscodeMock;
     if (forceIsolation) {
         // Create isolated mock - don't use shared instance
         actualVscodeMock = mock;
+        // Ensure module hook can serve a mock for resolver installs in isolation mode
+        if (!sharedVscodeMock) {
+            sharedVscodeMock = mock;
+        }
     } else {
         // Use shared mock system as before
         if (!sharedVscodeMock) {
@@ -1050,6 +1127,64 @@ function createMockVscode(options = {}) {
         // ignore if global scope unavailable
     }
     activeMockUsers++;
+
+    // Always install a chunk resolver so both node and web test modes can see built artifacts
+    try {
+        const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+        const featureFlags = require('../../src/featureFlags');
+
+        const resolveChunkName = (requested) => {
+            if (CHUNK_MAP[requested]) {
+                return requested;
+            }
+            if (CHUNK_ALIAS_MAP[requested]) {
+                const alias = CHUNK_ALIAS_MAP[requested];
+                return CHUNK_MAP[alias] ? alias : requested;
+            }
+            return requested;
+        };
+
+        const preferSourceChunks = options.useDistChunks !== true &&
+            process.env.EXPLORER_DATES_FORCE_DIST_CHUNKS !== '1';
+
+        const resolveChunkPath = (chunkName, target) => {
+            const normalized = resolveChunkName(chunkName);
+
+            if (preferSourceChunks) {
+                const sourceRelPath = CHUNK_MAP[normalized];
+                if (sourceRelPath) {
+                    const sourcePath = path.join(workspaceRoot, `${sourceRelPath}.js`);
+                    if (fs.existsSync(sourcePath)) {
+                        return sourcePath;
+                    }
+                }
+            }
+
+            const baseDir = target === 'web'
+                ? ['dist', 'web-chunks']
+                : ['dist', 'chunks'];
+            return path.join(workspaceRoot, ...baseDir, `${normalized}.js`);
+        };
+
+        featureFlags.setFeatureChunkResolver((chunkName) => {
+            const isWeb = (options.uiKind === 2) || process.env.VSCODE_WEB === 'true';
+            const target = isWeb ? 'web' : 'node';
+            const chunkPath = resolveChunkPath(chunkName, target);
+            if (!fs.existsSync(chunkPath)) {
+                return null;
+            }
+            try {
+                delete require.cache[chunkPath];
+                const mod = require(chunkPath);
+                return mod?.default || mod;
+            } catch (error) {
+                console.warn(`Failed to resolve chunk ${chunkName} from ${chunkPath}: ${error.message}`);
+                return null;
+            }
+        });
+    } catch (error) {
+        console.warn(`Failed to install feature chunk resolver: ${error.message}`);
+    }
 
     process.env[FORCE_WORKSPACE_FS_ENV] = '1';
     process.env[TEST_MODE_ENV] = '1';
@@ -1117,6 +1252,7 @@ function createMockVscode(options = {}) {
         getThemeListenerCount: () => (actualVscodeMock.getThemeListenerCount ? actualVscodeMock.getThemeListenerCount() : 0),
         InMemoryMemento,
         VSCodeUri,
+        getActiveFsOperations: () => (workspaceFs._getActiveStats ? workspaceFs._getActiveStats() : []),
         dispose
     };
     
@@ -1197,6 +1333,7 @@ function loadChunkForTesting(chunkName, options = {}) {
     
     const fullSourcePath = `../../${sourcePath}`;
     try {
+        ensureFeatureFlagsRegistered();
         return require(fullSourcePath);
     } catch (error) {
         if (!suppressLoadErrors) {
@@ -1228,6 +1365,7 @@ function loadBuiltChunkForTesting(chunkName, options = {}) {
         process.env.VSCODE_WEB = 'true';
     }
     try {
+        ensureFeatureFlagsRegistered();
         delete require.cache[chunkPath];
         return require(chunkPath);
     } catch (error) {
@@ -1325,6 +1463,29 @@ function getAllChunkNames() {
     return getNames();
 }
 
+function chunkExists(chunkName) {
+    const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+    const normalized = CHUNK_MAP[chunkName]
+        ? chunkName
+        : (CHUNK_ALIAS_MAP[chunkName] && CHUNK_MAP[CHUNK_ALIAS_MAP[chunkName]])
+            ? CHUNK_ALIAS_MAP[chunkName]
+            : chunkName;
+
+    const nodePath = path.join(workspaceRoot, 'dist', 'chunks', `${normalized}.js`);
+    const webPath = path.join(workspaceRoot, 'dist', 'web-chunks', `${normalized}.js`);
+
+    // Succeed when either target is built to avoid false negatives in single-target runs
+    return fs.existsSync(nodePath) || fs.existsSync(webPath);
+}
+
+function expectChunkOrFail(chunkName, required = false) {
+    const exists = chunkExists(chunkName);
+    if (required && !exists) {
+        throw new Error(`Required chunk ${chunkName} missing - run "npm run package-chunks"`);
+    }
+    return exists;
+}
+
 module.exports = {
     createMockVscode,
     createExtensionContext,
@@ -1338,6 +1499,8 @@ module.exports = {
     validateBuiltChunks,
     loadAllChunksForTesting,
     getAllChunkNames,
+    chunkExists,
+    expectChunkOrFail,
     // Enhanced isolation utilities  
     createIsolatedMock: (options = {}) => createMockVscode({ ...options, forceIsolation: true }),
     TestSuiteManager,

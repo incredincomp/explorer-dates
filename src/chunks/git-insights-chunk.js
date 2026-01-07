@@ -8,6 +8,8 @@ const { execAsync } = require('../utils/execAsync');
 const { IndexWorkerHost } = require('../workers/indexWorkerHost');
 const { getRelativePath } = require('../utils/pathUtils');
 
+const DISABLE_GIT_FEATURES = process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
+
 class GitInsightsManager {
     constructor() {
         this._logger = getLogger();
@@ -33,6 +35,12 @@ class GitInsightsManager {
      */
     async initialize(options = {}) {
         if (this._initialized) {
+            return;
+        }
+
+        if (DISABLE_GIT_FEATURES) {
+            this._logger.debug('🔧 Git insights disabled via EXPLORER_DATES_DISABLE_GIT_FEATURES');
+            this._initialized = true;
             return;
         }
 
@@ -80,7 +88,7 @@ class GitInsightsManager {
      * @returns {Promise<boolean>}
      */
     async isGitAvailable() {
-        if (!execAsync) {
+        if (DISABLE_GIT_FEATURES || !execAsync) {
             return false;
         }
         
@@ -99,7 +107,7 @@ class GitInsightsManager {
      * @returns {Promise<Object|null>} Git blame info or null
      */
     async getGitBlameInfo(filePath, statMtimeMs = null) {
-        if (!execAsync) {
+        if (DISABLE_GIT_FEATURES || !execAsync) {
             return null;
         }
 

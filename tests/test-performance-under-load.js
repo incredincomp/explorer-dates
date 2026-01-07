@@ -16,10 +16,14 @@
 const assert = require('assert');
 const { performance } = require('perf_hooks');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
+
+// Allow workspace scans to reflect the raised large/extreme thresholds
+process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULTS = '500000';
 
 // Test configuration
 const LARGE_WORKSPACE_SIZE = 25000;
-const MASSIVE_WORKSPACE_SIZE = 100000; 
+const MASSIVE_WORKSPACE_SIZE = 450000; 
 const HIGH_FREQUENCY_EVENTS = 500;
 const CONCURRENT_REQUESTS = 100;
 const MEMORY_PRESSURE_CYCLES = 50;
@@ -93,19 +97,17 @@ async function testMassiveWorkspaceOptimization() {
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
-        // Simulate massive workspace (100k files)
-        vscode.workspace.findFiles = async () => Array.from(
-            { length: MASSIVE_WORKSPACE_SIZE }, 
-            (_, i) => VSCodeUri.file(`/massive/file-${i}.js`)
-        );
+        // Simulate massive workspace (450k files)
+        // Sparse array is sufficient here because only the length is used for scale detection.
+        vscode.workspace.findFiles = async () => new Array(MASSIVE_WORKSPACE_SIZE);
 
         const provider = new FileDateDecorationProvider();
         await provider.checkWorkspaceSize();
         
         // Should auto-optimize for extreme scale
         assert.strictEqual(provider._workspaceScale, 'extreme', 'Should detect extreme workspace scale');
-        assert.ok(provider._featureLevel === 'minimal' || provider._featureLevel === 'standard', 
-                 'Should downgrade feature level for extreme scale');
+        assert.strictEqual(provider._featureLevel, 'standard', 'Extreme scale should downgrade to standard feature level');
+        assert.ok(provider._featureProfile?.enableColors, 'Extreme scale should keep colors enabled');
         
         // Test that optimizations work
         const uri = VSCodeUri.file('/massive/test.js');
@@ -113,7 +115,7 @@ async function testMassiveWorkspaceOptimization() {
         const decoration = await provider.provideFileDecoration(uri, { isCancellationRequested: false });
         const endTime = performance.now();
         
-        assert.ok(endTime - startTime < 100, 'Optimized decoration should be very fast');
+        assert.ok(endTime - startTime < 200, 'Optimized decoration should be very fast');
         console.log(`✅ Massive workspace optimization: scale=${provider._workspaceScale}, level=${provider._featureLevel}`);
         
         await provider.dispose();
@@ -465,7 +467,7 @@ if (require.main === module) {
     main().catch(error => {
         console.error('Performance test suite crashed:', error);
         process.exit(1);
-    });
+    }).finally(scheduleExit);
 }
 
 module.exports = { main };

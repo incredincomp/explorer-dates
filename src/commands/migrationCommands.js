@@ -7,8 +7,18 @@ const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
 const { SettingsOrganizer } = require('../utils/settingsOrganizer');
 
 const settingsCoordinator = getSettingsCoordinator();
+const RESET_TO_DEFAULTS_COMMAND = 'explorerDates.resetToDefaults';
+const RESET_TO_DEFAULTS_GLOBAL_FLAG = Symbol.for('explorerDates.resetToDefaults.registered');
 
-function registerMigrationCommands({ context, logger, getSettingsMigrationManager }) {
+function hasRegisteredResetCommand() {
+    return Boolean(globalThis[RESET_TO_DEFAULTS_GLOBAL_FLAG]);
+}
+
+function markResetCommandRegistered() {
+    globalThis[RESET_TO_DEFAULTS_GLOBAL_FLAG] = true;
+}
+
+async function registerMigrationCommands({ context, logger, getSettingsMigrationManager }) {
     const subscriptions = [];
 
     // Migrate Settings Command
@@ -210,44 +220,7 @@ function registerMigrationCommands({ context, logger, getSettingsMigrationManage
         }
     }));
 
-    // Reset to Defaults Command
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
-        try {
-            const confirmation = await vscode.window.showWarningMessage(
-                'This will reset all Explorer Dates settings to their default values. Are you sure?',
-                { modal: true },
-                'Reset Settings',
-                'Cancel'
-            );
-
-            if (confirmation !== 'Reset Settings') {
-                return;
-            }
-
-            const packageJson = context.extension.packageJSON;
-            const configProperties = packageJson?.contributes?.configuration?.properties || {};
-
-            let resetCount = 0;
-            for (const key of Object.keys(configProperties)) {
-                if (key.startsWith('explorerDates.')) {
-                    const settingKey = key.replace('explorerDates.', '');
-                    try {
-                        await settingsCoordinator.clearSetting(settingKey, { scope: 'user', reason: 'reset-to-defaults' });
-                        await settingsCoordinator.clearSetting(settingKey, { scope: 'workspace', reason: 'reset-to-defaults' });
-                        resetCount++;
-                    } catch (error) {
-                        logger.warn(`Failed to reset setting ${settingKey}`, error);
-                    }
-                }
-            }
-
-            vscode.window.showInformationMessage(`✅ Reset ${resetCount} settings to defaults.`);
-            logger.info('Settings reset to defaults', { resetCount });
-        } catch (error) {
-            logger.error('Failed to reset settings to defaults', error);
-            vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
-        }
-    }));
+    await registerResetCommandOnce({ context, logger, subscriptions });
 
     // Export Configuration Command
     subscriptions.push(vscode.commands.registerCommand('explorerDates.exportConfiguration', async () => {
@@ -393,6 +366,65 @@ async function _showMigrationHistory(history) {
         </body>
         </html>
     `;
+}
+
+async function registerResetCommandOnce({ context, logger, subscriptions }) {
+    if (hasRegisteredResetCommand()) {
+        logger?.warn?.('Duplicate explorerDates.resetToDefaults registration skipped');
+        return;
+    }
+
+    let existingCommands;
+    try {
+        existingCommands = await vscode.commands.getCommands(true);
+    } catch (error) {
+        logger?.warn?.('Unable to inspect VS Code command registry; proceeding with reset command registration', error);
+    }
+
+    if (Array.isArray(existingCommands) && existingCommands.includes(RESET_TO_DEFAULTS_COMMAND)) {
+        markResetCommandRegistered();
+        logger?.warn?.('Detected existing explorerDates.resetToDefaults handler; skipping duplicate registration');
+        return;
+    }
+
+    markResetCommandRegistered();
+    subscriptions.push(vscode.commands.registerCommand(RESET_TO_DEFAULTS_COMMAND, async () => {
+        try {
+            const confirmation = await vscode.window.showWarningMessage(
+                'This will reset all Explorer Dates settings to their default values. Are you sure?',
+                { modal: true },
+                'Reset Settings',
+                'Cancel'
+            );
+
+            if (confirmation !== 'Reset Settings') {
+                return;
+            }
+
+            const packageJson = context.extension.packageJSON;
+            const configProperties = packageJson?.contributes?.configuration?.properties || {};
+
+            let resetCount = 0;
+            for (const key of Object.keys(configProperties)) {
+                if (key.startsWith('explorerDates.')) {
+                    const settingKey = key.replace('explorerDates.', '');
+                    try {
+                        await settingsCoordinator.clearSetting(settingKey, { scope: 'user', reason: 'reset-to-defaults' });
+                        await settingsCoordinator.clearSetting(settingKey, { scope: 'workspace', reason: 'reset-to-defaults' });
+                        resetCount++;
+                    } catch (error) {
+                        logger.warn(`Failed to reset setting ${settingKey}`, error);
+                    }
+                }
+            }
+
+            vscode.window.showInformationMessage(`✅ Reset ${resetCount} settings to defaults.`);
+            logger.info('Settings reset to defaults', { resetCount });
+        } catch (error) {
+            logger.error('Failed to reset settings to defaults', error);
+            vscode.window.showErrorMessage(`Failed to reset settings: ${error.message}`);
+        }
+    }));
 }
 
 module.exports = { registerMigrationCommands };

@@ -284,6 +284,31 @@ async function testBundleSizes() {
         
         const hasChunkWatchScript = packageJson.scripts['watch-chunks'];
         addResult('Package.json has chunk watch script', !!hasChunkWatchScript);
+
+        // Verify built artifacts exist and are non-empty
+        const nodeChunkPath = path.join(__dirname, '../dist/chunks/onboardingAssets.js');
+        const webChunkPath = path.join(__dirname, '../dist/web-chunks/onboardingAssets.js');
+
+        const nodeChunkExists = fs.existsSync(nodeChunkPath);
+        const webChunkExists = fs.existsSync(webChunkPath);
+        addResult('Node onboarding assets chunk exists', nodeChunkExists);
+        addResult('Web onboarding assets chunk exists', webChunkExists);
+
+        if (nodeChunkExists) {
+            const nodeSizeKB = Math.round(fs.statSync(nodeChunkPath).size / 1024);
+            addResult('Node onboarding assets chunk non-empty', nodeSizeKB > 2, `${nodeSizeKB}KB`);
+            const nodeContent = fs.readFileSync(nodeChunkPath, 'utf8');
+            const nodeExportsPresent = nodeContent.includes('OnboardingAssets') && nodeContent.includes('createOnboardingAssets');
+            addResult('Node onboarding assets exports present', nodeExportsPresent);
+        }
+
+        if (webChunkExists) {
+            const webSizeKB = Math.round(fs.statSync(webChunkPath).size / 1024);
+            addResult('Web onboarding assets chunk non-empty', webSizeKB > 2, `${webSizeKB}KB`);
+            const webContent = fs.readFileSync(webChunkPath, 'utf8');
+            const webExportsPresent = webContent.includes('OnboardingAssets') && webContent.includes('createOnboardingAssets');
+            addResult('Web onboarding assets exports present', webExportsPresent);
+        }
         
     } catch (error) {
         addResult('Bundle sizes test', false, error.message);

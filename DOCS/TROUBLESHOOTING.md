@@ -122,6 +122,30 @@ When multiple people share settings via templates or `.vscode/settings.json`, co
    - `Explorer Dates: Clean Legacy Settings`
 5. Confirm the final effective configuration via `Explorer Dates: Show Current Configuration`.
 
+### 2.6 Read-only workspaces or disk-full warnings (team presets revert after reload)
+
+Symptoms:
+
+- Repeated warning: “Explorer Dates team configuration could not be saved … Changes will be kept in memory”.
+- `.explorer-dates-profiles.json` never updates and team presets disappear after restarting VS Code.
+- Workspace recently switched to read-only, mounted over SSH/Containers, or the disk ran out of space.
+
+What’s happening:
+
+- Explorer Dates now falls back to **in-memory team configuration snapshots** whenever writes throw `EACCES`, `EPERM`, `EROFS`, or `ENOSPC`.
+- You can keep working—`Explorer Dates: Validate Team Configuration` and decorations still read the cached profiles—but nothing persists to disk until the filesystem accepts writes again.
+
+How to recover:
+
+1. **Fix the root cause**  
+   - Re-enable write permissions on the repo folder, remount the share as read/write, or free disk space if `ENOSPC` triggered the warning.
+2. **Flush the cached profile to disk**  
+   - Run `Explorer Dates: Validate Team Configuration` or `Explorer Dates: Save Team Profiles` once the workspace is writable. The extension automatically retries the write, clears the warning throttle, and removes the in-memory snapshot.
+3. **Verify persistence**  
+   - Reopen `.explorer-dates-profiles.json` (or run `Explorer Dates: Validate Team Configuration`) to confirm the file exists on disk and no warning banner appears on the next save.
+
+Until the filesystem is writable again, assume the team configuration is **ephemeral**. If you must capture the temporary changes, copy the JSON shown in the warning dialog to a safe location or export via `Explorer Dates: Save Current Configuration as Template` before restarting VS Code.
+
 ---
 
 ## 3. Command Reference for Troubleshooting
@@ -188,3 +212,25 @@ Support template:
 5. **Other extensions** – File explorer replacements and Git decorators sometimes consume the decoration budget. Disable them temporarily or use `Developer: Set Log Level` → Trace to confirm conflicts.
 
 Remember: every troubleshooting command listed here is available in both desktop VS Code and the web bundle (`vscode.dev`, `github.dev`). If a command is hidden, the corresponding feature chunk is disabled—enable it in `Show Chunk Status` first.
+
+---
+
+## 6. Security Validation Suite
+
+Run these npm scripts before merging any path-handling or file-system change (and whenever the provider feels “off” after refactors):
+
+- `npm run test:security-utils` – targeted suite that exercises traversal detection, dangerous character filtering, sanitization, workspace boundary enforcement, and ReDoS guards.
+- `npm run test:suite` – full regression pack (includes the security suite at the end) for release candidates or when you need end-to-end assurance.
+
+CI runs `npm run test:security-utils` on every PR/push to `main`/`develop`, so local failures will block your build anyway—save time by running it before pushing.
+
+Need to loosen the new security guardrails for migrations or harnesses? Use the runtime settings (via Settings UI or `settings.json`):
+
+- `explorerDates.security.enforceWorkspaceBoundaries` – master switch; leave on for normal workspaces, flip off only when sandboxing already handled elsewhere.
+- `explorerDates.security.enableBoundaryEnforcement` – preferred version of the setting above; when left untouched it stays on in production builds but relaxes automatically in dev/test environments.
+- `explorerDates.security.allowedExtraPaths` – absolute paths Explorer Dates should treat as trusted (e.g., temp migration directories or fixture roots).
+- `explorerDates.security.allowTestPaths` – keeps test runners happy by relaxing boundary checks automatically when `EXPLORER_DATES_TEST_MODE=1` or `NODE_ENV=test`.
+- `explorerDates.security.logThrottleWindowMs` – de-duplicate repetitive warnings by raising/lowering the throttle window (default 5000 ms).
+- `explorerDates.security.maxWarningsPerFile` – cap how many warnings a single file can emit per session (default 1; set to 0 for unlimited auditing).
+
+You can also set `EXPLORER_DATES_SECURITY_EXTRA_PATHS=/tmp/fixtures:/var/migrations` (use `;` on Windows) to append additional roots without touching workspace settings.

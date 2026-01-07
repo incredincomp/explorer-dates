@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 const mockInstall = createMockVscode();
 const { vscode, configValues, workspaceRoot } = mockInstall;
@@ -197,4 +198,4 @@ async function main() {
     }
 }
 
-main();
+main().finally(scheduleExit);

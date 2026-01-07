@@ -7,6 +7,7 @@
 
 const assert = require('assert');
 const path = require('path');
+const { scheduleExit } = require('./helpers/forceExit');
 const {
     createMockVscode,
     createExtensionContext,
@@ -14,6 +15,41 @@ const {
     workspaceRoot
 } = require('./helpers/mockVscode');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
+
+// Filter intentional warning/error noise to keep output readable
+const originalWarn = console.warn;
+const originalError = console.error;
+const warnFilters = [
+    /Security workspace boundary enforcement relaxed/,
+    /Duplicate explorerDates\.resetToDefaults registration skipped/
+];
+const errorFilters = [
+    /Failed to initialize advanced systems/
+];
+const consoleErrorLog = [];
+console.warn = (...args) => {
+    const msg = args.join(' ');
+    if (warnFilters.some((pattern) => pattern.test(msg))) {
+        return;
+    }
+    originalWarn(...args);
+};
+console.error = (...args) => {
+    const msg = args.join(' ');
+    if (errorFilters.some((pattern) => pattern.test(msg))) {
+        return;
+    }
+    consoleErrorLog.push(msg);
+    originalError(...args);
+};
+
+function drainConsoleErrors() {
+    if (consoleErrorLog.length === 0) {
+        return [];
+    }
+    const entries = consoleErrorLog.splice(0, consoleErrorLog.length);
+    return entries;
+}
 
 const extensionEntryPath = path.join(__dirname, '..', 'extension.js');
 const webEntryPath = path.join(__dirname, '..', 'dist', 'extension.web.js');
@@ -134,15 +170,23 @@ function expectMigrationHistoryScopes(context, expectedScopes, label) {
 async function activateExtension(entryPath, context) {
     delete require.cache[require.resolve(entryPath)];
     const entry = require(entryPath);
+    drainConsoleErrors();
     try {
         await entry.activate(context);
         await entry.deactivate?.();
     } finally {
         delete require.cache[require.resolve(entryPath)];
     }
+    const unexpectedErrors = drainConsoleErrors();
+    if (unexpectedErrors.length > 0) {
+        throw new Error(
+            `Unexpected console errors while testing ${path.basename(entryPath)}:\n${unexpectedErrors.join('\n')}`
+        );
+    }
 }
 
-async function testNodeBundleMigration() {
+async function runNodeBundleMigration(options = {}) {
+    const label = options.label || 'Node bundle';
     const globalCustomColors = {
         veryRecent: '#10b981',
         recent: '#fbbf24',
@@ -175,7 +219,8 @@ async function testNodeBundleMigration() {
             enableReporting: true,
             customColors: workspaceFolderCustomColors
         },
-        workspaceFolders
+        workspaceFolders,
+        useDistChunks: options.useDistChunks === true
     });
 
     delete mockInstall.configValues['explorerDates.enableExportReporting'];
@@ -183,10 +228,15 @@ async function testNodeBundleMigration() {
     assert.strictEqual(
         mockInstall.vscode.workspace.workspaceFolders.length,
         workspaceFolders.length,
-        'Node bundle: workspace folders should reflect multi-root workspace'
+        `${label}: workspace folders should reflect multi-root workspace`
     );
     try {
         await activateExtension(extensionEntryPath, nodeContext);
+        const nodeCommands = await mockInstall.vscode.commands.getCommands(true);
+        assert.ok(
+            Array.isArray(nodeCommands) && nodeCommands.length > 0,
+            `${label}: command registry should be queryable`
+        );
     } finally {
         mockInstall.dispose();
     }
@@ -196,21 +246,21 @@ async function testNodeBundleMigration() {
         'explorerDates.enableExportReporting',
         'global',
         true,
-        'Node bundle'
+        label
     );
     expectUpdateValue(
         mockInstall.appliedUpdates,
         'explorerDates.enableExportReporting',
         'workspace',
         false,
-        'Node bundle'
+        label
     );
     expectUpdateValue(
         mockInstall.appliedUpdates,
         'explorerDates.enableExportReporting',
         'workspaceFolder',
         true,
-        'Node bundle'
+        label
     );
 
     const workbenchUpdate = findUpdate(
@@ -218,28 +268,28 @@ async function testNodeBundleMigration() {
         'workbench.colorCustomizations',
         'global'
     );
-    assert.ok(workbenchUpdate, 'Node bundle: expected workbench.colorCustomizations update');
+    assert.ok(workbenchUpdate, `${label}: expected workbench.colorCustomizations update`);
     assert.strictEqual(
         workbenchUpdate.target,
         'global',
-        'Node bundle: workbench update should target global scope'
+        `${label}: workbench update should target global scope`
     );
     assert.strictEqual(
         workbenchUpdate.value['explorerDates.customColor.veryRecent'],
         workspaceFolderCustomColors.veryRecent,
-        'Node bundle: custom colors should migrate to workbench schema'
+        `${label}: custom colors should migrate to workbench schema`
     );
 
     expectCleanupAcrossScopes(
         mockInstall.appliedUpdates,
         'explorerDates.customColors',
-        'Node bundle',
+        label,
         ['global', 'workspace', 'workspaceFolder']
     );
     expectCleanupAcrossScopes(
         mockInstall.appliedUpdates,
         'explorerDates.enableReporting',
-        'Node bundle',
+        label,
         ['global', 'workspace', 'workspaceFolder']
     );
 
@@ -249,7 +299,15 @@ async function testNodeBundleMigration() {
         'enableReporting→enableExportReporting (WorkspaceFolder)',
         'customColors→workbench.colorCustomizations',
         'deprecatedSettings→removed'
-    ], 'Node bundle');
+    ], label);
+}
+
+async function testNodeBundleMigration() {
+    await runNodeBundleMigration({ label: 'Node bundle' });
+}
+
+async function testNodeBundleMigrationDist() {
+    await runNodeBundleMigration({ label: 'Node bundle (dist chunks)', useDistChunks: true });
 }
 
 async function testWebBundleMigration() {
@@ -305,6 +363,11 @@ async function testWebBundleMigration() {
 
     try {
         await activateExtension(webEntryPath, webContext);
+        const webCommands = await harness.vscode.commands.getCommands(true);
+        assert.ok(
+            Array.isArray(webCommands) && webCommands.length > 0,
+            'Web bundle: command registry should be queryable'
+        );
     } finally {
         harness.restore();
     }
@@ -1320,6 +1383,7 @@ async function testWebWorkspaceFolderPaletteMigration() {
 async function main() {
     const suites = [
         ['Node bundle migration', testNodeBundleMigration],
+        ['Node bundle migration (dist chunks)', testNodeBundleMigrationDist],
         ['Web bundle migration', testWebBundleMigration],
         ['Keep old settings opt-out', testKeepOldSettingsOptOut],
         ['Web keep old settings opt-out', testWebBundleOptOut],
@@ -1352,4 +1416,9 @@ async function main() {
     }
 }
 
-main();
+if (require.main === module) {
+    main().finally(() => {
+        process.exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
+        scheduleExit();
+    });
+}

@@ -8,6 +8,17 @@
 const assert = require('assert');
 const { createMockVscode } = require('./helpers/mockVscode');
 
+// Suppress expected warnings when decorationsAdvanced chunk is intentionally unavailable
+const originalWarn = console.warn;
+const warnFilters = [/feature flags bridge unavailable for decorationsAdvanced chunk/];
+console.warn = (...args) => {
+    const msg = args.join(' ');
+    if (warnFilters.some((pattern) => pattern.test(msg))) {
+        return;
+    }
+    originalWarn(...args);
+};
+
 const mockSetup = createMockVscode();
 const vscode = require('vscode');
 const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');

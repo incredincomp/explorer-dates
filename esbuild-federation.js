@@ -1,6 +1,37 @@
 const esbuild = require('esbuild');
 const fs = require('fs');
 const { federationConfig } = require('./src/moduleFederation');
+const { WEB_CHUNK_GLOBAL_KEY, LEGACY_WEB_CHUNK_GLOBAL_KEY } = require('./src/constants');
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const alwaysReservedProps = ['activate', 'deactivate', 'provideFileDecoration', 'dispose', 'exports'];
+const crossChunkPrivateProps = [
+  '_accessibility',
+  '_advancedCache',
+  '_allocationTelemetryEnabled',
+  '_batchProcessor',
+  '_batchProcessorModule',
+  '_enableWatcherFallbacks',
+  '_extensionContext',
+  '_fileSystem',
+  '_getIndexerMaxFiles',
+  '_isWeb',
+  '_logger',
+  '_maybeWarnAboutGitLimitations',
+  '_metrics',
+  '_performanceMode',
+  '_progressiveLoadingEnabled',
+  '_progressiveLoadingJobs',
+  '_shouldEnableProgressiveAnalysis',
+  '_smartWatcherFallbackManager',
+  '_telemetryReportInterval',
+  '_telemetryReportTimer',
+  '_themeIntegration',
+  '_workspaceIntelligence'
+];
+const reservePropsPattern = new RegExp(
+  `^(${[...alwaysReservedProps, ...crossChunkPrivateProps].map(escapeRegex).join('|')})$`
+);
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -45,7 +76,7 @@ const sharedOptions = {
   ignoreAnnotations: false,
   metafile: production,
   mangleProps: production ? /^_/ : undefined,
-  reserveProps: production ? /^(activate|deactivate|provideFileDecoration|dispose|exports)$/ : undefined,
+  reserveProps: production ? reservePropsPattern : undefined,
   mangleQuoted: production ? true : false,
   pure: production ? [
     'console.log', 'console.debug', 'console.trace', 'console.info', 
@@ -74,7 +105,7 @@ async function buildChunks() {
   await fs.promises.mkdir('dist', { recursive: true }).catch(() => {});
   await fs.promises.mkdir('dist/chunks', { recursive: true }).catch(() => {});
   await fs.promises.mkdir('dist/web-chunks', { recursive: true }).catch(() => {});
-  
+
   const builds = [];
   
   for (const [chunkName, chunkConfig] of Object.entries(federationConfig.chunks)) {
@@ -99,7 +130,7 @@ async function buildChunks() {
         js: `var module = { exports: {} }; var exports = module.exports; (function() {`
       },
       footer: {
-        js: `})(); (globalThis.__explorerDatesChunks = globalThis.__explorerDatesChunks || {})["${chunkName}"] = module.exports;`
+        js: `})(); (function(){const primaryKey="${WEB_CHUNK_GLOBAL_KEY}";const legacyKey="${LEGACY_WEB_CHUNK_GLOBAL_KEY}";const registry=(globalThis[primaryKey]=globalThis[primaryKey]||globalThis[legacyKey]||(globalThis[legacyKey]={}));registry["${chunkName}"]=module.exports;})();`
       },
       external: [...sharedOptions.external, ...chunkConfig.external]
     };

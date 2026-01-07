@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
     const mockInstall = createMockVscode({
@@ -282,4 +283,4 @@ async function main() {
 main().catch((error) => {
     console.error('❌ Filesystem error tests crashed:', error);
     process.exitCode = 1;
-});
+}).finally(scheduleExit);
