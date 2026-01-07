@@ -1086,6 +1086,7 @@
     "watch:dev": "node esbuild.js --watch",
     "watch:chunks": "node esbuild-federation.js --chunks --watch",
     "watch-chunks": "npm run watch:chunks",
+    "package-bundle": "npm run package",
     "package": "npm-run-all --sequential build:prod build:chunks",
     "package-chunks": "npm run build:chunks",
     "package:vsix": "vsce package",
