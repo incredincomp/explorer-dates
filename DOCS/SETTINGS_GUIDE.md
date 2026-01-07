@@ -25,7 +25,7 @@ v1.3.0 introduces granular feature control to reduce bundle size and improve per
 - **Team setup**: Keep templates, disable onboarding → Save ~34KB  
 - **Power user**: Disable only onboarding → Save ~34KB
 
-See [Bundle Optimization Guide](./BUNDLE_OPTIMIZATION.md) for detailed configuration strategies.
+See [Architecture – Module Federation & Chunking](./ARCHITECTURE.md#module-federation--chunking-v130) for detailed configuration strategies.
 
 ## Quick Setup Guide
 

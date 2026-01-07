@@ -2,7 +2,52 @@
 
 ## Overview
 
-Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.2.5.
+Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.3.0, including the module federation system that powers chunking, feature gating, and bundle optimization.
+
+## Module Federation & Chunking (v1.3.0)
+
+Version 1.3.0 splits non-essential subsystems into lazy chunks so teams can disable unused capabilities and ship a ~99KB core bundle. Each chunk is gated by a setting or runtime trigger, and the feature flag loader handles dynamic imports for both desktop and web builds.
+
+### Chunk Inventory
+
+| Chunk / Feature | Approx Size | Setting or Trigger | Notes |
+|-----------------|-------------|--------------------|-------|
+| Onboarding assets | ~23KB | `enableOnboardingSystem` + onboarding wizard commands | Webview HTML/CSS/JS templates load only when the setup wizard, feature tour, or “What’s New” surfaces. Inline templates remain as fallbacks if the chunk fails. |
+| Export & reporting | ~17KB | `enableExportReporting` | Powers CSV/JSON exports, analytics panels, and scheduled summaries. Disable for minimal installations that just need Explorer decorations. |
+| Workspace templates & team config | ~14KB | `enableWorkspaceTemplates` | Includes profile storage, conflict resolution, and synchronization helpers. Required for team JSON profiles and preset management. |
+| Extension API | ~15KB | `enableExtensionApi` or an external consumer requesting the API | Provides `ExtensionApiManager`, plugin wiring, and command exports. Dynamically instantiated so users without integrations save bundle weight. |
+| Workspace intelligence | ~12KB | `enableWorkspaceIntelligence` (auto-disabled in performance mode) | Packages the incremental indexer + smart exclusion manager. Skipped entirely for lightweight installs or repos without workspace folders. |
+| Incremental workers | ~8–10KB + WASM | `enableProgressiveAnalysis` (auto for large/extreme workspaces) | Hosts WASM digest computation and worker thread/WebWorker scaffolding. Loaded only when progressive analysis is on. |
+| Batch processor | ~7KB | `progressiveLoading` + performance mode | Moves the BatchProcessor into its own chunk so low-power installs can skip progressive decoration warmups entirely. |
+| Git insights | ~13KB | `showGitInfo !== "none"` or `badgePriority === "author"` | Contains blame parsing, git cache management, and WASM digest helpers. Invisible for time-only or size-only badges. |
+| On-demand analysis commands | ~8KB | `enableAnalysisCommands` | Adds diagnostics/quick pick tooling surfaced via command palette. |
+| Advanced cache | ~5KB | `enableAdvancedCache` | Provides the optional persistent cache and slimmed serialization helpers. |
+| Incremental workers + workspace intelligence combo | ~19KB + 12KB | `enableIncrementalWorkers`/`enableProgressiveAnalysis` with smart exclusions | When both are enabled the indexer pulls in worker hosts and smart exclusion heuristics; otherwise they stay dormant. |
+
+### Chunk Loading Flow
+
+- `featureFlags.js` registers default loaders for every chunk via `registerDefaultLoaders()`, ensuring tests and CLI scripts work even when the federation resolver is absent. Loaders first consult the runtime resolver, then fall back to dev sources, `dist/chunks/*`, and finally Node’s filesystem loader.  
+- Production builds call `setFeatureChunkResolver()` so lazy imports resolve through the module federation runtime in both Node.js and web bundles.  
+- Each chunk loader performs early exits based on configuration (for example, `extensionApi()` returns `null` when `enableExtensionApi` is false, progressive analysis skips worker creation unless enabled, and git insights never initialize when `showGitInfo` is `'none'`).  
+- Performance mode and lightweight environment variables cascade into the loader layer, skipping heavy chunks such as workspace intelligence, batch processing, and incremental workers altogether.
+
+### Chunk-Specific Notes
+
+- **Batch Processor Dynamic Chunking** – The progressive loading BatchProcessor is lazy-loaded via `_loadBatchProcessorIfNeeded()`. Builds emit `dist/chunks/batchProcessor.js`, saving ~7KB whenever `progressiveLoading` is disabled or performance mode is active. Fallbacks cover dev source imports and error recovery.  
+- **Extension API Chunk** – `extension.js` requests the chunk only when `explorerDates.enableExtensionApi` is true and someone accesses the API. The chunk exports `ExtensionApiManager` plus a factory to wire `context.subscriptions`, keeping installations without integrations lightweight.  
+- **Workspace Intelligence Chunk** – Groups `IncrementalIndexer` and `SmartExclusionManager` under a unified `WorkspaceIntelligenceManager`. Initialization occurs during advanced systems startup and is skipped when performance mode or the feature flag disables the subsystem.  
+- **Git Insights Gating** – Author badges and git-powered tooltips trigger `gitInsights-chunk.js`, which houses `GitInsightsManager`, cache plumbing, and worker integration. Configurations that set `showGitInfo: "none"` and time/size badge priorities never load git code, saving ~13KB and avoiding git detection work.  
+- **Incremental Workers Chunk** – Progressive analysis flips on-demand worker hosts driven by `enableProgressiveAnalysis` (auto-enabling for large/extreme workspaces when the setting is `null`). Disposal routines tear workers down when feature level changes.  
+- **Onboarding Assets Chunk** – Webview assets (HTML/CSS/JS) move into `onboarding-assets-chunk.js`, reducing the core bundle by ~23KB. The onboarding manager gracefully falls back to inline HTML when chunk loading fails so the UX still works offline.  
+- **Default Loaders for Federation** – Development scripts and tests rely on the default loaders declared in `featureFlags`, so importing feature helpers “just works” without manually seeding chunk resolvers. Production resolvers override the defaults automatically once federation initializes.
+
+### Testing & Guardrails
+
+- **Preset & Chunk UI flows** – `test-preset-ui-flows.js` and `test-quickpick-regressions.js` exercise the preset comparison wizard, browse flows, chunk status quick picks, and bundle savings math.  
+- **Restart batching** – `test-restart-batching.js` covers debounce timers, queued restart prompts, and command execution so configuration changes don’t spam reload notifications.  
+- **Workspace detection heuristics** – `test-workspace-detection-heuristics.js` validates remote/web environment detection, project markers, and edge cases that influence automatic progressive analysis decisions.  
+- **Onboarding asset chunking, incremental worker gating, and git insights gating** – Dedicated chunk tests verify lazy imports, fallback paths, configuration plumbing, and bundle reporting, ensuring each chunk remains loadable and optional.
+
 
 ## Core Components
 

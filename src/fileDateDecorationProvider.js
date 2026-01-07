@@ -1743,11 +1743,18 @@ class FileDateDecorationProvider {
         const config = vscode.workspace.getConfiguration('explorerDates');
         const baseExcludedSet = this._buildBaseWatcherExclusions(config);
 
+        // Distribute the watcher budget across workspace folders so the first
+        // folder does not consume every slot in multi-root workspaces.
+        const totalBudget = Math.max(1, options.maxPatterns);
+        let remainingBudget = totalBudget;
+        let remainingFolders = workspaceFolders.length;
+
         for (const folder of workspaceFolders) {
-            if (targets.length >= options.maxPatterns) {
+            if (remainingBudget <= 0) {
                 break;
             }
 
+            const folderBudget = Math.max(1, Math.floor(remainingBudget / remainingFolders));
             const folderExcludedSet = await this._getWatcherExcludedSetForFolder(folder, baseExcludedSet);
 
             // Root-level watcher for important files (counts as one pattern)
@@ -1756,22 +1763,29 @@ class FileDateDecorationProvider {
                 pattern: rootPattern,
                 label: `root:${folder.name}`
             });
+            remainingBudget -= 1;
 
-            if (targets.length >= options.maxPatterns) {
+            if (remainingBudget <= 0) {
                 break;
             }
 
-            const remaining = options.maxPatterns - targets.length;
-            const folderTargets = await this._collectFolderWatcherPatterns(folder, {
-                excludedSet: folderExcludedSet,
-                extensions: options.extensions,
-                limit: remaining
-            });
+            const remainingForFolder = Math.min(Math.max(folderBudget - 1, 0), remainingBudget);
+            if (remainingForFolder > 0) {
+                const folderTargets = await this._collectFolderWatcherPatterns(folder, {
+                    excludedSet: folderExcludedSet,
+                    extensions: options.extensions,
+                    limit: remainingForFolder
+                });
 
-            targets.push(...folderTargets);
+                const usableTargets = folderTargets.slice(0, remainingForFolder);
+                targets.push(...usableTargets);
+                remainingBudget -= usableTargets.length;
+            }
+
+            remainingFolders -= 1;
         }
 
-        return targets.slice(0, options.maxPatterns);
+        return targets.slice(0, totalBudget);
     }
 
     _buildBaseWatcherExclusions(config) {
@@ -4420,7 +4434,7 @@ class FileDateDecorationProvider {
     }
 
     _computeEffectivePerformanceMode() {
-        return this._performanceModeExplicit || this._lightweightMode || this._performanceModeAuto;
+        return this._performanceModeExplicit || this._lightweightMode;
     }
 
     _getRefreshIntervalForScale() {
@@ -4513,7 +4527,8 @@ class FileDateDecorationProvider {
         const featureLevel = profile?.level || this._featureLevel;
 
         // Enable automatic performance mode for extreme workspaces, but keep explicit user intent intact
-        this._performanceModeAuto = this._workspaceScale === 'extreme';
+        // Default to high-fidelity mode; avoid auto performance mode so viewport gating can preserve quality.
+        this._performanceModeAuto = false;
         const desiredPerformanceMode = this._computeEffectivePerformanceMode();
 
         if (desiredPerformanceMode !== this._performanceMode) {
@@ -4529,6 +4544,16 @@ class FileDateDecorationProvider {
         }
 
         this._applyConcurrencyLimit(reason);
+
+        // For large/extreme workspaces, keep high fidelity in-viewport but limit background cost elsewhere.
+        if (!this._performanceMode && (this._workspaceScale === 'large' || this._workspaceScale === 'extreme')) {
+            const adjustedProfile = {
+                ...this._featureProfile,
+                applyBackgroundLimits: true,
+                backgroundTooltipMode: this._featureProfile?.backgroundTooltipMode === 'rich' ? 'summary' : this._featureProfile?.backgroundTooltipMode
+            };
+            this._featureProfile = adjustedProfile;
+        }
 
         // Stretch periodic refresh cadence for large workspaces when not in performance mode
         if (!this._performanceMode) {

@@ -4,9 +4,11 @@
 test/**
 tests/**
 src/**
+old-builds/**
 node_modules/**
 logs/**
 out/
+.venv/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md

@@ -1,6 +1,6 @@
 # Explorer Dates - v1.3.0 Upgrade & Configuration Guide
 
-This guide helps users understand and manage Explorer Dates settings across different versions, with emphasis on automatic migration and proper configuration.
+This guide helps users understand and manage Explorer Dates settings across different versions, with emphasis on automatic migration and proper configuration. The previous standalone settings migration guide has been folded into this document—this is now the single source for migration steps and setting rename details.
 
 ## 🆕 What’s New in v1.3.0
 
@@ -59,6 +59,21 @@ The following settings are automatically migrated:
 }
 ```
 
+#### Manual Review Checklist (v1.3.0+)
+- **Feature flags**: Disable features you do not need to save memory/startup. Defaults above; turning flags off removes the corresponding chunks.
+- **Progressive analysis**: `explorerDates.enableProgressiveAnalysis` supports `null` (auto, default), `true` (force enable), `false` (force disable). Auto enables for very large workspaces.
+- **Performance profiles**: Defaults are tuned for most users. Only change if you have specific needs:
+  ```json
+  {
+    "explorerDates.featureLevel": "auto",          // Adaptive optimization
+    "explorerDates.smartFileWatching": true,        // Intelligent file watching
+    "explorerDates.maxTrackedActivityFiles": 3000,  // Memory guardrail
+    "explorerDates.smartExclusions": true           // Enhanced exclusion logic
+  }
+  ```
+- **Custom colors**: Use `workbench.colorCustomizations` (legacy `customColors` is deprecated). Command: `Explorer Dates: Apply Custom Colors`.
+- **Reporting**: Legacy `enableReporting` falls back to `enableExportReporting` automatically but is marked deprecated.
+
 ### Manual Migration Steps
 
 #### Step 1: Update VS Code
@@ -75,9 +90,9 @@ After upgrading, review which features you need:
 
 #### Step 3: Configure Team Settings (Optional)
 If working in a team environment:
-1. Run `Explorer Dates: Configure Team Profiles`
-2. Set up shared configurations for your team
-3. Export/import team profiles as needed
+1. Run `Explorer Dates: Open Template Manager` to manage shared templates/profiles
+2. Run `Explorer Dates: Validate Team Configuration` to align with the v1.3 schema
+3. Export/import team profiles via the Template Manager (or `Save/Load Template` commands)
 
 #### Step 4: Optimize Bundle Size
 To minimize extension size:
@@ -92,7 +107,7 @@ To minimize extension size:
 
 ### Step 1: Initial Setup
 1. **Install Explorer Dates** from the VS Code marketplace
-2. **Run the setup wizard**: Press `Ctrl+Shift+P` and run `Explorer Dates: Quick Setup`
+2. **Run the setup wizard**: Press `Ctrl+Shift+P` and run `Explorer Dates: Show Quick Setup Wizard`
 3. **Choose a preset**:
    - **Minimal**: Basic time badges only  
    - **Developer**: Git info + file sizes + color coding
@@ -201,6 +216,22 @@ If you need to re-run migration processes:
 - `Explorer Dates: Validate Configuration` - Check for configuration issues  
 - `Explorer Dates: Clean Legacy Settings` - Remove deprecated settings
 - `Explorer Dates: Show Migration History` - View what was migrated
+
+### Migration Workflows (reference)
+
+#### Upgrading from v1.0.x to v1.3.x
+1. Open Settings, search for "Explorer Dates", and clear any deprecated items (yellow warning icons).
+2. Run `Explorer Dates: Migrate Settings` once.
+3. Review feature flags and disable unused chunks to reduce bundle size.
+4. If you used custom colors, run `Explorer Dates: Apply Custom Colors` to copy them into `workbench.colorCustomizations`.
+
+#### Upgrading from v0.x to v1.x
+1. Enable new capabilities you want:
+  - Git info: `"explorerDates.showGitInfo": "author"`
+  - File sizes: `"explorerDates.showFileSize": true`
+  - Smart caching: `"explorerDates.persistentCache": true`
+2. If performance lags, try `"explorerDates.featureLevel": "enhanced"` and keep `smartFileWatching` on.
+3. Run `Explorer Dates: Validate Configuration` to catch invalid or legacy values.
 
 ## 👥 Team Configuration Management (New in v1.3.0)
 
@@ -536,7 +567,7 @@ Choose to copy to clipboard or save to file.
 New users see the onboarding flow automatically:
 
 1. **Welcome Message** with setup options
-2. **Quick Setup Wizard** for common configurations  
+2. **Show Quick Setup Wizard** for common configurations  
 3. **Feature Tour** explaining key capabilities
 
 ### Returning Users
@@ -768,6 +799,15 @@ Each workspace root can have different settings:
 
 ## Support & Resources
 
+## Migration Checklist
+
+- [ ] Run `Explorer Dates: Validate Configuration`
+- [ ] Update or remove deprecated settings (see automatic migrations above)
+- [ ] Re-run `Explorer Dates: Migrate Settings` if values were edited manually
+- [ ] Review feature flags and disable unused features for bundle/memory savings
+- [ ] (If used) Apply or re-run custom colors via `Explorer Dates: Apply Custom Colors`
+- [ ] Confirm performance is acceptable (featureLevel/performanceMode/exclusions)
+- [ ] Save a working configuration as a template for your team/workspace
 ### Getting Help
 
 1. **Run diagnostics**:
@@ -789,7 +829,7 @@ Each workspace root can have different settings:
 
 - **Settings Reference**: `DOCS/SETTINGS_GUIDE.md`
 - **Troubleshooting**: `DOCS/TROUBLESHOOTING.md`  
-- **Migration Guide**: `DOCS/SETTINGS_MIGRATION_GUIDE.md`
+- **Upgrade Guide (this doc)**: `DOCS/UPGRADE_GUIDE.md`
 - **Architecture**: `DOCS/ARCHITECTURE.md`
 
 ### Community & Support
@@ -823,7 +863,7 @@ Each workspace root can have different settings:
 ## Quick Reference
 
 ### Essential Commands
-- `Explorer Dates: Quick Setup` - Initial configuration wizard
+- `Explorer Dates: Show Quick Setup Wizard` - Initial configuration wizard
 - `Explorer Dates: Validate Configuration` - Check for issues
 - `Explorer Dates: Migrate Settings` - Update deprecated settings
 - `Explorer Dates: Export Configuration` - Backup your settings

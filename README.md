@@ -78,6 +78,13 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
    - `Explorer Dates: Organize Settings`
    - Full list in [DOCS/COMMANDS.md](./DOCS/COMMANDS.md)
 
+### Documentation
+- [DOCS/TROUBLESHOOTING.md](./DOCS/TROUBLESHOOTING.md) — quick triage, upgrade checklist, symptom playbooks
+- [DOCS/SETTINGS_GUIDE.md](./DOCS/SETTINGS_GUIDE.md) — setting-by-setting reference and examples
+- [DOCS/UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) — v1.3.x migration steps and presets
+- [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md) — module federation, chunk gating, and bundle optimization details
+- [DOCS/COMMANDS.md](./DOCS/COMMANDS.md) — command palette reference with IDs and descriptions
+
 ### Settings Housekeeping
 - Explorer Dates now auto-detects misplaced workspace settings or unsorted `explorer-dates-*.json` files during activation/migrations and quietly reorganizes them when needed.
 - `Explorer Dates: Organize Settings` remains available for manual runs (or when automation is disabled).

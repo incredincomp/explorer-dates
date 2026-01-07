@@ -4,6 +4,26 @@ This guide replaces the legacy v1.2.x wiki page and reflects the new module-fede
 
 ---
 
+## 0. Onboarding to v1.3.0 (upgrade checklist)
+
+If you just upgraded from v1.2.x (or earlier), run this once to avoid churn:
+
+1. **Meet minimums** – VS Code 1.105.0+ and Explorer Dates v1.3.x are required.
+2. **Run the migrators**
+   - `Explorer Dates: Migrate Settings`
+   - `Explorer Dates: Validate Configuration`
+   - `Explorer Dates: Organize Settings` (re-homes Explorer Dates files into `.vscode/explorer-dates-*` and alphabetizes them)
+3. **Choose a preset** – `Explorer Dates: Apply Configuration Preset` → pick **Developer** (full fidelity) or **Minimal** (lean). Presets load the right chunks for the new module federation layout.
+4. **Verify chunks** – `Explorer Dates: Show Chunk Status` → ensure `fileDecorations` is loaded; enable any disabled chunks you need (onboarding, reporting, templates, workspace intelligence).
+5. **Check performance toggles**
+   - `performanceMode` is **off by default** in v1.3.0; decorations stay high-fidelity and we only throttle background work on large workspaces.
+   - If you see `performanceMode: true` in logs, clear explicit settings/environment flags like `EXPLORER_DATES_PERFORMANCE_MODE` or `EXPLORER_DATES_LIGHTWEIGHT`.
+6. **Team configs** – If you share settings, open `.vscode/explorer-dates-team.json` (or the path shown in notifications) and re-apply via `Explorer Dates: Validate Team Configuration` to ensure new schema alignment.
+7. **Smart exclusions location** – Auto-detected exclusions now live in `.vscode/explorer-dates-exclusions.json`; this file is safe to commit for consistent behavior.
+8. **Final sanity check** – Run `Explorer Dates: Run Diagnostics (Fix Missing Decorations)` then `Explorer Dates: Refresh Date Decorations`.
+
+---
+
 ## 1. Quick Triage Checklist
 
 1. **Confirm prerequisites**
@@ -19,7 +39,7 @@ This guide replaces the legacy v1.2.x wiki page and reflects the new module-fede
    - If you're on a shared profile, also run `Explorer Dates: Validate Team Configuration`
    - Resolve anything flagged as “invalid”, “deprecated”, or “overridden by team config”
 4. **Collect logs if symptoms persist**
-   - Toggle `explorerDates.enableTroubleShootingMode`
+   - Optionally set `explorerDates.enableLogging`: true (raises verbosity)
    - Open *Output → Explorer Dates* or run `Explorer Dates: Monitor VS Code Decoration Requests`
    - Keep this information handy if you need to file an issue
 
@@ -72,7 +92,7 @@ If `excludedPatterns` contains `**/*`, `*.*`, or file-specific globs (e.g., `**/
 | --- | --- |
 | `Explorer Dates: Refresh Date Decorations` | Clears caches and forces VS Code to request fresh badges |
 | `Explorer Dates: Debug Cache Performance` (`Ctrl+Shift+M`) | Look for < 80% hit rate or repeated “stale entry” warnings |
-| Check `explorerDates.periodicRefreshInterval` | Large values (>900s) delay automatic updates |
+| Check `explorerDates.badgeRefreshInterval` | Large values (>900s) delay automatic updates |
 | Enable incremental workers: `"explorerDates.enableIncrementalWorkers": true` | Background worker keeps metadata current on large repos |
 | Verify file system events are flowing | `Explorer Dates: Show Performance Analytics` highlights watcher drops. If you see repeated `fswatcher_throttled`, enable `"explorerDates.smartFileWatching": true` or fall back to manual refresh |
 

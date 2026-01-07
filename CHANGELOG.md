@@ -139,9 +139,8 @@
 
 **New Documentation**
 - [Team Configuration Guide](./DOCS/TEAM_CONFIG_TESTING.md)
-- [Settings Migration Guide](./DOCS/SETTINGS_MIGRATION_GUIDE.md)
-- [Bundle Optimization Guide](./DOCS/BUNDLE_OPTIMIZATION.md)
-- [Architecture Documentation](./DOCS/ARCHITECTURE.md)
+- [Upgrade Guide](./DOCS/UPGRADE_GUIDE.md) — now the canonical settings migration reference
+- [Architecture Documentation](./DOCS/ARCHITECTURE.md) — includes the module federation, chunking, and bundle optimization details
 - [Troubleshooting Guide](./DOCS/TROUBLESHOOTING.md)
 
 **Updated Documentation**

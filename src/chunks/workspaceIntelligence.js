@@ -67,15 +67,15 @@ class WorkspaceIntelligenceManager {
                 this._logger.info('Workspace indexing started');
             }
 
-            // Analyze smart exclusions for each workspace folder
+            // Analyze smart exclusions once across all workspace folders to avoid one prompt per folder
             if (this._smartExclusion) {
-                for (const folder of workspaceFolders) {
-                    try {
-                        await this._smartExclusion.suggestExclusions(folder.uri);
-                        this._logger.info(`Smart exclusions analyzed for: ${folder.name}`);
-                    } catch (error) {
-                        this._logger.error(`Failed to analyze smart exclusions for ${folder.name}`, error);
-                    }
+                try {
+                    await this._smartExclusion.suggestExclusionsBulk(workspaceFolders);
+                    this._logger.info('Smart exclusions analyzed for all workspace folders', {
+                        workspaces: workspaceFolders.length
+                    });
+                } catch (error) {
+                    this._logger.error('Failed to analyze smart exclusions for workspace folders', error);
                 }
             }
         } catch (error) {

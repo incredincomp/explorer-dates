@@ -429,11 +429,111 @@ class SmartExclusionManager {
             );
             this._logger.info('User reverted smart exclusions', { reverted: newExclusions });
         } else if (action === 'Review') {
-            this._showExclusionReview(analysis);
+            this._showExclusionReviewSingle(analysis);
             this._logger.info('User reviewing smart exclusions', { pending: newExclusions });
         } else {
             this._logger.info('User kept smart exclusions', { accepted: newExclusions });
         }
+    }
+
+    /**
+     * Aggregate exclusion suggestions across all workspace folders and show a single prompt.
+     */
+    async suggestExclusionsBulk(workspaceFolders = []) {
+        if (!workspaceFolders.length) {
+            return;
+        }
+
+        const summaries = [];
+        const revertStack = [];
+        const reviewAnalyses = [];
+        let totalNew = 0;
+
+        for (const folder of workspaceFolders) {
+            const analysis = await this.analyzeWorkspace(folder.uri);
+            const suggestions = this._dedupeList(analysis?.suggestedExclusions || []);
+
+            if (!analysis || suggestions.length === 0) {
+                continue;
+            }
+
+            const existing = await this.getWorkspaceExclusions(folder.uri);
+            const newExclusions = suggestions.filter((pattern) => !existing.includes(pattern));
+            if (newExclusions.length === 0) {
+                this._logger.debug('No new smart exclusions detected', {
+                    workspace: this._getWorkspaceKey(folder.uri)
+                });
+                continue;
+            }
+
+            const updated = this._mergeExclusions(existing, newExclusions);
+            await this.saveWorkspaceExclusions(folder.uri, updated);
+
+            summaries.push({ workspace: folder.name, added: newExclusions });
+            revertStack.push({ uri: folder.uri, previous: existing });
+            reviewAnalyses.push(analysis);
+            totalNew += newExclusions.length;
+        }
+
+        if (totalNew === 0) {
+            return;
+        }
+
+        const workspaceCount = summaries.length;
+        const summary = totalNew === 1
+            ? `Explorer Dates automatically excluded "${summaries[0].added[0]}" to keep Explorer responsive.`
+            : `Explorer Dates automatically excluded ${totalNew} folders across ${workspaceCount} workspace${workspaceCount === 1 ? '' : 's'} to keep Explorer responsive.`;
+
+        const action = await vscode.window.showInformationMessage(
+            `${summary} Keep these exclusions?`,
+            'Keep',
+            'Review',
+            'Revert'
+        );
+
+        if (action === 'Revert') {
+            for (const entry of revertStack) {
+                await this.saveWorkspaceExclusions(entry.uri, entry.previous);
+            }
+            vscode.window.showInformationMessage(
+                'Smart exclusions reverted. Decorations will refresh for the restored folders.'
+            );
+            this._logger.info('User reverted smart exclusions', { workspaces: workspaceCount, reverted: totalNew });
+        } else if (action === 'Review' && reviewAnalyses.length) {
+            this._showExclusionReviewBulk(reviewAnalyses);
+            this._logger.info('User reviewing smart exclusions', { pending: totalNew, workspaces: workspaceCount });
+        } else {
+            this._logger.info('User kept smart exclusions', { accepted: totalNew, workspaces: workspaceCount });
+        }
+    }
+
+    _getWorkspaceName(workspaceUri) {
+        if (!workspaceUri) {
+            return 'Workspace';
+        }
+        const fsPath = workspaceUri.fsPath || workspaceUri.path || '';
+        const parts = fsPath.split(/[\\/]/).filter(Boolean);
+        return parts[parts.length - 1] || 'Workspace';
+    }
+
+    _buildReviewEntries(workspaceFolders, reviewAnalyses, revertStack) {
+        const entries = [];
+        for (let i = 0; i < reviewAnalyses.length; i += 1) {
+            const analysis = reviewAnalyses[i];
+            const revert = revertStack[i];
+            const folder = workspaceFolders[i];
+            if (!analysis || !revert || !folder) {
+                continue;
+            }
+            entries.push({
+                workspaceKey: this._getWorkspaceKey(folder.uri),
+                workspaceName: this._getWorkspaceName(folder.uri),
+                workspaceUri: folder.uri,
+                analysis,
+                previous: revert.previous
+            });
+        }
+        return entries;
     }
 
     _resolveWorkspaceRoot(workspaceUri) {
@@ -556,7 +656,7 @@ class SmartExclusionManager {
     /**
      * Show detailed exclusion review
      */
-    _showExclusionReview(analysis) {
+    _showExclusionReviewSingle(analysis) {
         const panel = vscode.window.createWebviewPanel(
             'exclusionReview',
             'Smart Exclusion Review',
@@ -564,13 +664,58 @@ class SmartExclusionManager {
             { enableScripts: true }
         );
 
-        panel.webview.html = this._generateReviewHTML(analysis);
+        panel.webview.html = this._generateReviewHTML([{
+            workspaceKey: 'single-workspace',
+            workspaceName: 'Workspace',
+            analysis,
+            previous: []
+        }]);
     }
 
-    /**
-     * Generate HTML for exclusion review
-     */
-    _generateReviewHTML(analysis) {
+    _showExclusionReviewBulk(reviewEntries) {
+        if (!Array.isArray(reviewEntries) || reviewEntries.length === 0) {
+            return;
+        }
+
+        const panel = vscode.window.createWebviewPanel(
+            'exclusionReview',
+            'Smart Exclusion Review',
+            vscode.ViewColumn.One,
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+
+        panel.webview.onDidReceiveMessage(async (message) => {
+            if (message?.type === 'save' && message.workspaceKey && Array.isArray(message.exclusions)) {
+                const entry = reviewEntries.find((e) => e.workspaceKey === message.workspaceKey);
+                if (!entry?.workspaceUri) {
+                    return;
+                }
+
+                const confirm = await vscode.window.showWarningMessage(
+                    `Apply updated exclusions for ${entry.workspaceName}?`,
+                    { modal: true },
+                    'Apply',
+                    'Cancel'
+                );
+
+                if (confirm !== 'Apply') {
+                    panel.webview.postMessage({ type: 'saveCanceled', workspaceKey: message.workspaceKey });
+                    return;
+                }
+
+                await this.saveWorkspaceExclusions(entry.workspaceUri, this._dedupeList(message.exclusions));
+                this._logger.info('Updated smart exclusions from review', {
+                    workspace: entry.workspaceName,
+                    count: message.exclusions.length
+                });
+                panel.webview.postMessage({ type: 'saved', workspaceKey: message.workspaceKey });
+            }
+        });
+
+        panel.webview.html = this._generateReviewHTML(reviewEntries);
+    }
+
+    _generateReviewHTML(reviewEntries) {
         const formatSize = (bytes) => {
             if (bytes < 1024) return `${bytes} B`;
             const kb = bytes / 1024;
@@ -579,17 +724,58 @@ class SmartExclusionManager {
             return `${mb.toFixed(1)} MB`;
         };
 
-        const suggestionRows = analysis.detectedPatterns.map(pattern => `
-            <tr>
-                <td>${pattern.name}</td>
-                <td>${pattern.path}</td>
-                <td>${formatSize(pattern.size)}</td>
-                <td>${pattern.type}</td>
-                <td>
-                    <input type="checkbox" ${analysis.suggestedExclusions.includes(pattern.name) ? 'checked' : ''}>
-                </td>
-            </tr>
-        `).join('');
+        const escapeHtml = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const renderTable = (entry) => {
+            const analysis = entry.analysis;
+            const suggestionRows = (analysis?.detectedPatterns || []).map((pattern) => `
+                <tr>
+                    <td>${escapeHtml(pattern.name)}</td>
+                    <td>${escapeHtml(pattern.path)}</td>
+                    <td>${formatSize(pattern.size)}</td>
+                    <td>${escapeHtml(pattern.type)}</td>
+                    <td>
+                        <input type="checkbox" data-workspace="${escapeHtml(entry.workspaceKey)}" data-name="${escapeHtml(pattern.name)}" ${analysis?.suggestedExclusions?.includes(pattern.name) ? 'checked' : ''}>
+                    </td>
+                </tr>
+            `).join('');
+
+            return `
+                <section class="workspace">
+                    <header>
+                        <h2>${escapeHtml(entry.workspaceName)}</h2>
+                        <div class="project-info">
+                            <div><strong>Project Type:</strong> ${escapeHtml(analysis?.projectType || 'unknown')}</div>
+                            <div><strong>Detected Patterns:</strong> ${analysis?.detectedPatterns?.length || 0}</div>
+                            <div><strong>Suggested Exclusions:</strong> ${analysis?.suggestedExclusions?.length || 0}</div>
+                        </div>
+                        <button class="save" data-workspace="${escapeHtml(entry.workspaceKey)}">Save changes</button>
+                        <span class="status" id="status-${escapeHtml(entry.workspaceKey)}"></span>
+                    </header>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Folder</th>
+                                <th>Path</th>
+                                <th>Size</th>
+                                <th>Type</th>
+                                <th>Exclude</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${suggestionRows}
+                        </tbody>
+                    </table>
+                </section>
+            `;
+        };
+
+        const sections = reviewEntries.map(renderTable).join('');
 
         return `
             <!DOCTYPE html>
@@ -598,34 +784,57 @@ class SmartExclusionManager {
                 <meta charset="UTF-8">
                 <title>Smart Exclusion Review</title>
                 <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #333; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; }
+                    .workspace { margin-bottom: 32px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 12px; }
+                    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+                    .project-info { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--vscode-editor-foreground); }
+                    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+                    th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--vscode-panel-border); }
                     th { background-color: var(--vscode-editor-background); font-weight: bold; }
-                    .project-info { background: var(--vscode-editor-background); padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+                    button.save { padding: 6px 12px; }
+                    .status { font-size: 12px; color: var(--vscode-descriptionForeground); }
                 </style>
             </head>
             <body>
                 <h1>🧠 Smart Exclusion Review</h1>
-                <div class="project-info">
-                    <strong>Project Type:</strong> ${analysis.projectType}<br>
-                    <strong>Detected Patterns:</strong> ${analysis.detectedPatterns.length}<br>
-                    <strong>Suggested Exclusions:</strong> ${analysis.suggestedExclusions.length}
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Folder</th>
-                            <th>Path</th>
-                            <th>Size</th>
-                            <th>Type</th>
-                            <th>Exclude</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${suggestionRows}
-                    </tbody>
-                </table>
+                <p>Adjust exclusion selections per workspace and click "Save changes". Each save will ask for confirmation.</p>
+                ${sections}
+                <script>
+                    const vscode = acquireVsCodeApi();
+
+                    function getSelections(workspaceKey) {
+                        const boxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-workspace="' + workspaceKey + '"]'));
+                        return boxes.filter((box) => box.checked).map((box) => box.dataset.name);
+                    }
+
+                    function setStatus(workspaceKey, text, success) {
+                        const el = document.getElementById('status-' + workspaceKey);
+                        if (el) {
+                            el.textContent = text;
+                            el.style.color = success ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editor-foreground)';
+                        }
+                    }
+
+                    document.querySelectorAll('button.save').forEach((button) => {
+                        button.addEventListener('click', () => {
+                            const workspaceKey = button.dataset.workspace;
+                            const exclusions = getSelections(workspaceKey);
+                            setStatus(workspaceKey, 'Saving...', false);
+                            vscode.postMessage({ type: 'save', workspaceKey, exclusions });
+                        });
+                    });
+
+                    window.addEventListener('message', (event) => {
+                        const message = event.data;
+                        if (!message || !message.type) return;
+                        if (message.type === 'saved') {
+                            setStatus(message.workspaceKey, 'Saved', true);
+                        }
+                        if (message.type === 'saveCanceled') {
+                            setStatus(message.workspaceKey, 'Canceled', false);
+                        }
+                    });
+                </script>
             </body>
             </html>
         `;
