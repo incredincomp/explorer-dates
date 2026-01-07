@@ -446,7 +446,7 @@ class SmartExclusionManager {
 
         const summaries = [];
         const revertStack = [];
-        const reviewAnalyses = [];
+        const reviewEntries = [];
         let totalNew = 0;
 
         for (const folder of workspaceFolders) {
@@ -471,7 +471,13 @@ class SmartExclusionManager {
 
             summaries.push({ workspace: folder.name, added: newExclusions });
             revertStack.push({ uri: folder.uri, previous: existing });
-            reviewAnalyses.push(analysis);
+            reviewEntries.push({
+                workspaceKey: this._getWorkspaceKey(folder.uri),
+                workspaceName: this._getWorkspaceName(folder.uri),
+                workspaceUri: folder.uri,
+                analysis,
+                previous: existing
+            });
             totalNew += newExclusions.length;
         }
 
@@ -499,8 +505,8 @@ class SmartExclusionManager {
                 'Smart exclusions reverted. Decorations will refresh for the restored folders.'
             );
             this._logger.info('User reverted smart exclusions', { workspaces: workspaceCount, reverted: totalNew });
-        } else if (action === 'Review' && reviewAnalyses.length) {
-            this._showExclusionReviewBulk(reviewAnalyses);
+        } else if (action === 'Review' && reviewEntries.length) {
+            this._showExclusionReviewBulk(reviewEntries);
             this._logger.info('User reviewing smart exclusions', { pending: totalNew, workspaces: workspaceCount });
         } else {
             this._logger.info('User kept smart exclusions', { accepted: totalNew, workspaces: workspaceCount });
