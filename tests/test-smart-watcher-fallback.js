@@ -4,10 +4,10 @@
  * Tests for Smart Watcher Fallback System
  */
 
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Set up mock vscode
-const { vscode } = createMockVscode();
+const { vscode } = createTestMock();
 global.vscode = vscode;
 
 console.log('Smart Watcher Fallback Test Suite');

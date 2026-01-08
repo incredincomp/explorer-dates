@@ -3,6 +3,7 @@ const fsp = fs.promises;
 const path = require('path');
 const Module = require('module');
 const { registerFeatureFlagsGlobal } = require('../../src/utils/featureFlagsBridge');
+require('./warningFilters');
 
 const FORCE_WORKSPACE_FS_ENV = 'EXPLORER_DATES_FORCE_VSCODE_FS';
 const TEST_MODE_ENV = 'EXPLORER_DATES_TEST_MODE';
@@ -24,6 +25,7 @@ const originalEnvSnapshot = {
 };
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
+const sampleWorkspaceRoot = path.join(workspaceRoot, 'tests', 'fixtures', 'sample-workspace');
 const defaultWorkspace = path.join(workspaceRoot, 'src');
 const pkg = require(path.join(workspaceRoot, 'package.json'));
 const MAX_LOG_ENTRIES = Number(process.env.MOCK_VSCODE_MAX_LOG_ENTRIES || 200);
@@ -1488,10 +1490,15 @@ function expectChunkOrFail(chunkName, required = false) {
 
 module.exports = {
     createMockVscode,
+    createTestMock: (options = {}) => createMockVscode({
+        sampleWorkspace: sampleWorkspaceRoot,
+        ...options
+    }),
     createExtensionContext,
     InMemoryMemento,
     VSCodeUri,
     workspaceRoot,
+    sampleWorkspaceRoot,
     // Chunk testing utilities
     loadChunkForTesting,
     loadBuiltChunkForTesting,

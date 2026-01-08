@@ -2,10 +2,10 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Mock vscode globally BEFORE requiring provider
-const mockVsCode = createMockVscode({
+const mockVsCode = createTestMock({
     explorerDates: {
         enabled: true,
         format: 'relative',
@@ -56,7 +56,7 @@ async function testWorkspaceFolderManagement() {
     // Test 1: Multi-root workspace initialization
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Project2', index: 1 },
@@ -84,7 +84,7 @@ async function testWorkspaceFolderManagement() {
     // Test 2: Workspace folder additions
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createTestMock();
         
         let workspaceChangeEvent = null;
         const disposable = mock.workspace.onDidChangeWorkspaceFolders(event => {
@@ -115,7 +115,7 @@ async function testWorkspaceFolderManagement() {
     // Test 3: Workspace folder removals
     total++;
     try {
-        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Project2', index: 1 }
@@ -149,7 +149,7 @@ async function testWorkspaceFolderManagement() {
     // Test 4: Workspace switching scenarios
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, removeWorkspaceFolder, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, removeWorkspaceFolder, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let configChangeCount = 0;
@@ -199,7 +199,7 @@ async function testConfigurationInheritanceAndScoping() {
     // Test 1: Workspace-specific configurations
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Project2', index: 1 }
@@ -233,7 +233,7 @@ async function testConfigurationInheritanceAndScoping() {
     // Test 2: Conflicting workspace configurations
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let configurationUpdateCount = 0;
@@ -273,7 +273,7 @@ async function testConfigurationInheritanceAndScoping() {
     // Test 3: Workspace folder file resolution
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Project2', index: 1 },
@@ -304,7 +304,7 @@ async function testConfigurationInheritanceAndScoping() {
     // Test 4: Configuration inheritance hierarchy
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let appliedConfigurations = [];
@@ -351,7 +351,7 @@ async function testResourceManagementAcrossWorkspaces() {
     // Test 1: File watchers across multiple workspaces
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Project2', index: 1 }
@@ -382,7 +382,7 @@ async function testResourceManagementAcrossWorkspaces() {
     // Test 2: Memory management with multiple workspaces
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -418,7 +418,7 @@ async function testResourceManagementAcrossWorkspaces() {
     // Test 3: Workspace deletion and resource cleanup
     total++;
     try {
-        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let disposeCallCount = 0;
@@ -447,7 +447,7 @@ async function testResourceManagementAcrossWorkspaces() {
     // Test 4: Memory leak prevention across workspace changes
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         let providers = [];
         
@@ -484,7 +484,7 @@ async function testCrossWorkspaceFileOperations() {
     // Test 1: Files from different workspace roots
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/project-a' }, name: 'ProjectA', index: 0 },
                 { uri: { fsPath: '/project-b' }, name: 'ProjectB', index: 1 }
@@ -517,7 +517,7 @@ async function testCrossWorkspaceFileOperations() {
     // Test 2: Relative path resolution across workspaces
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Project1', index: 0 }
             ]
@@ -541,7 +541,7 @@ async function testCrossWorkspaceFileOperations() {
     // Test 3: Batch operations across workspaces
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
 
@@ -586,7 +586,7 @@ async function testProviderLifecycleInMultiWorkspace() {
     // Test 1: Initialization in multi-workspace environment
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode({
+        const { vscode: mock, dispose: localDispose } = createTestMock({
             workspaceFolders: [
                 { uri: { fsPath: '/workspace1' }, name: 'Workspace1', index: 0 },
                 { uri: { fsPath: '/workspace2' }, name: 'Workspace2', index: 1 },
@@ -614,7 +614,7 @@ async function testProviderLifecycleInMultiWorkspace() {
     // Test 2: Provider disposal with active workspace operations
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
 
@@ -651,7 +651,7 @@ async function testProviderLifecycleInMultiWorkspace() {
     // Test 3: Configuration changes during multi-workspace operations
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let configChangeCount = 0;
@@ -690,7 +690,7 @@ async function testProviderLifecycleInMultiWorkspace() {
     // Test 4: Graceful shutdown in multi-workspace environment
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let resourcesDisposed = 0;

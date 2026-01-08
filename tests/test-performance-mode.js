@@ -2,10 +2,11 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
-const mockInstall = createMockVscode();
+const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
+const mockInstall = createTestMock({ sampleWorkspace: sampleWorkspaceRoot });
 const { vscode, configValues, workspaceRoot } = mockInstall;
 
 let configChangeListener = null;

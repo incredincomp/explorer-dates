@@ -17,13 +17,13 @@ const assert = require('assert');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 
 // Create a temporary workspace directory for testing
 const tempWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'explorer-dates-test-'));
 
 // Setup mock before importing modules
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     config: {
         'explorerDates.enableWorkspaceTemplates': true,
         'explorerDates.enableExportReporting': false,
@@ -710,7 +710,7 @@ async function testErrorHandlingAndEdgeCases() {
     const manager = new TeamConfigPersistenceManager(context);
 
     // Test 1: No workspace folders
-    const mockNoWorkspace = createMockVscode({ 
+    const mockNoWorkspace = createTestMock({ 
         workspace: { workspaceFolders: [] }  // Empty array instead of null
     });
     const managerNoWorkspace = new TeamConfigPersistenceManager(context);
@@ -726,7 +726,7 @@ async function testErrorHandlingAndEdgeCases() {
     // Test 2: Corrupted team configuration file
     // Create a fresh manager with proper workspace setup
     const tempCorruptedWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'explorer-dates-corrupted-'));
-    const mockCorruptedSetup = createMockVscode({
+    const mockCorruptedSetup = createTestMock({
         workspace: {
             workspaceFolders: [{
                 uri: { 

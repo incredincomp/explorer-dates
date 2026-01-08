@@ -10,8 +10,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Set up VS Code mock
-const { createMockVscode } = require('./helpers/mockVscode');
-const mockSetup = createMockVscode({
+const { createTestMock } = require('./helpers/mockVscode');
+const mockSetup = createTestMock({
     explorerDates: {
         enableProgressiveAnalysis: true,
         enableWasmDigest: true

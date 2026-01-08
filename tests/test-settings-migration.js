@@ -9,31 +9,21 @@ const assert = require('assert');
 const path = require('path');
 const { scheduleExit } = require('./helpers/forceExit');
 const {
-    createMockVscode,
+    createTestMock,
     createExtensionContext,
     VSCodeUri,
     workspaceRoot
 } = require('./helpers/mockVscode');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
 
-// Filter intentional warning/error noise to keep output readable
-const originalWarn = console.warn;
+const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
+
+// Filter intentional error noise to keep output readable
 const originalError = console.error;
-const warnFilters = [
-    /Security workspace boundary enforcement relaxed/,
-    /Duplicate explorerDates\.resetToDefaults registration skipped/
-];
 const errorFilters = [
     /Failed to initialize advanced systems/
 ];
 const consoleErrorLog = [];
-console.warn = (...args) => {
-    const msg = args.join(' ');
-    if (warnFilters.some((pattern) => pattern.test(msg))) {
-        return;
-    }
-    originalWarn(...args);
-};
 console.error = (...args) => {
     const msg = args.join(' ');
     if (errorFilters.some((pattern) => pattern.test(msg))) {
@@ -54,8 +44,8 @@ function drainConsoleErrors() {
 const extensionEntryPath = path.join(__dirname, '..', 'extension.js');
 const webEntryPath = path.join(__dirname, '..', 'dist', 'extension.web.js');
 const MULTI_FOLDER_WORKSPACE = [
-    { path: path.join(workspaceRoot, 'tests', 'fixtures', 'workspace-a'), name: 'workspace-a' },
-    { path: path.join(workspaceRoot, 'tests', 'fixtures', 'workspace-b'), name: 'workspace-b' }
+    { path: path.join(sampleWorkspaceRoot, 'workspaceA'), name: 'workspaceA' },
+    { path: path.join(sampleWorkspaceRoot, 'workspaceB'), name: 'workspaceB' }
 ];
 
 function getWorkspaceFolderDescriptors() {
@@ -206,7 +196,7 @@ async function runNodeBundleMigration(options = {}) {
 
     const workspaceFolders = getWorkspaceFolderDescriptors();
     const nodeContext = createExtensionContext();
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true,
             'explorerDates.customColors': globalCustomColors
@@ -436,7 +426,7 @@ async function testWebBundleMigration() {
 async function testKeepOldSettingsOptOut() {
     const workspaceFolders = getWorkspaceFolderDescriptors();
     const nodeContext = createExtensionContext();
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true,
             'explorerDates.customColors': {
@@ -565,7 +555,7 @@ async function testMigrationHistoryRetention() {
     })).reverse();
     await nodeContext.globalState.update('explorerDates.migrationHistory', seededHistory);
 
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true
         }
@@ -642,7 +632,7 @@ async function testWebTelemetryHistoryRetention() {
 
 async function testNodeSkipsWhenExportReportingExists() {
     const nodeContext = createExtensionContext();
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true,
             'explorerDates.enableExportReporting': true
@@ -734,7 +724,7 @@ async function testWebSkipsWhenExportReportingExists() {
 
 async function testNodePartialExportSkip() {
     const nodeContext = createExtensionContext();
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true
         },
@@ -786,7 +776,7 @@ async function testNodePartialExportSkip() {
 
 async function testNodeWorkspaceFolderPartialExportSkip() {
     const nodeContext = createExtensionContext();
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true
         },
@@ -959,7 +949,7 @@ async function testNodeCustomColorNoOp() {
         'explorerDates.customColor.recent': '#fbbf24',
         'explorerDates.customColor.old': '#ef4444'
     };
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.customColors': {
                 veryRecent: '#22d3ee',
@@ -1057,7 +1047,7 @@ async function testNodeWorkspacePaletteNoOp() {
         'explorerDates.customColor.recent': '#d946ef',
         'explorerDates.customColor.old': '#0ea5e9'
     };
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         workspaceConfig: {
             customColors: {
                 veryRecent: '#fde047',
@@ -1160,7 +1150,7 @@ async function testNodeWorkspaceFolderPaletteNoOp() {
         'explorerDates.customColor.recent': '#a855f7',
         'explorerDates.customColor.old': '#f97316'
     };
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         workspaceFolderConfig: {
             customColors: {
                 veryRecent: '#22c55e',
@@ -1276,7 +1266,7 @@ async function testNodeWorkspaceFolderPaletteMigration() {
         recent: '#60a5fa',
         old: '#a78bfa'
     };
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         workspaceFolderConfig: {
             customColors: folderCustomColors
         },

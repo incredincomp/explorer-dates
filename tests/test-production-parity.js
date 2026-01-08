@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { CHUNK_MAP } = require('../src/shared/chunkMap');
-const { expectChunkOrFail, createMockVscode } = require('./helpers/mockVscode');
+const { expectChunkOrFail, createTestMock } = require('./helpers/mockVscode');
 
 const workspaceRoot = path.resolve(__dirname, '..');
 
@@ -40,7 +40,7 @@ function compareExports(devExport, builtExport, chunkName) {
 function main() {
     console.log('🔁 Verifying production parity for core chunks...');
     // Install vscode mock hook for dev chunk imports
-    const mockInstall = createMockVscode();
+    const mockInstall = createTestMock();
     const required = [
         'analysis',
         'reporting',

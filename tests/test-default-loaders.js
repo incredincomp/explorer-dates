@@ -6,10 +6,10 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Set up mock vscode environment
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     explorerDates: {
         'enableOnboardingSystem': true,
         'enableExportReporting': true,

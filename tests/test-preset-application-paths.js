@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 
 /**
  * High Priority Tests for Preset Application Paths
@@ -27,7 +27,7 @@ const { createMockVscode, createExtensionContext } = require('./helpers/mockVsco
 async function testPresetApplicationWorkflow() {
     console.log('Testing end-to-end preset application workflow...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             // Start with a known configuration state
             'explorerDates.enableWorkspaceTemplates': true,
@@ -191,7 +191,7 @@ async function testPresetApplicationWorkflow() {
 async function testPresetApplicationFailures() {
     console.log('Testing preset application failure handling...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': true
@@ -279,7 +279,7 @@ async function testPresetApplicationFailures() {
 async function testPresetRollback() {
     console.log('Testing preset rollback scenarios...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': true,
@@ -402,7 +402,7 @@ async function testPresetRollback() {
 async function testPresetSettingsInterdependencies() {
     console.log('Testing preset settings interdependencies...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': true,
@@ -563,7 +563,7 @@ async function testPresetSettingsInterdependencies() {
 async function testPresetComparisonIntegration() {
     console.log('Testing preset comparison and selection UI integration...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': false
@@ -669,7 +669,7 @@ async function testPresetComparisonIntegration() {
 async function testPresetRestartPromptBatching() {
     console.log('Testing restart prompt batching for preset applications...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': false,
             'explorerDates.enableExportReporting': false,

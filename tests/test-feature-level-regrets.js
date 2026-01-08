@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false,
             'explorerDates.featureLevel': 'full'

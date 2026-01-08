@@ -77,7 +77,7 @@ async function testDeterministicDebounceTimer() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
@@ -136,7 +136,7 @@ async function testTimerCleanupOnTeardown() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const context = createExtensionContext();
         
         // Create a timer that should be cleaned up
@@ -173,7 +173,7 @@ async function testPendingRestartPersistenceAcrossRestarts() {
     
     try {
         // Session 1: queue restart and simulate shutdown before prompt
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         
         const context1 = createExtensionContext({ globalState: sharedGlobalState });

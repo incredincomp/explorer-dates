@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { performance, PerformanceObserver, constants: perfConstants } = require('perf_hooks');
-const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
 const {
     resolveMemoryProfile,
     applyProfileEnv,
@@ -79,7 +79,7 @@ if (memoryProfile.description) {
     console.log(`   ${memoryProfile.description}`);
 }
 
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     config: {
         'explorerDates.badgeRefreshInterval': memoryProfile.badgeRefreshInterval ?? 1500,
         'explorerDates.showDateDecorations': true,

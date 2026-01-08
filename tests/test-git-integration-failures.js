@@ -2,11 +2,11 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false,
             'explorerDates.featureLevel': 'enhanced',

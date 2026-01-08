@@ -9,7 +9,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 
 /**
  * Create controlled delay utility
@@ -24,7 +24,7 @@ function delay(ms) {
 async function testConcurrentSameFileRequests() {
     console.log('🏁 Testing concurrent requests for same file...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -72,7 +72,7 @@ async function testConcurrentSameFileRequests() {
 async function testConcurrentDifferentFileRequests() {
     console.log('🔀 Testing concurrent requests for different files...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -114,7 +114,7 @@ async function testConcurrentDifferentFileRequests() {
 async function testConfigurationChangeDuringOperations() {
     console.log('⚙️ Testing configuration changes during active operations...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -160,7 +160,7 @@ async function testConfigurationChangeDuringOperations() {
 async function testFileSystemEventsDuringDecorations() {
     console.log('📁 Testing file system events during decoration updates...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -204,7 +204,7 @@ async function testFileSystemEventsDuringDecorations() {
 async function testRapidSequentialOperations() {
     console.log('⚡ Testing rapid sequential operations...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -251,7 +251,7 @@ async function testRapidSequentialOperations() {
 async function testCacheConsistencyUnderConcurrentAccess() {
     console.log('🗄️ Testing cache consistency under concurrent access...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -298,7 +298,7 @@ async function testCacheConsistencyUnderConcurrentAccess() {
 async function testProviderDisposalDuringOperations() {
     console.log('🔄 Testing provider disposal during active operations...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -349,7 +349,7 @@ async function testProviderDisposalDuringOperations() {
 async function testAsyncOperationTimingConflicts() {
     console.log('⏱️ Testing async operation timing conflicts...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 
             'explorerDates.performanceMode': false,
             'explorerDates.showGitInfo': 'author'
@@ -396,7 +396,7 @@ async function testAsyncOperationTimingConflicts() {
 async function testEventFloodingScenarios() {
     console.log('🌊 Testing event flooding scenarios...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;

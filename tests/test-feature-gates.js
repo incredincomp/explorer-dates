@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 
 // Set short chunk timeout for faster test execution (restore after run)
 const previousChunkTimeout = process.env.EXPLORER_DATES_CHUNK_TIMEOUT;
@@ -15,7 +15,8 @@ const restoreChunkTimeout = () => {
     }
 };
 
-const mockInstall = createMockVscode();
+const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
+const mockInstall = createTestMock({ sampleWorkspace: sampleWorkspaceRoot });
 const { infoLog, vscode, configValues, registeredProviders, workspaceRoot } = mockInstall;
 const extension = require('../extension');
 

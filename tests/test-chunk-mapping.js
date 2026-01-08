@@ -8,8 +8,8 @@
 const { performance } = require('perf_hooks');
 
 // Set up VS Code mock before requiring chunks
-const { createMockVscode } = require('./helpers/mockVscode');
-const mockSetup = createMockVscode({
+const { createTestMock } = require('./helpers/mockVscode');
+const mockSetup = createTestMock({
     explorerDates: {
         enableOnboarding: true,
         enableWorkspaceTemplates: true,

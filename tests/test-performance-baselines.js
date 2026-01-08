@@ -13,7 +13,7 @@ const {
     calculateBundleSize
 } = require('../src/presetDefinitions');
 const { CHUNK_MAP } = require('../src/shared/chunkMap');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { BaselineManager } = require('./baseline-manager');
 
 const artifactsDir = path.join(__dirname, 'artifacts', 'performance');
@@ -320,7 +320,7 @@ async function testPresetBundleSizes() {
 
 async function testDecorationLatencyBaseline() {
     await runTest('Decoration latency baseline stays under 15ms', async () => {
-        const mockInstall = createMockVscode();
+        const mockInstall = createTestMock();
         const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
         const provider = new FileDateDecorationProvider();
 

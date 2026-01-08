@@ -2,16 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
-
-/**
- * Tests for incremental workers feature flag functionality
- * Verifies that:
- * 1. toggleIncrementalWorkers setting prevents/permits chunk loading
- * 2. Presets correctly apply incremental workers settings
- * 3. Runtime behavior respects the feature flag
- * 4. Commands handle disabled state appropriately
- */
+const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 
 let mockInstall;
 let extension;
@@ -20,7 +11,7 @@ function createCleanMock(overrides = {}) {
     if (mockInstall) {
         mockInstall.dispose();
     }
-    mockInstall = createMockVscode({
+    mockInstall = createTestMock({
         config: {
             'explorerDates.enableIncrementalWorkers': true,
             ...overrides

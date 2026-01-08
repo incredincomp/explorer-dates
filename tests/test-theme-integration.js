@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 function loadThemeIntegration() {
     const modulePath = path.join(__dirname, '..', 'src', 'themeIntegration.js');
@@ -21,7 +21,7 @@ async function runTest(name, fn) {
 }
 
 function createManager(options = {}) {
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         themeKind: options.themeKind,
         config: options.config,
         workspaceConfig: options.workspaceConfig
@@ -165,7 +165,7 @@ async function testListenerDisposalPreventsNotifications() {
 
 async function testMultiWindowReuseLifecycle() {
     await runTest('Multiple managers reuse theme subscriptions safely', async () => {
-        const mockInstall = createMockVscode({ themeKind: 2 });
+        const mockInstall = createTestMock({ themeKind: 2 });
         const { ThemeIntegrationManager } = loadThemeIntegration();
         const managerA = new ThemeIntegrationManager();
         const managerB = new ThemeIntegrationManager();

@@ -2,7 +2,7 @@
 /* eslint-disable no-unused-vars */
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
@@ -25,7 +25,7 @@ async function main() {
         console.log('🔧 Testing Configuration Edge Cases...\n');
 
         await runTest('Invalid Configuration Values', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': null, // Invalid null value
                     'explorerDates.badgePriority': 'invalid-option', // Invalid enum
@@ -69,7 +69,7 @@ async function main() {
             }
             
             // Test that the provider handles invalid boolean as truthy performance mode
-            const mockInstall2 = createMockVscode({
+            const mockInstall2 = createTestMock({
                 config: {
                     'explorerDates.performanceMode': 123 // Invalid type for boolean, treated as truthy
                 }
@@ -87,7 +87,7 @@ async function main() {
 
         await runTest('Malformed JSON Configuration', async () => {
             // Mock configuration that simulates parsing errors
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.customColors': '{malformed json}', // Invalid object payload
                     'explorerDates.excludedPatterns': ['\\'], // Invalid regex pattern
@@ -112,7 +112,7 @@ async function main() {
         });
 
         await runTest('Rapid Configuration Changes', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': 'relative-short',
                     'explorerDates.colorScheme': 'recency'
@@ -156,7 +156,7 @@ async function main() {
         });
 
         await runTest('Conflicting Workspace and User Settings', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     // User settings
                     'explorerDates.dateDecorationFormat': 'relative-short',
@@ -193,7 +193,7 @@ async function main() {
         });
 
         await runTest('Settings Rollback Scenarios', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': 'relative-long',
                     'explorerDates.colorScheme': 'recency'
@@ -241,7 +241,7 @@ async function main() {
         });
 
         await runTest('Configuration Schema Violations', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     // Test various schema violations
                     'explorerDates.dateDecorationFormat': 123, // Wrong type
@@ -274,7 +274,7 @@ async function main() {
         });
 
         await runTest('Configuration Event Flooding', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': 'relative-short'
                 }
@@ -315,7 +315,7 @@ async function main() {
         });
 
         await runTest('Configuration Memory Consistency', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': 'relative-short',
                     'explorerDates.colorScheme': 'recency'
@@ -366,7 +366,7 @@ async function main() {
         });
 
         await runTest('Configuration Inheritance Edge Cases', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': undefined, // Explicitly undefined
                     'explorerDates.colorScheme': null, // Explicitly null
@@ -400,7 +400,7 @@ async function main() {
 
         await runTest('Security Boundary Configuration Updates', async () => {
             const initialExtraPath = path.join(path.sep, 'tmp', 'explorer-dates-trusted');
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.security.enforceWorkspaceBoundaries': true,
                     'explorerDates.security.enableBoundaryEnforcement': true,
@@ -449,7 +449,7 @@ async function main() {
         });
 
         await runTest('Configuration Performance Under Load', async () => {
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     'explorerDates.dateDecorationFormat': 'relative-short',
                     'explorerDates.performanceMode': false
@@ -508,7 +508,7 @@ async function main() {
                 'explorerDates.enableWorkspaceIntelligence': false,
                 'explorerDates.enableIncrementalWorkers': false
             };
-            const mockInstall = createMockVscode({
+            const mockInstall = createTestMock({
                 config: {
                     ...toggleDefaults,
                     'explorerDates.performanceMode': false

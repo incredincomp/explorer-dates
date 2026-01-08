@@ -4,9 +4,9 @@
  */
 
 // Set up mock vscode FIRST before requiring any modules
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     explorerDates: {
         'showGitInfo': 'none',
         'badgePriority': 'time',

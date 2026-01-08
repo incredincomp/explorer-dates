@@ -11,7 +11,7 @@ if (!process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES) {
 }
 const asyncHooks = ENABLE_HANDLE_DIAGNOSTICS ? require('async_hooks') : null;
 const {
-    createMockVscode,
+    createTestMock,
     createExtensionContext,
     VSCodeUri,
     workspaceRoot,
@@ -729,7 +729,7 @@ function describeRequest(request) {
 
 async function main() {
     enableImmediateTimers();
-    const mockInstall = createMockVscode();
+    const mockInstall = createTestMock();
     ensureChunkArtifactsAccessible();
     const extension = require('../extension');
     const sampleFilePath = path.join(mockInstall.sampleWorkspace, 'fileDateDecorationProvider.js');

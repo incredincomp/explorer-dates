@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 // Allow workspace scans to cover the higher thresholds used in the new defaults
 process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULTS = '500000';
 
 async function main() {
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false,
             'explorerDates.forceEnableForLargeWorkspaces': false

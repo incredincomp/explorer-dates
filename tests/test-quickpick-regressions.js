@@ -3,8 +3,8 @@
 const assert = require('assert');
 const path = require('path');
 const mockHelpers = require('./helpers/mockVscode');
-const mockInstall = mockHelpers.createMockVscode();
-const { createExtensionContext, createMockVscode } = mockHelpers;
+const mockInstall = mockHelpers.createTestMock();
+const { createExtensionContext, createTestMock } = mockHelpers;
 
 async function disposeContext(context) {
     if (!context?.subscriptions) return;
@@ -25,7 +25,7 @@ async function testFormatRegressionDetection() {
     console.log('Testing format regression detection...');
     
     // Test with mock preset data that contains format regressions
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableOnboardingSystem': true,
             'explorerDates.enableAnalysisCommands': true
@@ -126,7 +126,7 @@ async function testQuickPickRegressionPoints() {
     console.log('Testing QuickPick regression scenarios...');
     
     // Create isolated mock for this test to prevent global state contamination
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableOnboardingSystem': true,
             'explorerDates.enableAnalysisCommands': true,
@@ -301,7 +301,7 @@ async function testChunkStatusRegressionPoints() {
     console.log('Testing chunk status rendering edge cases...');
     
     // Create isolated mock for this test to prevent state contamination from previous tests
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableOnboardingSystem': false,
             'explorerDates.enableAnalysisCommands': false,

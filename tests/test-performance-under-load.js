@@ -15,7 +15,7 @@
 
 const assert = require('assert');
 const { performance } = require('perf_hooks');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 // Allow workspace scans to reflect the raised large/extreme thresholds
@@ -34,7 +34,7 @@ const MEMORY_PRESSURE_CYCLES = 50;
 async function testLargeWorkspacePerformance() {
     console.log('📊 Testing large workspace performance...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false,
             'explorerDates.smartFileWatching': true,
@@ -87,7 +87,7 @@ async function testLargeWorkspacePerformance() {
 async function testMassiveWorkspaceOptimization() {
     console.log('🏗️ Testing massive workspace auto-optimization...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false,
             'explorerDates.forceEnableForLargeWorkspaces': false
@@ -134,7 +134,7 @@ async function testMassiveWorkspaceOptimization() {
 async function testHighFrequencyFileChanges() {
     console.log('⚡ Testing high-frequency file changes...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -185,7 +185,7 @@ async function testHighFrequencyFileChanges() {
 async function testConcurrentRequestPerformance() {
     console.log('🔀 Testing concurrent request performance...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -235,7 +235,7 @@ async function testConcurrentRequestPerformance() {
 async function testCacheThrashingPerformance() {
     console.log('💾 Testing cache thrashing scenarios...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 
             'explorerDates.performanceMode': false,
             'explorerDates.maxCacheSize': 50, // Small cache to force evictions
@@ -292,7 +292,7 @@ async function testCacheThrashingPerformance() {
 async function testMemoryPressurePerformance() {
     console.log('🧠 Testing memory pressure scenarios...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 
             'explorerDates.performanceMode': false,
             'explorerDates.maxMemoryUsage': 10, // Low memory limit
@@ -356,7 +356,7 @@ async function testMemoryPressurePerformance() {
 async function testPerformanceDegradationMonitoring() {
     console.log('📉 Testing performance degradation monitoring...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;

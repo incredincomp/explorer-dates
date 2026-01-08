@@ -3,8 +3,8 @@
 const assert = require('assert');
 const path = require('path');
 const mockHelpers = require('./helpers/mockVscode');
-const mockInstall = mockHelpers.createMockVscode();
-const { createExtensionContext, createMockVscode } = mockHelpers;
+const mockInstall = mockHelpers.createTestMock();
+const { createExtensionContext, createTestMock } = mockHelpers;
 const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
 const { TeamConfigPersistenceManager } = require('../src/teamConfigPersistence');
 
@@ -22,7 +22,7 @@ async function disposeContext(context) {
 
 async function testPresetAutoSuggestion() {
     // Create isolated mock for this test to prevent state leaks
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableAnalysisCommands': true,
@@ -116,7 +116,7 @@ async function testPresetAutoSuggestion() {
 
 async function testTeamConfigScaffold() {
     // Create completely fresh mock for this test to prevent state leaks from previous test
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': false
@@ -170,7 +170,7 @@ async function testTeamConfigScaffold() {
 async function testNewTeamConfigFeatures() {
     console.log('Testing new team configuration features...');
     
-    const testMock = createMockVscode({
+    const testMock = createTestMock({
         config: {
             'explorerDates.enableWorkspaceTemplates': true,
             'explorerDates.enableExportReporting': false

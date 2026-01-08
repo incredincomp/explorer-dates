@@ -6,10 +6,10 @@
  */
 
 const assert = require('assert');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Create mock before importing extension modules
-const mock = createMockVscode({});
+const mock = createTestMock({});
 const { SecurityValidator, SecureFileOperations, detectSecurityEnvironment } = require('../src/utils/securityUtils');
 
 async function testPathTraversalDetection() {
@@ -326,7 +326,7 @@ async function testSecureFileOperations() {
     console.log('📁 Testing secure file operations...');
     
     // Create mock VS Code environment
-    const mockInstall = createMockVscode({});
+    const mockInstall = createTestMock({});
     const { VSCodeUri } = mockInstall;
 
     try {
@@ -370,7 +370,7 @@ async function testIntegrationWithExtension() {
     console.log('🔗 Testing integration with extension...');
     
     // Test that security utils can be used with existing path utilities
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.excludedPatterns': [
                 '*.txt',
@@ -447,7 +447,7 @@ async function testStrictBoundaryEnforcement() {
     const originalVscodeTest = process.env.VSCODE_TEST;
     const originalDevMode = process.env.EXPLORER_DATES_DEV_MODE;
 
-    const mockInstall = createMockVscode({});
+    const mockInstall = createTestMock({});
     const { VSCodeUri, vscode } = mockInstall;
 
     try {

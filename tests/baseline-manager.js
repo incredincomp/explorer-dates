@@ -209,7 +209,17 @@ class BaselineManager {
 
     async fetchLocalBaseline(key) {
         const data = await readJson(this.localBaselineFile);
-        return parseNumeric(data[key]);
+        if (!data || typeof data !== 'object') {
+            return undefined;
+        }
+        const direct = parseNumeric(data[key]);
+        if (typeof direct === 'number') {
+            return direct;
+        }
+        if (data.metrics && typeof data.metrics === 'object') {
+            return parseNumeric(data.metrics[key]);
+        }
+        return undefined;
     }
 
     async fetchGithubVariable(name) {
@@ -309,6 +319,17 @@ class BaselineManager {
         }
 
         const localBaselines = updateLocal ? await readJson(this.localBaselineFile) : {};
+        const usingStructuredStore =
+            updateLocal &&
+            localBaselines &&
+            typeof localBaselines === 'object' &&
+            Object.prototype.hasOwnProperty.call(localBaselines, 'metrics');
+        const metricsStore = usingStructuredStore
+            ? (typeof localBaselines.metrics === 'object' ? localBaselines.metrics : {})
+            : localBaselines;
+        if (usingStructuredStore && localBaselines.metrics !== metricsStore) {
+            localBaselines.metrics = metricsStore;
+        }
         let updated = false;
 
         for (const [key, measurement] of this.measurements.entries()) {
@@ -316,7 +337,7 @@ class BaselineManager {
                 continue;
             }
             if (updateLocal) {
-                localBaselines[key] = measurement.value;
+                metricsStore[key] = measurement.value;
                 updated = true;
             }
             if (updateRemote) {
@@ -327,6 +348,9 @@ class BaselineManager {
         }
 
         if (updateLocal && updated) {
+            if (usingStructuredStore) {
+                localBaselines.baselineUpdatedAt = new Date().toISOString();
+            }
             await writeJson(this.localBaselineFile, localBaselines);
         }
 

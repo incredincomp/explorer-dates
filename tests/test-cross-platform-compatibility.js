@@ -16,7 +16,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 
 // Platform detection utilities
 const { scheduleExit } = require('./helpers/forceExit');
@@ -30,7 +30,7 @@ const isLinux = process.platform === 'linux';
 async function testWindowsPathHandling() {
     console.log('🪟 Testing Windows-style path handling...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -81,7 +81,7 @@ async function testWindowsPathHandling() {
 async function testUnixPathHandling() {
     console.log('🐧 Testing Unix-style path handling...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -133,7 +133,7 @@ async function testUnixPathHandling() {
 async function testCaseSensitivityHandling() {
     console.log('🔤 Testing case sensitivity handling...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -191,7 +191,7 @@ async function testCaseSensitivityHandling() {
 async function testSpecialCharacterHandling() {
     console.log('🌍 Testing special character and Unicode handling...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -258,7 +258,7 @@ async function testSpecialCharacterHandling() {
 async function testUriSchemeCompatibility() {
     console.log('🔗 Testing URI scheme compatibility...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -336,7 +336,7 @@ async function testUriSchemeCompatibility() {
 async function testPlatformEnvironmentVariables() {
     console.log('🌐 Testing platform-specific environment variables...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;
@@ -430,7 +430,7 @@ async function testPlatformEnvironmentVariables() {
 async function testCrossPlatformGitIntegration() {
     console.log('📜 Testing cross-platform Git integration...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 
             'explorerDates.performanceMode': false,
             'explorerDates.showGitInfo': 'author'
@@ -488,7 +488,7 @@ async function testCrossPlatformGitIntegration() {
 async function testFileSystemLimitations() {
     console.log('📁 Testing platform-specific file system limitations...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { vscode } = mockInstall;

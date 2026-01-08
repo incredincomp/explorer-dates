@@ -84,6 +84,7 @@ The extension uses VS Code's `FileDecorationProvider` API to add date informatio
 - [DOCS/UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) — v1.3.x migration steps and presets
 - [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md) — module federation, chunk gating, and bundle optimization details
 - [DOCS/COMMANDS.md](./DOCS/COMMANDS.md) — command palette reference with IDs and descriptions
+- [DOCS/PERF_BASELINES.md](./DOCS/PERF_BASELINES.md) — managing local vs. CI performance baselines and downloading artifacts
 
 ### Settings Housekeeping
 - Explorer Dates now auto-detects misplaced workspace settings or unsorted `explorer-dates-*.json` files during activation/migrations and quietly reorganizes them when needed.

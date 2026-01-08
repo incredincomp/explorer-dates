@@ -5,12 +5,12 @@
  * This script simulates the behavior of the periodic refresh timer
  */
 
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 console.log('🧪 Testing Periodic Refresh Mechanism\n');
 
 // Set up mock VS Code environment with a very short workspace-level refresh interval
-const mockEnv = createMockVscode({
+const mockEnv = createTestMock({
     config: {
         'explorerDates.showDateDecorations': true
     },

@@ -1,0 +1,9 @@
+{
+  "exclusions": [
+    ".vscode",
+    "dist",
+    "node_modules"
+  ],
+  "updatedAt": "2026-01-08T00:06:56.649Z",
+  "version": 1
+}

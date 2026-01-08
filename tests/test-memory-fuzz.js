@@ -18,7 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
 const {
     resolveMemoryProfile,
     applyProfileEnv
@@ -94,7 +94,7 @@ function pickSampleFiles() {
         const delayMs = randInt(5, 25);
         const runId = crypto.randomUUID();
 
-        const mockInstall = createMockVscode({
+        const mockInstall = createTestMock({
             config: {
                 'explorerDates.badgeRefreshInterval': refreshInterval,
                 'explorerDates.cacheTimeout': cacheTimeout,

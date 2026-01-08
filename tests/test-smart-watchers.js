@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const { createMockVscode, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function verifySmartWatcherTargets() {
     const patternsCreated = [];
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         workspaceFolders: [{ uri: VSCodeUri.file('/tmp/project'), name: 'project' }],
         config: {
             'explorerDates.performanceMode': false,
@@ -58,7 +58,7 @@ async function verifySmartWatcherTargets() {
 
 async function verifyWatcherAbortOnPerfToggle() {
     const patternsCreated = [];
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.performanceMode': false
         }

@@ -10,12 +10,12 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs').promises;
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 
 // Use the actual workspace for testing
 const realWorkspacePath = path.resolve(__dirname, '..');
 
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     config: {
         'explorerDates.enableWorkspaceTemplates': true,
         'explorerDates.enableExportReporting': false,

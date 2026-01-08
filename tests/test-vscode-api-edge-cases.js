@@ -16,10 +16,10 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Mock vscode globally BEFORE requiring provider
-const mockVsCode = createMockVscode({
+const mockVsCode = createTestMock({
     explorerDates: {
         enabled: true,
         format: 'relative',
@@ -73,7 +73,7 @@ async function testThemeChangeDuringDecorations() {
     // Test 1: Theme change during decoration providing
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -110,7 +110,7 @@ async function testThemeChangeDuringDecorations() {
     // Test 2: Multiple rapid theme changes
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let themeChangeCount = 0;
@@ -138,7 +138,7 @@ async function testThemeChangeDuringDecorations() {
     // Test 3: Theme changes with color preferences
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -174,7 +174,7 @@ async function testWorkspaceEventTiming() {
     // Test 1: Rapid workspace folder changes
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, removeWorkspaceFolder, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, removeWorkspaceFolder, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let eventCount = 0;
@@ -206,7 +206,7 @@ async function testWorkspaceEventTiming() {
     // Test 2: Configuration changes during workspace events
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let workspaceEvents = 0;
@@ -244,7 +244,7 @@ async function testWorkspaceEventTiming() {
     // Test 3: Workspace event during file operations
     total++;
     try {
-        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, addWorkspaceFolder, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -280,7 +280,7 @@ async function testWindowFocusAndActivation() {
     // Test 1: Window state changes during decoration
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -305,7 +305,7 @@ async function testWindowFocusAndActivation() {
     // Test 2: Active editor changes
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -334,7 +334,7 @@ async function testWindowFocusAndActivation() {
     // Test 3: Window visibility changes
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -367,7 +367,7 @@ async function testAPIDeprecationsAndFailures() {
     // Test 1: Missing API methods graceful handling
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -391,7 +391,7 @@ async function testAPIDeprecationsAndFailures() {
     // Test 2: API call failures
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -422,7 +422,7 @@ async function testAPIDeprecationsAndFailures() {
     // Test 3: Deprecated configuration handling
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -458,7 +458,7 @@ async function testExtensionContextEdgeCases() {
     // Test 1: Extension activation timing
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         // Test provider initialization in various activation scenarios
         const provider = new FileDateDecorationProvider();
@@ -482,7 +482,7 @@ async function testExtensionContextEdgeCases() {
     // Test 2: Extension context disposal edge cases
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -514,7 +514,7 @@ async function testExtensionContextEdgeCases() {
     // Test 3: Extension state persistence
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -547,7 +547,7 @@ async function testCommandExecutionFailures() {
     // Test 1: Command registration failures
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -571,7 +571,7 @@ async function testCommandExecutionFailures() {
     // Test 2: Command execution with invalid arguments
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -612,7 +612,7 @@ async function testCommandExecutionFailures() {
     // Test 3: Async command timing issues
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -648,7 +648,7 @@ async function testFileSystemWatcherEdgeCases() {
     // Test 1: Watcher disposal timing
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -679,7 +679,7 @@ async function testFileSystemWatcherEdgeCases() {
     // Test 2: Multiple watcher patterns
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -711,7 +711,7 @@ async function testFileSystemWatcherEdgeCases() {
     // Test 3: Watcher event flooding
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -748,7 +748,7 @@ async function testConfigurationChangeTimingIssues() {
     // Test 1: Rapid configuration updates
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         let configChangeCount = 0;
@@ -784,7 +784,7 @@ async function testConfigurationChangeTimingIssues() {
     // Test 2: Configuration changes during file operations
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         
@@ -816,7 +816,7 @@ async function testConfigurationChangeTimingIssues() {
     // Test 3: Overlapping configuration scopes
     total++;
     try {
-        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createMockVscode();
+        const { vscode: mock, triggerConfigChange, dispose: localDispose } = createTestMock();
         
         const provider = new FileDateDecorationProvider();
         

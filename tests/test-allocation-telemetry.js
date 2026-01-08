@@ -4,7 +4,7 @@
  * Test allocation telemetry functionality in dev mode.
  */
 
-const { createMockVscode, createExtensionContext, workspaceRoot, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, workspaceRoot, VSCodeUri } = require('./helpers/mockVscode');
 
 // Create dev environment
 process.env.NODE_ENV = 'development';
@@ -12,7 +12,7 @@ process.env.EXPLORER_DATES_TELEMETRY_INTERVAL_MS = '2000'; // 2 seconds for test
 
 console.log('🧪 Testing allocation telemetry in dev mode...');
 
-const mock = createMockVscode({
+const mock = createTestMock({
     explorerDates: {
         enableReporting: false,
         autoThemeAdaptation: false,

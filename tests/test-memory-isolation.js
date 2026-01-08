@@ -13,7 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createMockVscode, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
 const {
     resolveMemoryProfile,
     applyProfileEnv
@@ -40,7 +40,7 @@ const DISABLE_TIMERS = process.env.DISABLE_TIMERS === '1';
 const DISABLE_CACHE_EXTENSION = process.env.DISABLE_CACHE_EXTENSION === '1';
 const DISABLE_INCREMENTAL_REFRESH = process.env.DISABLE_INCREMENTAL_REFRESH === '1';
 
-const mockInstall = createMockVscode({
+const mockInstall = createTestMock({
     config: {
         'explorerDates.badgeRefreshInterval': memoryProfile.badgeRefreshInterval ?? 1500,
         'explorerDates.showDateDecorations': true,

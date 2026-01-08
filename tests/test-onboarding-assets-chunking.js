@@ -11,9 +11,9 @@ const fs = require('fs');
 const { performance } = require('perf_hooks');
 
 // Set up VS Code mock before requiring any extension modules
-const { createMockVscode, createExtensionContext, loadChunkForTesting, validateAllChunks, getAllChunkNames } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, loadChunkForTesting, validateAllChunks, getAllChunkNames } = require('./helpers/mockVscode');
 const { CHUNK_MAP } = require('../src/shared/chunkMap');
-const mockSetup = createMockVscode({
+const mockSetup = createTestMock({
     explorerDates: {
         enableOnboarding: true
     }

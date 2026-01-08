@@ -4,10 +4,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Ensure VS Code API calls route through the shared mock (all feature flags enabled)
-const mockSetup = createMockVscode({
+const mockSetup = createTestMock({
     explorerDates: {
         enableOnboardingSystem: true,
         enableExportReporting: true,

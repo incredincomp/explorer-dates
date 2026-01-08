@@ -1,23 +1,21 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
+const path = require('path');
 const { scheduleExit } = require('./helpers/forceExit');
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
+const { addWarningFilters } = require('./helpers/warningFilters');
 
-// Silence expected warning noise during chunk failure simulations
-const originalConsoleWarn = console.warn;
-const warningFilters = [
+addWarningFilters([
     /Feature loader failed/,
-    /Security workspace boundary enforcement relaxed/,
-    /Duplicate explorerDates\.resetToDefaults registration skipped/
-];
-console.warn = (...args) => {
-    const msg = args.join(' ');
-    if (warningFilters.some((pattern) => pattern.test(msg))) {
-        return;
-    }
-    originalConsoleWarn(...args);
-};
+    /High load detected, switching to fast mode/,
+    /chunk unavailable - keeping the feature disabled/,
+    /Failed to load .* chunk/,
+    /is not available because the required/,
+    /Export reporting is not available/,
+    /Workspace templates is not available/,
+    /Extension API is not available/
+]);
 
 /**
  * Critical Tests for Feature-Module Loading Failures
@@ -118,7 +116,7 @@ async function testMissingChunkFiles() {
     for (const scenario of CHUNK_TEST_SCENARIOS) {
         console.log(`Testing missing chunk: ${scenario.name}`);
         
-        const mockInstall = createMockVscode({
+        const mockInstall = createTestMock({
             config: {
                 [`explorerDates.${scenario.featureName}`]: true // Feature enabled but chunk missing
             }
@@ -225,7 +223,7 @@ async function testCorruptedChunkData() {
     for (const scenario of CHUNK_TEST_SCENARIOS.slice(0, 3)) { // Test subset for speed
         console.log(`Testing corrupted chunk: ${scenario.name}`);
         
-        const mockInstall = createMockVscode({
+        const mockInstall = createTestMock({
             config: {
                 [`explorerDates.${scenario.featureName}`]: true
             }
@@ -309,7 +307,7 @@ async function testLoaderTimeout() {
     
     const timeoutScenario = CHUNK_TEST_SCENARIOS[1]; // Test export reporting
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             [`explorerDates.${timeoutScenario.featureName}`]: true
         }
@@ -392,7 +390,7 @@ async function testLoaderTimeout() {
 async function testCommandResilience() {
     console.log('Testing command resilience when chunks fail...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableExportReporting': true,
             'explorerDates.enableWorkspaceTemplates': true,
@@ -483,7 +481,7 @@ async function testCommandResilience() {
 async function testWebEnvironmentChunkFailures() {
     console.log('Testing web environment chunk failures...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableOnboardingSystem': true,
             'explorerDates.enableExportReporting': true
@@ -570,7 +568,7 @@ async function testWebEnvironmentChunkFailures() {
 async function testChunkFailureTelemetry() {
     console.log('Testing chunk failure logging and telemetry...');
     
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: {
             'explorerDates.enableWorkspaceIntelligence': true,
             'explorerDates.enableAdvancedCache': true

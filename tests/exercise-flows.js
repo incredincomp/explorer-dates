@@ -8,9 +8,9 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { createMockVscode, InMemoryMemento } = require('./helpers/mockVscode');
+const { createTestMock, InMemoryMemento } = require('./helpers/mockVscode');
 
-const mockInstall = createMockVscode();
+const mockInstall = createTestMock();
 const { infoLog, appliedUpdates, workspaceRoot } = mockInstall;
 const artifactsDir = path.join(__dirname, 'artifacts');
 

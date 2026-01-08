@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 
 const repoRoot = path.resolve(__dirname, '..');
 const pkg = require('../package.json');
@@ -52,7 +52,7 @@ function fileReferencesKey(filePath, longKey, shortKeyRegex) {
 function verifyTemplateKeys() {
     let mockInstall;
     try {
-        mockInstall = createMockVscode();
+        mockInstall = createTestMock();
         const { WorkspaceTemplatesManager } = require('../src/workspaceTemplates');
         const manager = new WorkspaceTemplatesManager(createExtensionContext());
         const templates = manager.getBuiltInTemplates();

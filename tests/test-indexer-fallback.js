@@ -2,11 +2,11 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 // Patch the vscode import before loading the indexer so tests run headless
-const mockInstall = createMockVscode();
+const mockInstall = createTestMock();
 const { VSCodeUri } = mockInstall;
 const { IncrementalIndexer } = require('../src/incrementalIndexer');
 

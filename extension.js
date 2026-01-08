@@ -56,11 +56,29 @@ let runtimeAutoSuggestionTimer = null;
 let activeRuntimeManager = null;
 let activeTeamPersistenceManager = null;
 
+const ANALYSIS_WARNING_WORKSPACE_KEY = 'explorerDates.analysisCommandsDisabledWarningByWorkspace';
+
 function getActiveLogger() {
     if (!logger) {
         logger = getLogger();
     }
     return logger;
+}
+
+function getWorkspaceId() {
+    const firstWorkspace = vscode.workspace.workspaceFolders?.[0];
+    return firstWorkspace?.uri?.toString() || 'global';
+}
+
+function hasShownAnalysisWarning(context) {
+    const map = context.globalState.get(ANALYSIS_WARNING_WORKSPACE_KEY, {});
+    return Boolean(map[getWorkspaceId()]);
+}
+
+async function setAnalysisWarningShown(context, value) {
+    const map = context.globalState.get(ANALYSIS_WARNING_WORKSPACE_KEY, {});
+    map[getWorkspaceId()] = value;
+    await context.globalState.update(ANALYSIS_WARNING_WORKSPACE_KEY, map);
 }
 
 /**
@@ -557,6 +575,7 @@ async function activate(context) {
             featureConfig.get('enableReporting', true));
         const apiEnabled = featureConfig.get('enableExtensionApi', true);
         const onboardingEnabled = featureConfig.get('enableOnboardingSystem', true);
+        const analysisEnabled = featureConfig.get('enableAnalysisCommands', true);
 
         // Register file date decoration provider for overlay dates in Explorer
         fileDateProvider = new FileDateDecorationProvider();
@@ -658,7 +677,11 @@ async function activate(context) {
         const registerAnalysisCommandsLazy = async () => {
             const analysisCommands = await dynamicImports.loadAnalysisCommands();
             if (!analysisCommands) {
-                vscode.window.showWarningMessage('Analysis commands unavailable.');
+                const missingChunks = Array.from(chunkLoader?._missingChunks || []);
+                const chunkHint = missingChunks.includes('analysis')
+                    ? 'Analysis chunk is missing. Rebuild with "npm run package-bundle" and reload.'
+                    : 'Analysis bundle did not load. Rebuild the extension and reload.';
+                vscode.window.showWarningMessage(`Analysis commands unavailable. ${chunkHint}`);
                 return null;
             }
             // Handle both module export and direct function export
@@ -676,13 +699,89 @@ async function activate(context) {
         };
         
         // Register analysis commands if enabled
-        const analysisEnabled = featureConfig.get('enableAnalysisCommands', true);
         if (analysisEnabled) {
             try {
                 await registerAnalysisCommandsLazy();
                 logger.info('Analysis commands registered successfully');
             } catch (error) {
                 logger.warn('Failed to register analysis commands:', error);
+                vscode.window.showWarningMessage('Explorer Dates analysis commands failed to initialize. Check build artifacts for the analysis chunk and reload.');
+            }
+            await setAnalysisWarningShown(context, false);
+        } else {
+            try {
+                const alreadyWarned = hasShownAnalysisWarning(context);
+                if (!alreadyWarned) {
+                    vscode.window.showInformationMessage(
+                        'Explorer Dates analysis commands are disabled. Shortcuts like Ctrl+Shift+M/H/A will not work until you enable explorerDates.enableAnalysisCommands.',
+                        'Enable Now',
+                        'Dismiss'
+                    ).then(async (selection) => {
+                        const effectiveSelection = process.env.EXPLORER_DATES_TEST_MODE === '1'
+                            ? 'Dismiss'
+                            : selection;
+                        if (effectiveSelection === 'Enable Now') {
+                            try {
+                                const inspectGlobal = featureConfig.inspect('enableAnalysisCommands');
+                                const folders = vscode.workspace.workspaceFolders || [];
+
+                                // Update every folder that explicitly disables the feature
+                                let anyFolderFailures = false;
+                                for (const folder of folders) {
+                                    const folderConfig = vscode.workspace.getConfiguration('explorerDates', folder.uri);
+                                    const folderInspect = folderConfig.inspect('enableAnalysisCommands');
+                                    if (folderInspect?.workspaceFolderValue === false) {
+                                        try {
+                                            await folderConfig.update('enableAnalysisCommands', true, vscode.ConfigurationTarget.WorkspaceFolder);
+                                        } catch (folderUpdateError) {
+                                            anyFolderFailures = true;
+                                            logger.warn('Failed to auto-enable analysis commands for workspace folder', { folder: folder.uri?.toString(), error: folderUpdateError?.message });
+                                        }
+                                    }
+                                }
+
+                                // Update workspace-level override if present
+                                if (inspectGlobal?.workspaceValue === false) {
+                                    try {
+                                        await featureConfig.update('enableAnalysisCommands', true, vscode.ConfigurationTarget.Workspace);
+                                    } catch (workspaceUpdateError) {
+                                        anyFolderFailures = true;
+                                        logger.warn('Failed to auto-enable analysis commands for workspace scope', workspaceUpdateError);
+                                    }
+                                }
+
+                                // Update user-level override if present
+                                if (inspectGlobal?.globalValue === false) {
+                                    try {
+                                        await featureConfig.update('enableAnalysisCommands', true, vscode.ConfigurationTarget.Global);
+                                    } catch (globalUpdateError) {
+                                        anyFolderFailures = true;
+                                        logger.warn('Failed to auto-enable analysis commands for user scope', globalUpdateError);
+                                    }
+                                }
+
+                                if (anyFolderFailures) {
+                                    await setAnalysisWarningShown(context, false); // re-warn next activation
+                                    vscode.window.showWarningMessage('Enable partially succeeded. Update explorerDates.enableAnalysisCommands in remaining workspace folders manually.');
+                                } else {
+                                    await setAnalysisWarningShown(context, false);
+                                    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+                                }
+                            } catch (updateError) {
+                                await setAnalysisWarningShown(context, false); // allow future warnings if enable failed
+                                vscode.window.showWarningMessage('Enable failed: update explorerDates.enableAnalysisCommands in workspace settings.');
+                                logger.warn('Failed to auto-enable analysis commands', updateError);
+                            }
+                        } else if (effectiveSelection === 'Dismiss') {
+                            await setAnalysisWarningShown(context, true);
+                        } else {
+                            // No selection (closed) - re-warn next activation
+                            await setAnalysisWarningShown(context, false);
+                        }
+                    });
+                }
+            } catch (warningError) {
+                logger.debug('Unable to show analysis disabled warning', warningError);
             }
         }
 

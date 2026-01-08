@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const mockHelpers = require('./helpers/mockVscode');
-const mockInstall = mockHelpers.createMockVscode();
+const mockInstall = mockHelpers.createTestMock();
 const { createExtensionContext } = mockHelpers;
 const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
 const { registerRuntimeCommands } = require('../src/commands/runtimeCommands');

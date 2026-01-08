@@ -132,7 +132,7 @@ async function testDeterministicDebounceTimer() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
@@ -196,7 +196,7 @@ async function testTimerCleanupOnTeardown() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
@@ -260,7 +260,7 @@ async function testQueuedSettingsPersistence() {
     
     try {
         // Session 1: Queue settings and simulate VS Code restart before timer fires
-        const mockInstall1 = mockHelpers.createMockVscode();
+        const mockInstall1 = mockHelpers.createTestMock();
         const context1 = createExtensionContext();
         
         mockInstall1.vscode.window.showInformationMessage = async (...args) => 'Reload Later';
@@ -284,7 +284,7 @@ async function testQueuedSettingsPersistence() {
         console.log('✅ Session 1: Settings queued and persisted');
         
         // Session 2: Restart VS Code and verify settings are restored
-        const mockInstall2 = mockHelpers.createMockVscode();
+        const mockInstall2 = mockHelpers.createTestMock();
         const context2 = createExtensionContext();
         
         // Copy global state from session 1 to session 2 (simulate persistence)
@@ -343,7 +343,7 @@ async function testTimerCancellationAndReplacement() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
@@ -409,7 +409,7 @@ async function testMultiplePromptsWithinDebounceWindow() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
@@ -482,7 +482,7 @@ async function testTimerFiresDuringDeactivation() {
     const timerControl = setupTimerStubs();
     
     try {
-        const mockInstall = mockHelpers.createMockVscode();
+        const mockInstall = mockHelpers.createTestMock();
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         

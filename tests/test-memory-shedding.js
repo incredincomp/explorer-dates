@@ -10,11 +10,11 @@ process.env.EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB = '1';
 process.env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT = '10';
 process.env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS = '12345';
 
-const { createMockVscode, workspaceRoot } = require('./helpers/mockVscode');
+const { createTestMock, workspaceRoot } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
-    const mockInstall = createMockVscode({
+    const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');

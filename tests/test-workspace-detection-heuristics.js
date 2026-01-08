@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { createMockVscode, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 
 // Allow workspace scans to consider the higher large/extreme thresholds without truncation
 process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULTS = '500000';
@@ -30,7 +30,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 1: Remote environment detection with various workspace sizes
     await runTest('Remote environment detection - small workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             remoteName: 'ssh-remote',
             uiKind: 1, // Desktop
             mockWorkspaceFileCount: 500
@@ -53,7 +53,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Remote environment detection - large workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             remoteName: 'ssh-remote',
             uiKind: 1, // Desktop
             mockWorkspaceFileCount: 300000
@@ -74,7 +74,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Remote environment detection - extreme workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             remoteName: 'codespaces',
             uiKind: 1, // Desktop
             mockWorkspaceFileCount: 450000
@@ -93,7 +93,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 2: Web UI environment detection
     await runTest('Web UI environment detection - small workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 2, // Web
             remoteName: undefined,
             mockWorkspaceFileCount: 800
@@ -114,7 +114,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Web UI environment detection - large workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 2, // Web
             remoteName: undefined,
             mockWorkspaceFileCount: 300000
@@ -132,7 +132,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Web UI environment detection - extreme workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 2, // Web
             remoteName: undefined,
             mockWorkspaceFileCount: 450000
@@ -151,7 +151,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 3: Project type detection - Node.js/JavaScript projects
     await runTest('Project type detection - Node.js with package.json', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 2000,
@@ -177,7 +177,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Project type detection - Yarn workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 3500,
@@ -204,7 +204,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 4: Project type detection - Data Science projects
     await runTest('Project type detection - Jupyter notebooks', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 150,
@@ -230,7 +230,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Project type detection - Python data science', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 450,
@@ -257,7 +257,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 5: Project type detection - Enterprise projects
     await runTest('Project type detection - Docker compose enterprise', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 8000,
@@ -283,7 +283,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Project type detection - Explicit enterprise marker', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 5000,
@@ -310,7 +310,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 6: Local environment with different sizes - full profile path
     await runTest('Local environment detection - small workspace (full profile)', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 600,
@@ -338,7 +338,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Local environment detection - medium workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 2500
@@ -358,7 +358,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Local environment detection - large workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 300000
@@ -376,7 +376,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Local environment detection - extreme workspace', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: undefined,
             mockWorkspaceFileCount: 450000
@@ -395,7 +395,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 7: Edge cases - null/undefined workspace
     await runTest('Edge case - null workspace URI', async () => {
-        const mock = createMockVscode({});
+        const mock = createTestMock({});
         
         const { detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('../src/utils/workspaceDetection');
         
@@ -409,7 +409,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Edge case - undefined workspace URI', async () => {
-        const mock = createMockVscode({});
+        const mock = createTestMock({});
         
         const { detectWorkspaceProfile } = require('../src/utils/workspaceDetection');
         
@@ -422,7 +422,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 8: Workspace key generation with different environments and profiles
     await runTest('Workspace key generation - local project', async () => {
-        const mock = createMockVscode({});
+        const mock = createTestMock({});
         
         const { generateWorkspaceKey } = require('../src/utils/workspaceDetection');
         
@@ -441,7 +441,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Workspace key generation - null workspace', async () => {
-        const mock = createMockVscode({});
+        const mock = createTestMock({});
         
         const { generateWorkspaceKey } = require('../src/utils/workspaceDetection');
         
@@ -454,7 +454,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 9: Combined environment scenarios
     await runTest('Combined scenario - Remote web environment with enterprise project', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 2, // Web
             remoteName: 'github-codespaces',
             mockWorkspaceFileCount: 7500,
@@ -482,7 +482,7 @@ async function runWorkspaceDetectionTests() {
     });
 
     await runTest('Combined scenario - Remote environment with data science project', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1, // Desktop
             remoteName: 'ssh-remote',
             mockWorkspaceFileCount: 1200,
@@ -509,7 +509,7 @@ async function runWorkspaceDetectionTests() {
 
     // Test 10: Error handling scenarios
     await runTest('Error handling - filesystem read failure graceful degradation', async () => {
-        const mock = createMockVscode({
+        const mock = createTestMock({
             uiKind: 1,
             remoteName: undefined,
             mockWorkspaceFileCount: 1500,

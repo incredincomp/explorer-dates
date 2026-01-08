@@ -29,7 +29,7 @@ async function runRestartBatchingTests() {
 async function testDebounceTimerFiresOnce() {
     console.log('Testing debounce timer fires once...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -70,7 +70,7 @@ async function testDebounceTimerFiresOnce() {
 async function testMultipleSettingsCoalesced() {
     console.log('Testing multiple settings coalesced...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -122,7 +122,7 @@ async function testMultipleSettingsCoalesced() {
 async function testReloadNowClearsPendingRestart() {
     console.log('Testing Reload Now clears pending restart...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -179,7 +179,7 @@ async function testReloadNowClearsPendingRestart() {
 async function testConfigurationChangeHandling() {
     console.log('Testing configuration change handling...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -238,7 +238,7 @@ async function testConfigurationChangeHandling() {
 async function testBatchedRestartPrompt() {
     console.log('Testing batched restart prompt...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -290,7 +290,7 @@ async function testBatchedRestartPrompt() {
 async function testRestartPromptFormatting() {
     console.log('Testing restart prompt formatting...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -346,7 +346,7 @@ async function testRestartPromptFormatting() {
 async function testTimerCleanup() {
     console.log('Testing timer cleanup...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -389,7 +389,7 @@ async function testTimerCleanup() {
 async function testEmptyPendingRestart() {
     console.log('Testing empty pending restart...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -429,7 +429,7 @@ async function testEmptyPendingRestart() {
 async function testDuplicateSettingsDeduplication() {
     console.log('Testing duplicate settings deduplication...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -473,7 +473,7 @@ async function testDuplicateSettingsDeduplication() {
 async function testReloadLaterClearsPending() {
     console.log('Testing Reload Later clears pending...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
@@ -530,7 +530,7 @@ async function testReloadLaterClearsPending() {
 async function testIntegratedConfigurationFlow() {
     console.log('Testing integrated configuration flow...');
     
-    const mockInstall = mockHelpers.createMockVscode();
+    const mockInstall = mockHelpers.createTestMock();
     const { vscode } = mockInstall;
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
