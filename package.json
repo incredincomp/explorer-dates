@@ -732,6 +732,7 @@
     "test:flows": "node tests/exercise-flows.js",
     "test:bundle": "node tests/test-bundle.js",
     "test:verify-bundle": "node tests/verify-bundle.js",
+    "test:performance-baselines": "node tests/test-performance-baselines.js",
     "compile": "node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
