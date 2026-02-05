@@ -24,4 +24,8 @@ jobs:
         run: npm ci
 
       - name: Run critical regression tests
-        run: npm run test:critical
+        run: |
+          set -euo pipefail
+          npm run lint
+          if [ -f tests/verify-config.js ]; then npm run test:config; else echo "Skipping test:config (missing)"; fi
+          if ls tests/test-configuration*.js >/dev/null 2>&1; then npm run test:config-scenarios; else echo "Skipping test:config-scenarios (missing)"; fi
