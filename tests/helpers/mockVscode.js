@@ -895,8 +895,12 @@ function createMockVscode(options = {}) {
             async showInformationMessage(message) {
                 pushLog(message);
                 const options = Array.from(arguments).slice(1);
+                // Prefer non-destructive choices during automated tests to avoid unexpected state changes
+                if (options.includes('Keep Old Settings')) return 'Keep Old Settings';
+                if (options.includes('Ask Later')) return 'Ask Later';
                 return options.find((option) => typeof option === 'string') || message;
             },
+
             async showWarningMessage(message) {
                 pushLog(message);
                 return message;
