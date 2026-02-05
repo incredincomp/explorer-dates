@@ -5,6 +5,7 @@
 - Fixed negative time badge display for future-dated files (fixes #29).
 - Fixed custom colors not registering correctly due to missing color IDs in `package.json` (fixes #30).
 - Apply a conservative concurrency cap and early minimal-decoration fallback when `EXPLORER_DATES_FORCE_CACHE_BYPASS=1` is set to reduce transient RSS spikes during forced cache-miss stress testing. (tests added)
+- **chore**: Updated dependencies to latest stable versions (esbuild, @types/node, @types/vscode, eslint, globals) and rebuilt bundles.
 
 
 ### Fixes & Improvements
