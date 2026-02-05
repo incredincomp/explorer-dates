@@ -723,6 +723,7 @@
   "icon": "icons/explorer-dates.png",
   "scripts": {
     "lint": "eslint .",
+    "test:critical": "npm run lint && npm run test:config && npm run test:config-scenarios",
     "test": "npm run test:suite",
     "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
     "test:config": "node tests/verify-config.js",
