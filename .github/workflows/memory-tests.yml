@@ -32,7 +32,17 @@ jobs:
       - name: Run baseline memory soak test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-soak*.js tests/test-memory*.js >/dev/null 2>&1; then for f in tests/test-memory-soak*.js tests/test-memory*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping memory soak tests (missing)"; fi
+          if ls tests/test-memory-soak*.js tests/test-memory*.js >/dev/null 2>&1; then
+            for f in tests/test-memory-soak*.js tests/test-memory*.js; do
+              echo "Running $f"
+              case "$f" in
+                *memory-soak*|*memory-fuzz*) node --expose-gc "$f" ;; 
+                *) node "$f" ;;
+              esac
+            done
+          else
+            echo "Skipping memory soak tests (missing)";
+          fi
         env:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
@@ -83,7 +93,17 @@ jobs:
       - name: Run memory shedding test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-shedding*.js tests/test-memory*.js >/dev/null 2>&1; then for f in tests/test-memory-shedding*.js tests/test-memory*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping memory shedding tests (missing)"; fi
+          if ls tests/test-memory-shedding*.js tests/test-memory*.js >/dev/null 2>&1; then
+            for f in tests/test-memory-shedding*.js tests/test-memory*.js; do
+              echo "Running $f"
+              case "$f" in
+                *memory-soak*|*memory-fuzz*) node --expose-gc "$f" ;; 
+                *) node "$f" ;;
+              esac
+            done
+          else
+            echo "Skipping memory shedding tests (missing)";
+          fi
         env:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
@@ -134,7 +154,17 @@ jobs:
       - name: Run lightweight mode test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-lightweight*.js tests/test-memory*.js >/dev/null 2>&1; then for f in tests/test-memory-lightweight*.js tests/test-memory*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping memory lightweight tests (missing)"; fi
+          if ls tests/test-memory-lightweight*.js tests/test-memory*.js >/dev/null 2>&1; then
+            for f in tests/test-memory-lightweight*.js tests/test-memory*.js; do
+              echo "Running $f"
+              case "$f" in
+                *memory-soak*|*memory-fuzz*) node --expose-gc "$f" ;; 
+                *) node "$f" ;;
+              esac
+            done
+          else
+            echo "Skipping memory lightweight tests (missing)";
+          fi
         env:
           MEMORY_SOAK_ITERATIONS: 2000
           MEMORY_SOAK_DELAY_MS: 0
