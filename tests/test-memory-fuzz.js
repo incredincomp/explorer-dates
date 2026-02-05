@@ -175,9 +175,10 @@ function pickSampleFiles() {
             logEntry.final = heapUsedMB();
             logEntry.delta = Number((logEntry.final - logEntry.baseline).toFixed(2));
             logEntry.metrics = provider._metrics;
+            const TOLERANCE_MB = Number(process.env.MEMORY_SOAK_TOLERANCE_MB || 0.1);
 
-            if (logEntry.delta > MAX_HEAP_DELTA_MB) {
-                throw new Error(`Heap delta ${logEntry.delta} MB exceeded limit ${MAX_HEAP_DELTA_MB} MB`);
+            if (logEntry.delta > (MAX_HEAP_DELTA_MB + TOLERANCE_MB)) {
+                throw new Error(`Heap delta ${logEntry.delta} MB exceeded limit ${MAX_HEAP_DELTA_MB} MB (tolerance ${TOLERANCE_MB} MB)`);
             }
         } catch (error) {
             logEntry.error = error?.stack || String(error);

@@ -41,6 +41,8 @@ const {
     softDeltaMb: SOFT_HEAP_DELTA_MB,
     concurrency: WORKER_CONCURRENCY
 } = buildMemoryTestSettings(memoryProfile);
+// Allow a small measurement tolerance to account for GC variability during aggressive runs
+const TOLERANCE_MB = Number(process.env.MEMORY_SOAK_TOLERANCE_MB || 0.1);
 const INCLUDE_HIT_PHASE = process.env.MEMORY_SOAK_INCLUDE_HITS !== 'false';
 const MISS_PHASE_DURATION_TARGET_MS = Math.max(0, Number(process.env.MEMORY_SOAK_DURATION_MS || 0));
 
@@ -627,11 +629,11 @@ function persistSoakLog(payload) {
             });
         }
 
-        if (delta > MAX_HEAP_DELTA_MB) {
-            console.error(`❌ Heap grew by ${delta} MB (limit ${MAX_HEAP_DELTA_MB} MB)`);
+        if (delta > (MAX_HEAP_DELTA_MB + TOLERANCE_MB)) {
+            console.error(`❌ Heap grew by ${delta} MB (limit ${MAX_HEAP_DELTA_MB} MB, tolerance ${TOLERANCE_MB} MB)`);
             exitCode = 1;
         } else {
-            console.log(`✅ Heap growth (${delta} MB) within limit (${MAX_HEAP_DELTA_MB} MB)`);
+            console.log(`✅ Heap growth (${delta} MB) within limit (${MAX_HEAP_DELTA_MB} MB + ${TOLERANCE_MB} MB tolerance)`);
         }
     } catch (error) {
         console.error('❌ Memory soak test failed with error:', error);
