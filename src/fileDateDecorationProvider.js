@@ -3482,13 +3482,10 @@ class FileDateDecorationProvider {
             
             case 'custom': {
                 // Use custom color IDs registered in package.json
-<<<<<<< HEAD
-                // Users customize these colors via workbench.colorCustomizations
-                // Example: "explorerDates.customColor.veryRecent": "#FF6095"
-=======
+                // Use custom color IDs registered in package.json
                 // Users can customize these colors via workbench.colorCustomizations
+                // Example: "explorerDates.customColor.veryRecent": "#FF6095"
                 // or by setting explorerDates.customColors which updates the defaults
->>>>>>> 3f2c654 (Fix custom colors feature by registering color IDs in package.json)
                 if (diffHours < 1) {
                     return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
                 }
