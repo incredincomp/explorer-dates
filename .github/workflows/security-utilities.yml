@@ -26,4 +26,4 @@ jobs:
       - name: Run security utility tests
         run: |
           set -euo pipefail
-          if ls tests/test-security*.js >/dev/null 2>&1; then npm run test:security-utils; else echo "Skipping security utility tests (missing)"; fi
+          if ls tests/test-security*.js >/dev/null 2>&1; then for f in tests/test-security*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping security utility tests (missing)"; fi

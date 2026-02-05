@@ -41,14 +41,14 @@ jobs:
       - name: Run chunk & heap regression suite
         run: |
           set -euo pipefail
-          if ls tests/test-performance-regression*.js >/dev/null 2>&1; then npm run test:performance-regression; else echo "Skipping performance-regression tests (missing)"; fi
+          if ls tests/test-performance-regression*.js >/dev/null 2>&1; then for f in tests/test-performance-regression*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping performance-regression tests (missing)"; fi
         env:
           EXPLORER_DATES_UPDATE_PERF_BASELINES: ${{ env.PERF_UPDATE_BASELINES }}
 
       - name: Run bundle & decoration baseline suite
         run: |
           set -euo pipefail
-          if ls tests/test-performance-baseline*.js tests/test-performance-*.js >/dev/null 2>&1; then npm run test:performance-baselines; else echo "Skipping performance-baselines tests (missing)"; fi
+          if ls tests/test-performance-baseline*.js tests/test-performance-*.js >/dev/null 2>&1; then for f in tests/test-performance*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping performance-baselines tests (missing)"; fi
         env:
           EXPLORER_DATES_UPDATE_PERF_BASELINES: ${{ env.PERF_UPDATE_BASELINES }}
 
