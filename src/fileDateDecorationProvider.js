@@ -4119,7 +4119,12 @@ class FileDateDecorationProvider {
                 const diffMs = Date.now() - modifiedAt.getTime();
     
                 const dateFormat = _get('dateDecorationFormat', 'smart');
-                let colorScheme = this._performanceMode ? 'none' : _get('colorScheme', 'none');
+                // Respect explicit `custom` color scheme in performance mode while keeping other
+                // color schemes disabled to preserve the performance optimizations.
+                let colorScheme = _get('colorScheme', 'none');
+                if (this._performanceMode && colorScheme !== 'custom') {
+                    colorScheme = 'none';
+                }
                 const highContrastMode = _get('highContrastMode', false);
                 let showFileSize = this._performanceMode ? false : _get('showFileSize', false);
                 const fileSizeFormat = _get('fileSizeFormat', 'auto');
@@ -4129,7 +4134,11 @@ class FileDateDecorationProvider {
                 let rawShowGitInfo = this._performanceMode ? 'none' : _get('showGitInfo', 'none');
                 let badgePriority = this._performanceMode ? 'time' : _get('badgePriority', 'time');
     
-                if (!featureProfile.enableColors) {
+                // Allow explicit `custom` color scheme to take effect even when the
+                // minimal feature profile would otherwise disable colors. This keeps
+                // heavy systems disabled while honoring user preference for custom
+                // color decorations in performance mode.
+                if (!featureProfile.enableColors && colorScheme !== 'custom') {
                     colorScheme = 'none';
                 }
                 if (!featureProfile.enableFileSize) {
