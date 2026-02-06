@@ -161,16 +161,10 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
     }));
 
     // Apply Custom Colors Command (enhanced)
-    (async () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
         try {
-            const _existingCommands = await vscode.commands.getCommands(true);
-            if (_existingCommands.includes('explorerDates.applyCustomColors')) {
-                logger.info('Skipping duplicate registration of explorerDates.applyCustomColors (migrationCommands)');
-            } else {
-                subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
-                    try {
-                        const action = await vscode.window.showQuickPick([
-                            { label: 'Copy to Clipboard', description: 'Copy color configuration to clipboard' },
+            const action = await vscode.window.showQuickPick([
+                { label: 'Copy to Clipboard', description: 'Copy color configuration to clipboard' },
                 { label: 'Open Settings', description: 'Open VS Code settings to workbench.colorCustomizations' },
                 { label: 'Apply Default Colors', description: 'Apply default Explorer Dates colors' }
             ], {

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "updatedAt": "2026-02-06T01:22:13.278Z",
+  "exclusions": [
+    ".git",
+    "logs",
+    "bin",
+    ".vscode",
+    ".vscode-test",
+    "vscode-linux-x64-1.107.1",
+    "vscode-linux-x64-1.108.2",
+    "dist",
+    "node_modules",
+    "build",
+    "vendor"
+  ]
+}

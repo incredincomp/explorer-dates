@@ -309,15 +309,9 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    (async () => {
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
         try {
-            const _existingCommands = await vscode.commands.getCommands(true);
-            if (_existingCommands.includes('explorerDates.applyCustomColors')) {
-                logger.info('Skipping duplicate registration of explorerDates.applyCustomColors');
-            } else {
-                subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
-                    try {
-                        const config = vscode.workspace.getConfiguration('explorerDates');
+            const config = vscode.workspace.getConfiguration('explorerDates');
             const customColors = config.get('customColors', {
                 veryRecent: '#00ff00',
                 recent: '#ffff00',
@@ -356,10 +350,11 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             logger.error('Failed to apply custom colors', error);
             vscode.window.showErrorMessage(`Failed to apply custom colors: ${error.message}`);
         }
-                }));
-            }
-        } catch (err) {
-            logger.warn('Could not inspect existing commands before registering applyCustomColors; attempting registration anyway', err);
-            subscriptions.push(vscode.commands.registerCommand('explorerDates.applyCustomColors', async () => {
-                try {
-                    const config = vscode.workspace.getConfiguration('explorerDates');
+    }));
+
+    subscriptions.forEach(disposable => context.subscriptions.push(disposable));
+}
+
+module.exports = {
+    registerCoreCommands
+};
