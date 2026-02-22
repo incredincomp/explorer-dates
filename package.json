@@ -848,20 +848,6 @@
           "description": "Allow test paths during testing environments (relaxes boundary enforcement)",
           "scope": "window"
         },
-        "explorerDates.decorationPoolSize": {
-          "type": "number",
-          "default": 2048,
-          "minimum": 128,
-          "description": "Maximum size of the internal decoration pool (trimmed when exceeded)",
-          "scope": "window"
-        },
-        "explorerDates.flyweightCacheSize": {
-          "type": "number",
-          "default": 4096,
-          "minimum": 256,
-          "description": "Capacity for flyweight caches (badges and readable strings)",
-          "scope": "window"
-        },
         "explorerDates.enableAdvancedCache": {
           "type": "boolean",
           "default": true,
