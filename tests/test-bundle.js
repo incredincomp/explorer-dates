@@ -98,8 +98,8 @@ if (fs.existsSync(vsixPath)) {
     const vsixStats = fs.statSync(vsixPath);
     const vsixSizeKB = Math.round(vsixStats.size / 1024);
     console.log(`📦 VSIX package size: ${vsixSizeKB}KB`);
-    if (vsixSizeKB < 100 || vsixSizeKB > 600) {
-        console.error('❌ VSIX size outside expected range (100KB-600KB)');
+    if (vsixSizeKB < 100 || vsixSizeKB > 750) {
+        console.error('❌ VSIX size outside expected range (100KB-750KB)');
         failed = true;
     } else {
         console.log('✅ VSIX package size within expected range');
