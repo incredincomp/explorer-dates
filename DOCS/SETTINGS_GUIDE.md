@@ -2,6 +2,18 @@
 
 This guide documents every setting and recommended configuration for Explorer Dates, including new v1.3.0 feature flags, team configuration options, and bundle optimization strategies.
 
+## Telemetry & Privacy
+
+This project does not collect telemetry by default. Optional telemetry and diagnostic events are gated by the `EXPLORER_DATES_TELEMETRY` environment flag and an explicit opt-in setting `explorerDates.enableTelemetry`.
+
+- `explorerDates.enableTelemetry` (boolean, default: `false`) — When `true`, the extension records optional diagnostic telemetry events locally for debugging and support purposes. This provides an opt-in mechanism that complements the `EXPLORER_DATES_TELEMETRY` environment flag used for ad-hoc diagnostics.
+
+- `explorerDates.clearTelemetryData` — A command that clears locally-stored telemetry events from your VS Code instance. This command is interactive and requires confirmation before deleting data. Note: this command only clears locally stored diagnostic telemetry (`explorerDates.telemetryEvents`) — it does not clear migration history or other diagnostic artifacts. For programmatic clearing in scripts or automation, use the explicit wrapper command `explorerDates.clearTelemetryData.force` (which requires an explicit opt-in), but avoid calling it from untrusted automation.
+
+See `README.md` for additional context about telemetry and privacy.
+
+You can clear locally-stored diagnostic telemetry using the command `Explorer Dates: Clear Telemetry Data` (`explorerDates.clearTelemetryData`). This command prompts for confirmation and removes locally stored telemetry events.
+
 ## 🆕 v1.3.0 Feature Control Settings
 
 ### Bundle Optimization

@@ -223,7 +223,9 @@ This project is personally maintained by the author. For support, open an issue 
 
 ### Telemetry & Privacy
 
-This project does not collect telemetry by default. Optional telemetry and diagnostic events are gated by the `EXPLORER_DATES_TELEMETRY` environment flag and explicit opt-in settings. See `DOCS/SETTINGS_GUIDE.md` for details on what is collected and how to opt out.
+This project does not collect telemetry by default. Optional telemetry and diagnostic events are gated by the `EXPLORER_DATES_TELEMETRY` environment flag and an explicit opt-in setting `explorerDates.enableTelemetry`. See `DOCS/SETTINGS_GUIDE.md` for details on what is collected and how to opt out.
+
+You can clear locally-stored diagnostic telemetry with the command `Explorer Dates: Clear Telemetry Data` (`explorerDates.clearTelemetryData`). This command will prompt for confirmation before removing any stored events.
 
 - **Developer Tools**: If you need to verify badge acceptance, open `Help → Toggle Developer Tools` (Extension Host console) while running the extension to view any rejection messages.
 - **Built-in diagnostic command (optional)**: Add the diagnostic snippet from `DOCS/SETTINGS_GUIDE.md` to register a temporary command that emits test badges for several lengths. Run it and capture Extension Host console output if you see rejection warnings.
