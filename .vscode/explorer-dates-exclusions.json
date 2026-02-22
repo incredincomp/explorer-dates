@@ -1,6 +1,4 @@
 {
-  "version": 1,
-  "updatedAt": "2026-02-06T01:22:13.278Z",
   "exclusions": [
     ".git",
     "logs",
@@ -13,5 +11,7 @@
     "node_modules",
     "build",
     "vendor"
-  ]
+  ],
+  "updatedAt": "2026-02-06T01:22:13.278Z",
+  "version": 1
 }

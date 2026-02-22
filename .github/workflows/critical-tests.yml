@@ -29,3 +29,4 @@ jobs:
           npm run lint
           if [ -f tests/verify-config.js ]; then echo "Running tests/verify-config.js"; node tests/verify-config.js; else echo "Skipping test:config (missing)"; fi
           if ls tests/test-configuration*.js >/dev/null 2>&1; then for f in tests/test-configuration*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping test:config-scenarios (missing)"; fi
+          if [ -f tests/test-package-when-contexts.js ]; then echo "Running tests/test-package-when-contexts.js"; node tests/test-package-when-contexts.js; else echo "Skipping package when-clauses audit (missing)"; fi
