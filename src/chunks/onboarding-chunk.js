@@ -12,14 +12,20 @@ async function _ensureOnboardingLogic() {
     if (OnboardingManager && _createOnboardingManager) return;
     try {
         const chunk = await import('./onboarding-logic-chunk.js');
-        OnboardingManager = chunk.OnboardingManager;
-        _createOnboardingManager = chunk.createOnboardingManager;
+        OnboardingManager = chunk.OnboardingManager || chunk.default?.OnboardingManager || chunk.default;
+        _createOnboardingManager = chunk.createOnboardingManager || (OnboardingManager ? (context) => new OnboardingManager(context) : null);
+        if (typeof OnboardingManager !== 'function' || typeof _createOnboardingManager !== 'function') {
+            throw new Error('Onboarding logic loaded without a valid constructor');
+        }
     } catch {
         // Fallback: try dynamic import of local module (dev fallback)
         try {
             const mod = await import('../onboarding.js');
-            OnboardingManager = mod.OnboardingManager;
-            _createOnboardingManager = (context) => new OnboardingManager(context);
+            OnboardingManager = mod.OnboardingManager || mod.default?.OnboardingManager || mod.default;
+            _createOnboardingManager = OnboardingManager ? (context) => new OnboardingManager(context) : null;
+            if (typeof OnboardingManager !== 'function' || typeof _createOnboardingManager !== 'function') {
+                throw new Error('Onboarding fallback loaded without a valid constructor');
+            }
         } catch (e) {
             logger.warn('Onboarding logic unavailable', e);
             throw e;
