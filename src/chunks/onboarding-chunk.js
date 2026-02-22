@@ -7,6 +7,60 @@ let OnboardingManager = null;
 let _createOnboardingManager = null;
 const { getLogger } = require('../utils/logger');
 const logger = getLogger();
+const vscode = require('vscode');
+
+class FallbackOnboardingManager {
+    constructor(context) {
+        this._context = context;
+    }
+
+    async showQuickSetupWizard() {
+        const panel = vscode.window.createWebviewPanel(
+            'explorerDatesSetup',
+            'Explorer Dates Quick Setup',
+            vscode.ViewColumn.One,
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+        panel.webview.html = `<!DOCTYPE html>
+            <html>
+            <head><meta charset="UTF-8"><title>Quick Setup</title></head>
+            <body>
+                <h1>Explorer Dates Quick Setup</h1>
+                <p>The onboarding UI could not be fully loaded in this session.</p>
+                <p>Please open settings to configure Explorer Dates manually.</p>
+            </body>
+            </html>`;
+    }
+
+    async showFeatureTour() {
+        const panel = vscode.window.createWebviewPanel(
+            'explorerDatesFeatureTour',
+            'Explorer Dates Feature Tour',
+            vscode.ViewColumn.One,
+            { enableScripts: false, retainContextWhenHidden: false }
+        );
+        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Feature Tour</title></head><body><h1>Explorer Dates Feature Tour</h1><p>Feature tour is unavailable in this session.</p></body></html>`;
+    }
+
+    async showWhatsNew(version = '') {
+        const panel = vscode.window.createWebviewPanel(
+            'explorerDatesWhatsNew',
+            `Explorer Dates ${version ? `v${version}` : ''} - What's New`,
+            vscode.ViewColumn.One,
+            { enableScripts: false, retainContextWhenHidden: false }
+        );
+        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>What's New</title></head><body><h1>What's New ${version}</h1><p>What's new content is unavailable in this session.</p></body></html>`;
+    }
+
+    async showWelcomeMessage() {
+        await vscode.window.showInformationMessage('Explorer Dates onboarding is unavailable. Open settings to configure.', 'Open Settings')
+            .then((choice) => {
+                if (choice === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+                }
+            });
+    }
+}
 
 async function _ensureOnboardingLogic() {
     if (OnboardingManager && _createOnboardingManager) return;
@@ -33,8 +87,9 @@ async function _ensureOnboardingLogic() {
                 throw new Error('Onboarding fallback loaded without a valid factory');
             }
         } catch (e) {
-            logger.warn('Onboarding logic unavailable', e);
-            throw e;
+            logger.warn('Onboarding logic unavailable, using minimal fallback', e);
+            OnboardingManager = FallbackOnboardingManager;
+            _createOnboardingManager = (context) => new FallbackOnboardingManager(context);
         }
     }
 }
