@@ -149,9 +149,16 @@ class SettingsMigrationManager {
      */
     async migrateCustomColorSettings() {
         const explorerConfig = vscode.workspace.getConfiguration('explorerDates');
+        const allowMigration = explorerConfig.get('migrateLegacyCustomColorsOnStartup', false);
         const legacyColors = explorerConfig.get('customColors');
         
         if (!legacyColors || typeof legacyColors !== 'object') {
+            return false;
+        }
+        if (!allowMigration) {
+            this._logger.info('Skipping custom color migration (opt-in disabled)', {
+                reason: 'migrateLegacyCustomColorsOnStartup=false'
+            });
             return false;
         }
 

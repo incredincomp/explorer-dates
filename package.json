@@ -542,6 +542,12 @@
           },
           "scope": "window"
         },
+        "explorerDates.migrateLegacyCustomColorsOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow Explorer Dates to migrate legacy explorerDates.customColors into workbench.colorCustomizations during startup. Disabled by default to avoid changing editor color settings without explicit consent.",
+          "scope": "window"
+        },
         "explorerDates.fadeOldFiles": {
           "type": "boolean",
           "default": false,

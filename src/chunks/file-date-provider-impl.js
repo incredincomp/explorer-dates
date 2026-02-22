@@ -841,8 +841,44 @@ class FileDateDecorationProviderImpl {
     }
 
     async _getCachedDecoration(cacheKey, fileLabel) {
-        // No cache in this minimal impl
-        return null;
+        try {
+            if (this._forceCacheBypass) {
+                this._logger?.debug?.(`Cache bypass enabled - recalculating decoration for: ${fileLabel}`);
+                return null;
+            }
+
+            if (this._advancedCache) {
+                try {
+                    const cached = await this._advancedCache.get(cacheKey);
+                    if (cached) {
+                        this._metrics.cacheHits++;
+                        this._logger?.debug?.(`Advanced cache hit for: ${fileLabel}`);
+                        return cached;
+                    }
+                } catch (error) {
+                    this._logger?.debug?.(`Advanced cache error: ${error.message}`);
+                }
+            }
+
+            if (!this._decorationCache || typeof this._decorationCache.get !== 'function') return null;
+
+            const memoryEntry = this._decorationCache.get(cacheKey);
+            if (memoryEntry) {
+                if (memoryEntry.forceRefresh) {
+                    try { this._decorationCache.delete(cacheKey); } catch { /* ignore */ }
+                    this._logger?.debug?.(`Memory cache bypassed (forced refresh) for: ${fileLabel}`);
+                } else if ((Date.now() - memoryEntry.timestamp) < this._cacheTimeout) {
+                    this._metrics.cacheHits++;
+                    this._logger?.debug?.(`Memory cache hit for: ${fileLabel}`);
+                    return memoryEntry.decoration;
+                }
+            }
+
+            return null;
+        } catch (error) {
+            this._logger?.debug?.('getCachedDecoration failed', error);
+            return null;
+        }
     }
 
     _createMinimalDecoration(uri, now = Date.now()) {
@@ -1077,6 +1113,14 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    refreshDecoration(uri) {
+        try {
+            this._onDidChangeFileDecorations.fire(uri);
+        } catch (error) {
+            this._logger?.debug && this._logger.debug('refreshDecoration failed', error);
+        }
+    }
+
     _acquireDecorationFromPool({ badge, tooltip, color }) {
         try {
             const vscode = require('vscode');
@@ -1090,7 +1134,41 @@ class FileDateDecorationProviderImpl {
     }
 
     _storeDecorationInCache(cacheKey, decoration, fileLabel, uri) {
-        // no-op fallback
+        try {
+            if (this._forceCacheBypass) return;
+
+            if (!this._decorationCache || typeof this._decorationCache.set !== 'function' || typeof this._decorationCache.size !== 'number') {
+                try { this._decorationCache = new LazyHierarchicalDecorationCache(); } catch { /* ignore */ }
+            }
+            if (!this._decorationCache || typeof this._decorationCache.set !== 'function') return;
+
+            if (typeof this._decorationCache.size === 'number' && this._decorationCache.size > this._maxCacheSize) {
+                try { this._decorationCache.enforceLimit(this._maxCacheSize); } catch { /* ignore */ }
+            }
+
+            const cacheEntry = { decoration, timestamp: Date.now() };
+            if (uri) cacheEntry.uri = uri;
+            try { this._decorationCache.set(cacheKey, cacheEntry); } catch { /* ignore */ }
+
+            try { if (typeof this._monitorCachePressure === 'function') this._monitorCachePressure(); } catch (e) { this._logger?.debug?.('monitorCachePressure from store failed', e); }
+
+            if (this._advancedCache) {
+                try {
+                    this._advancedCache.set(cacheKey, decoration, { ttl: this._cacheTimeout });
+                    this._logger?.debug?.(`Stored in advanced cache: ${fileLabel}`);
+                } catch (error) {
+                    this._logger?.debug?.(`Failed to store in advanced cache: ${error.message}`);
+                }
+            }
+
+            try {
+                if (typeof this._maybeExtendCacheTimeout === 'function') this._maybeExtendCacheTimeout();
+            } catch (err) {
+                this._logger?.debug?.('maybeExtendCacheTimeout from store failed', err);
+            }
+        } catch (error) {
+            this._logger?.debug?.('storeDecorationInCache failed', error);
+        }
     }
 
     getMetrics() {

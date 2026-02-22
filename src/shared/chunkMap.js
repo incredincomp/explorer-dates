@@ -28,7 +28,9 @@ const CHUNK_MAP = {
     decorationMemory: 'src/chunks/decoration-memory-chunk',
     decorationPool: 'src/chunks/decoration-pool-chunk',
     providerInit: 'src/chunks/provider-init-chunk',
-    // Provider core chunk (keeps heavy provider implementation out of core bundle)
+    // Provider core chunks (keeps heavy provider implementation out of core bundle)
+    fileDateProviderImpl: 'src/chunks/file-date-provider-impl',
+    fileDateProviderImplExport: 'src/chunks/file-date-provider-impl-export',
     // Shared utilities
     utilsShared: 'src/chunks/utils-shared-chunk',
     incrementalWorkers: 'src/chunks/incrementalWorkers',

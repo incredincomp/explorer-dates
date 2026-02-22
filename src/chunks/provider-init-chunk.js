@@ -67,8 +67,27 @@ async function hydrateProviderOptionalSystems(provider) {
 // Expose a factory so other chunks (or the extension) can create a provider
 function createFileDateDecorationProvider(context) {
     try {
-        const { FileDateDecorationProvider } = require('../fileDateDecorationProvider');
-        const provider = new FileDateDecorationProvider();
+        // Prefer chunked provider impl in production builds
+        let ProviderClass = null;
+        try {
+            const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+            if (typeof dynamicRequire === 'function') {
+                let mod = null;
+                try { mod = dynamicRequire('./fileDateProviderImplExport'); } catch { /* ignore */ }
+                if (!mod) {
+                    try { mod = dynamicRequire('./fileDateProviderImpl'); } catch { /* ignore */ }
+                }
+                ProviderClass = mod && (mod.FileDateDecorationProvider || mod.FileDateDecorationProviderImpl || mod.default);
+            }
+        } catch { /* ignore */ }
+
+        // Dev fallback: use the local source provider
+        if (!ProviderClass) {
+            const { FileDateDecorationProvider } = require('../fileDateDecorationProvider');
+            ProviderClass = FileDateDecorationProvider;
+        }
+
+        const provider = new ProviderClass();
         // Initialize heavy subsystems in background via existing hydration logic
         (async () => {
             try { await provider.initializeAdvancedSystems(context); } catch (e) { provider._logger?.debug('provider-init: provider factory init failed', e); }
