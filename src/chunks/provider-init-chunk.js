@@ -80,7 +80,7 @@ function createFileDateDecorationProvider(context) {
     }
 }
 
-module.exports.createFileDateDecorationProvider = createFileDateDecorationProvider;
-
-
-module.exports = { hydrateProviderOptionalSystems };
+module.exports = {
+    hydrateProviderOptionalSystems,
+    createFileDateDecorationProvider
+};

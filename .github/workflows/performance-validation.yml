@@ -38,6 +38,9 @@ jobs:
       - name: Build extension bundles
         run: npm run package-bundle
 
+      - name: Verify chunk exports ordering
+        run: npm run test:chunk-exports
+
       - name: Run chunk & heap regression suite
         run: |
           set -euo pipefail
