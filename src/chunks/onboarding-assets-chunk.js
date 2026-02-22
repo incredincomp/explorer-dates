@@ -65,7 +65,9 @@ class OnboardingAssets {
      * Fill setup wizard template with preset data
      */
     _fillSetupTemplate(template, presets) {
-        const presetOptions = Object.entries(presets).map(([key, preset]) => `
+        const presetOptions = Object.entries(presets)
+            .filter(([, preset]) => !preset.hidden)
+            .map(([key, preset]) => `
             <div class="preset-option" data-preset="${key}" 
                  onmouseenter="previewConfiguration({preset: '${key}'})" 
                  onmouseleave="clearPreview()">
@@ -80,7 +82,7 @@ class OnboardingAssets {
 
         const moreOptionsLink = `
             <div class="more-options">
-                <p><strong>Need more options?</strong> Try the <a href="#" onclick="showAllPresets()">Power User</a> or <a href="#" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
+                <p><strong>Need more options?</strong> Try the <a href="#" onmouseenter="previewConfiguration({preset: 'powerUser'})" onmouseleave="clearPreview()" onclick="showAllPresets()">Power User</a> or <a href="#" onmouseenter="previewConfiguration({preset: 'gitFocused'})" onmouseleave="clearPreview()" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
             </div>
         `;
 
@@ -695,6 +697,40 @@ class OnboardingAssets {
                     fadeOldFiles: false,
                     enableContextMenu: true,
                     keyboardNavigation: true
+                }
+            },
+            powerUser: {
+                name: 'Power User',
+                description: 'All features enabled: Git badges, sizes, colors, and status bar details',
+                hidden: true,
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'vibrant',
+                    showFileSize: true,
+                    showGitInfo: 'both',
+                    badgePriority: 'author',
+                    fadeOldFiles: true,
+                    enableContextMenu: true,
+                    showStatusBar: true,
+                    highContrastMode: false,
+                    accessibilityMode: false
+                }
+            },
+            gitFocused: {
+                name: 'Git-Focused',
+                description: 'Prioritize Git authorship and commit details',
+                hidden: true,
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'subtle',
+                    showFileSize: false,
+                    showGitInfo: 'both',
+                    badgePriority: 'author',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    showStatusBar: true,
+                    highContrastMode: false,
+                    accessibilityMode: false
                 }
             }
         };

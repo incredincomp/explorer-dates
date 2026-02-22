@@ -55,6 +55,40 @@ const FALLBACK_PRESETS = {
             enableContextMenu: true,
             keyboardNavigation: true
         }
+    },
+    powerUser: {
+        name: 'Power User',
+        description: 'All features enabled: Git badges, sizes, colors, and status bar details',
+        hidden: true,
+        settings: {
+            dateDecorationFormat: 'smart',
+            colorScheme: 'vibrant',
+            showFileSize: true,
+            showGitInfo: 'both',
+            badgePriority: 'author',
+            fadeOldFiles: true,
+            enableContextMenu: true,
+            showStatusBar: true,
+            highContrastMode: false,
+            accessibilityMode: false
+        }
+    },
+    gitFocused: {
+        name: 'Git-Focused',
+        description: 'Prioritize Git authorship and commit details',
+        hidden: true,
+        settings: {
+            dateDecorationFormat: 'smart',
+            colorScheme: 'subtle',
+            showFileSize: false,
+            showGitInfo: 'both',
+            badgePriority: 'author',
+            fadeOldFiles: false,
+            enableContextMenu: true,
+            showStatusBar: true,
+            highContrastMode: false,
+            accessibilityMode: false
+        }
     }
 };
 
