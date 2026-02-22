@@ -549,6 +549,7 @@ function createWebVscodeMock(options = {}) {
                 };
             },
             async getCommands(_filterInternal = true) {
+                void _filterInternal;
                 return Array.from(commandRegistry.keys());
             },
             executeCommand(command, ...args) {

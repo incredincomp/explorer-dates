@@ -2,7 +2,6 @@
 // Tests analysis command registration, warning flows, keybinding coverage, and chunk failure handling
 
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
-const path = require('path');
 
 /**
  * Test analysis command registration and feature flag behavior
@@ -371,11 +370,11 @@ async function runTests() {
         await testChunkFailureHandling();
         
         console.log('\n✅ All analysis command registration tests passed!');
-        process.exit(0);
+        require('./helpers/forceExit').scheduleExit(0, 0);
     } catch (error) {
         console.error('\n❌ Test failed:', error.message);
         console.error(error.stack);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }
 }
 

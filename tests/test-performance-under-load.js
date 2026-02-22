@@ -93,7 +93,7 @@ async function testMassiveWorkspaceOptimization() {
             'explorerDates.forceEnableForLargeWorkspaces': false
         }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -112,7 +112,7 @@ async function testMassiveWorkspaceOptimization() {
         // Test that optimizations work
         const uri = VSCodeUri.file('/massive/test.js');
         const startTime = performance.now();
-        const decoration = await provider.provideFileDecoration(uri, { isCancellationRequested: false });
+        const decoration = await provider.provideFileDecoration(uri, { isCancellationRequested: false }); void decoration;
         const endTime = performance.now();
         
         assert.ok(endTime - startTime < 200, 'Optimized decoration should be very fast');
@@ -137,7 +137,7 @@ async function testHighFrequencyFileChanges() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -188,7 +188,7 @@ async function testConcurrentRequestPerformance() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -242,7 +242,7 @@ async function testCacheThrashingPerformance() {
             'explorerDates.cacheTimeout': 5000
         }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -299,7 +299,7 @@ async function testMemoryPressurePerformance() {
             'explorerDates.maxCacheSize': 1000
         }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -359,7 +359,7 @@ async function testPerformanceDegradationMonitoring() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -456,7 +456,7 @@ async function main() {
     
     if (failed > 0) {
         console.log(`\n⚠️ ${failed} performance tests failed - extension may not handle high load gracefully`);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     } else {
         console.log('\n🎉 All performance under load tests passed!');
     }
@@ -466,8 +466,8 @@ async function main() {
 if (require.main === module) {
     main().catch(error => {
         console.error('Performance test suite crashed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }).finally(scheduleExit);
-}
+} 
 
 module.exports = { main };

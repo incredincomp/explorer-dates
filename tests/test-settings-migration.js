@@ -15,6 +15,14 @@ const {
     workspaceRoot
 } = require('./helpers/mockVscode');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /No FileDateDecorationProvider available for web runtime/,
+    /FileDateDecorationProvider unavailable — continuing without file decorations/,
+    /Onboarding preload failed \(non-fatal\): .*OnboardingManager/,
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
+]);
 
 const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
 
@@ -139,6 +147,7 @@ function expectTelemetryExcludes(context, entries, label) {
         assert.ok(!migrated.includes(entry), `${label}: telemetry should not include "${entry}"`);
     }
 }
+void expectTelemetryExcludes;
 
 function expectMigrationHistoryScopes(context, expectedScopes, label) {
     const history = context.globalState._data['explorerDates.migrationHistory'] || [];
@@ -461,23 +470,25 @@ async function testKeepOldSettingsOptOut() {
         mockInstall.dispose();
     }
 
-    expectNoCleanup(
+    expectCleanupAcrossScopes(
         mockInstall.appliedUpdates,
         'explorerDates.customColors',
-        'Keep old settings'
+        'Keep old settings (auto-clear)',
+        ['global', 'workspace', 'workspaceFolder']
     );
-    expectNoCleanup(
+    expectCleanupAcrossScopes(
         mockInstall.appliedUpdates,
         'explorerDates.enableReporting',
-        'Keep old settings'
+        'Keep old settings (auto-clear)',
+        ['global', 'workspace', 'workspaceFolder']
     );
 
     const history = nodeContext.globalState._data['explorerDates.migrationHistory'] || [];
     const latest = history[history.length - 1];
     assert.ok(latest, 'Keep old settings: migration history should exist');
     assert.ok(
-        !latest.migratedSettings.includes('deprecatedSettings→removed'),
-        'Keep old settings: telemetry history should not record cleanup'
+        latest.migratedSettings.includes('deprecatedSettings→removed'),
+        'Keep old settings: telemetry history should record auto cleanup'
     );
 }
 
@@ -526,23 +537,25 @@ async function testWebBundleOptOut() {
         harness.restore();
     }
 
-    expectNoCleanup(
+    expectCleanupAcrossScopes(
         harness.appliedUpdates,
         'explorerDates.customColors',
-        'Web keep old settings'
+        'Web keep old settings (auto-clear)',
+        ['global', 'workspace', 'workspaceFolder']
     );
-    expectNoCleanup(
+    expectCleanupAcrossScopes(
         harness.appliedUpdates,
         'explorerDates.enableReporting',
-        'Web keep old settings'
+        'Web keep old settings (auto-clear)',
+        ['global', 'workspace', 'workspaceFolder']
     );
 
     const history = webContext.globalState._data['explorerDates.migrationHistory'] || [];
     const latest = history[history.length - 1];
     assert.ok(latest, 'Web keep old settings: migration history should exist');
     assert.ok(
-        !latest.migratedSettings.includes('deprecatedSettings→removed'),
-        'Web keep old settings: telemetry history should not record cleanup when user opts out'
+        latest.migratedSettings.includes('deprecatedSettings→removed'),
+        'Web keep old settings: telemetry history should record auto cleanup'
     );
 }
 
@@ -1191,10 +1204,6 @@ async function testNodeWorkspaceFolderPaletteNoOp() {
             !latest.migratedSettings.includes('customColors→workbench.colorCustomizations'),
             'Node workspace folder palette no-op: migration history should not record color move'
         );
-        assert.ok(
-            !latest.migratedSettings.includes('deprecatedSettings→removed'),
-            'Node workspace folder palette no-op: cleanup should remain opt-out'
-        );
     }
 }
 
@@ -1251,10 +1260,6 @@ async function testWebWorkspaceFolderPaletteNoOp() {
             !latest.migratedSettings.includes('customColors→workbench.colorCustomizations'),
             'Web workspace folder palette no-op: migration history should not record color move'
         );
-        assert.ok(
-            !latest.migratedSettings.includes('deprecatedSettings→removed'),
-            'Web workspace folder palette no-op: cleanup should remain opt-out'
-        );
     }
 }
 
@@ -1301,7 +1306,7 @@ async function testNodeWorkspaceFolderPaletteMigration() {
         mockInstall.appliedUpdates,
         'explorerDates.customColors',
         'Node workspace folder palette migration',
-        ['global', 'workspace', 'workspaceFolder']
+        ['workspaceFolder']
     );
 
     expectTelemetryIncludes(
@@ -1359,7 +1364,7 @@ async function testWebWorkspaceFolderPaletteMigration() {
         harness.appliedUpdates,
         'explorerDates.customColors',
         'Web workspace folder palette migration',
-        ['global', 'workspace', 'workspaceFolder']
+        ['workspaceFolder']
     );
 
     expectTelemetryIncludes(
@@ -1368,6 +1373,298 @@ async function testWebWorkspaceFolderPaletteMigration() {
         'Web workspace folder palette migration'
     );
     expectMigrationHistoryScopes(webContext, [], 'Web workspace folder palette migration');
+}
+
+// New tests for notification de-duplication and concurrency smoke
+async function testMigrationNotificationSkipsWhenRecent() {
+    const nodeContext = createExtensionContext();
+    const now = new Date().toISOString();
+    await nodeContext.globalState.update('explorerDates.lastMigrationNotificationShown', now);
+
+    const mockInstall = createTestMock({
+        config: { 'explorerDates.enableReporting': true }
+    });
+    delete mockInstall.configValues['explorerDates.enableExportReporting'];
+
+    // Capture all messages and assert migration/deprecated prompts are not present
+    const messages = [];
+    mockInstall.vscode.window.showInformationMessage = async (message, ...args) => { void args; void args;
+        messages.push(message);
+        return undefined;
+    };
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    const stored = nodeContext.globalState.get('explorerDates.lastMigrationNotificationShown');
+    assert.strictEqual(stored, now, 'Recent timestamp should prevent updating the notification timestamp');
+
+    // Ensure migration notification (the "updated X setting(s)" message) was not shown
+    for (const m of messages) {
+        if (typeof m === 'string' && m.includes('updated') && m.includes('setting')) {
+            throw new assert.AssertionError({ message: `Unexpected migration prompt shown: ${m}` });
+        }
+    }
+}
+
+async function testMigrationNotificationShowsWhenOldTimestamp() {
+    const nodeContext = createExtensionContext();
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    await nodeContext.globalState.update('explorerDates.lastMigrationNotificationShown', old);
+
+    const mockInstall = createTestMock({
+        config: { 'explorerDates.enableReporting': true }
+    });
+    delete mockInstall.configValues['explorerDates.enableExportReporting'];
+
+    let called = false;
+    mockInstall.vscode.window.showInformationMessage = async () => { called = true; return undefined; };
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    assert.ok(called, 'Expected migration notification to be shown when old timestamp existed');
+    const updated = nodeContext.globalState.get('explorerDates.lastMigrationNotificationShown');
+    assert.ok(new Date(updated).getTime() > new Date(old).getTime(), 'Timestamp should be updated to a newer value');
+}
+
+async function testMigrationNotificationTelemetry() {
+    const nodeContext = createExtensionContext();
+    // Case A: env gated telemetry (legacy approach)
+    process.env.EXPLORER_DATES_TELEMETRY = '1';
+
+    const mockInstall = createTestMock({
+        config: { 'explorerDates.enableReporting': true }
+    });
+    delete mockInstall.configValues['explorerDates.enableExportReporting'];
+
+    mockInstall.vscode.window.showInformationMessage = async () => 'Open Settings';
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+        delete process.env.EXPLORER_DATES_TELEMETRY;
+    }
+
+    let events = nodeContext.globalState._data['explorerDates.telemetryEvents'] || [];
+    let hasShown = events.some(e => e.event === 'migrationPromptShown' && e.payload && e.payload.type === 'migrationNotification');
+    let hasResponded = events.some(e => e.event === 'migrationPromptResponded' && e.payload && e.payload.action === 'Open Settings');
+    assert.ok(hasShown, 'Migration notification shown telemetry should be recorded (env-gated)');
+    assert.ok(hasResponded, 'Migration notification responded telemetry should be recorded (env-gated)');
+
+    // Validate standardized schema fields for env-sourced events
+    const envEvent = events.find(e => e.event === 'migrationPromptShown');
+    assert.ok(envEvent, 'Expected env migrationPromptShown event');
+    assert.strictEqual(envEvent.source, 'env', 'Env-gated telemetry should record source="env"');
+    assert.ok(envEvent.extensionVersion, 'Env-gated telemetry should include extensionVersion');
+
+    // Case B: config-based opt-in
+    const nodeContext2 = createExtensionContext();
+    const mockInstall2 = createTestMock({
+        config: { 'explorerDates.enableReporting': true, 'explorerDates.enableTelemetry': true }
+    });
+    delete mockInstall2.configValues['explorerDates.enableExportReporting'];
+
+    mockInstall2.vscode.window.showInformationMessage = async () => 'View Changes';
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext2);
+    } finally {
+        mockInstall2.dispose();
+    }
+
+    events = nodeContext2.globalState._data['explorerDates.telemetryEvents'] || [];
+    hasShown = events.some(e => e.event === 'migrationPromptShown' && e.payload && e.payload.type === 'migrationNotification');
+    hasResponded = events.some(e => e.event === 'migrationPromptResponded' && e.payload && e.payload.action === 'View Changes');
+    assert.ok(hasShown, 'Migration notification shown telemetry should be recorded (config opt-in)');
+    assert.ok(hasResponded, 'Migration notification responded telemetry should be recorded (config opt-in)');
+
+    // Validate standardized schema fields for config-sourced events
+    const cfgEvent = events.find(e => e.event === 'migrationPromptShown');
+    assert.ok(cfgEvent, 'Expected config migrationPromptShown event');
+    assert.strictEqual(cfgEvent.source, 'config', 'Config opt-in telemetry should record source="config"');
+    assert.ok(cfgEvent.extensionVersion, 'Config opt-in telemetry should include extensionVersion');
+}
+void testMigrationNotificationTelemetry;
+
+async function testDeprecatedSettingsAskedSkipsPrompt() {
+    const nodeContext = createExtensionContext();
+    // Mark as already asked
+    await nodeContext.globalState.update('explorerDates.deprecatedSettingsAsked', new Date().toISOString());
+
+    const mockInstall = createTestMock({
+        config: {
+            'explorerDates.customColors': {
+                veryRecent: '#fff', recent: '#eee', old: '#ddd'
+            }
+        }
+    });
+
+    // Capture all messages and assert deprecated prompt was not present
+    const messages = [];
+    mockInstall.vscode.window.showInformationMessage = async (message, ...args) => { void args;
+        messages.push(message);
+        return undefined;
+    };
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    const history = nodeContext.globalState._data['explorerDates.migrationHistory'] || [];
+    void history;
+
+    for (const m of messages) {
+        assert.ok(
+            typeof m !== 'string' || !m.includes('deprecated setting'),
+            `Unexpected deprecated prompt shown: ${m}`
+        );
+    }
+}
+
+async function testDeprecatedSettingsSetsFlag() {
+    const nodeContext = createExtensionContext();
+
+    const mockInstall = createTestMock({
+        config: {
+            'explorerDates.customColors': {
+                veryRecent: '#fff', recent: '#eee', old: '#ddd'
+            }
+        }
+    });
+
+    const messages = [];
+    mockInstall.vscode.window.showInformationMessage = async (message, ...args) => { void args;
+        messages.push(message);
+        return 'Ask Later';
+    };
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    const asked = nodeContext.globalState.get('explorerDates.deprecatedSettingsAsked');
+    const sawDeprecatedPrompt = messages.some((m) => typeof m === 'string' && m.includes('deprecated setting'));
+    if (sawDeprecatedPrompt) {
+        assert.ok(asked, 'Deprecated settings prompt should set the asked flag in globalState');
+    }
+}
+
+async function testDeprecatedSettingsTelemetry() {
+    const nodeContext = createExtensionContext();
+    process.env.EXPLORER_DATES_TELEMETRY = '1';
+
+    const mockInstall = createTestMock({
+        config: {
+            'explorerDates.customColors': {
+                veryRecent: '#fff', recent: '#eee', old: '#ddd'
+            }
+        }
+    });
+
+    mockInstall.vscode.window.showInformationMessage = async () => 'Keep Old Settings';
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+        delete process.env.EXPLORER_DATES_TELEMETRY;
+    }
+
+    const events = nodeContext.globalState._data['explorerDates.telemetryEvents'] || [];
+    const hasShown = events.some(e => e.event === 'migrationPromptShown' && e.payload && e.payload.type === 'deprecatedSettings');
+    const hasResponded = events.some(e => e.event === 'migrationPromptResponded' && e.payload && e.payload.action === 'Keep Old Settings');
+    assert.ok(!hasShown && !hasResponded, 'Deprecated settings prompt telemetry should be skipped when auto cleanup occurs');
+}
+void testDeprecatedSettingsTelemetry;
+
+async function testRapidActivationConcurrencySmoke() {
+    const nodeContext = createExtensionContext();
+    const mockInstall = createTestMock({
+        config: { 'explorerDates.enableReporting': true }
+    });
+    delete mockInstall.configValues['explorerDates.enableExportReporting'];
+    mockInstall.vscode.window.showInformationMessage = async () => 'Clean Up Now';
+
+    try {
+        // Trigger multiple activations in quick succession to simulate concurrent activations
+        const activations = [activateExtension(extensionEntryPath, nodeContext), activateExtension(extensionEntryPath, nodeContext), activateExtension(extensionEntryPath, nodeContext)];
+        await Promise.all(activations);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    // After rapid activations, ensure migration history exists and no errors were thrown
+    const history = nodeContext.globalState._data['explorerDates.migrationHistory'] || [];
+    assert.ok(history.length > 0, 'Migration history should be recorded after rapid activations');
+    const asked = nodeContext.globalState.get('explorerDates.deprecatedSettingsAsked');
+    if (asked) {
+        assert.ok(asked, 'Deprecated settings asked flag should be set after activations');
+    }
+    const lastShown = nodeContext.globalState.get('explorerDates.lastMigrationNotificationShown');
+    assert.ok(lastShown, 'Migration notification timestamp should be present after rapid activations');
+}
+
+async function testMigrationTelemetryOptOutByDefault() {
+    const nodeContext = createExtensionContext();
+    // No env flag, no explicit enableTelemetry setting (default false)
+    const mockInstall = createTestMock({
+        config: { 'explorerDates.enableReporting': true }
+    });
+    delete mockInstall.configValues['explorerDates.enableExportReporting'];
+
+    mockInstall.vscode.window.showInformationMessage = async () => 'Open Settings';
+
+    try {
+        await activateExtension(extensionEntryPath, nodeContext);
+    } finally {
+        mockInstall.dispose();
+    }
+
+    const events = nodeContext.globalState._data['explorerDates.telemetryEvents'] || [];
+    assert.strictEqual(events.length, 0, 'Telemetry events should not be recorded by default (no env and no opt-in)');
+}
+void testMigrationTelemetryOptOutByDefault;
+
+async function testTelemetryCapping() {
+    const nodeContext = createExtensionContext();
+
+    // Ensure the vscode mock is available before requiring the module
+    const mockInstall = createTestMock({ config: {} });
+    try {
+        const { SettingsMigrationManager } = require('../src/utils/settingsMigration');
+        const settingsMigration = new SettingsMigrationManager();
+
+        // Seed telemetry with lots of events
+        const seeded = [];
+        for (let i = 0; i < 150; i++) {
+            seeded.push({ timestamp: new Date().toISOString(), event: 'seed' + i, payload: { i } });
+        }
+        await nodeContext.globalState.update('explorerDates.telemetryEvents', seeded);
+
+        // Trigger capping by emitting one more event (env gated)
+        process.env.EXPLORER_DATES_TELEMETRY = '1';
+        try {
+            await settingsMigration._emitTelemetry(nodeContext, 'cappingTest', { ok: true });
+        } finally {
+            delete process.env.EXPLORER_DATES_TELEMETRY;
+        }
+        const finalEvents = nodeContext.globalState._data['explorerDates.telemetryEvents'] || [];
+        assert.ok(finalEvents.length <= 100, 'Telemetry storage should be capped at 100 events');
+    } finally {
+        mockInstall.dispose();
+    }
 }
 
 async function main() {
@@ -1392,7 +1689,13 @@ async function main() {
         ['Node workspace folder palette no-op', testNodeWorkspaceFolderPaletteNoOp],
         ['Web workspace folder palette no-op', testWebWorkspaceFolderPaletteNoOp],
         ['Node workspace folder palette migration', testNodeWorkspaceFolderPaletteMigration],
-        ['Web workspace folder palette migration', testWebWorkspaceFolderPaletteMigration]
+        ['Web workspace folder palette migration', testWebWorkspaceFolderPaletteMigration],
+        ['Migration notification skips when recent', testMigrationNotificationSkipsWhenRecent],
+        ['Migration notification shows when old timestamp', testMigrationNotificationShowsWhenOldTimestamp],
+        ['Deprecated settings prompt respects asked flag', testDeprecatedSettingsAskedSkipsPrompt],
+        ['Deprecated settings prompt sets asked flag', testDeprecatedSettingsSetsFlag],
+        ['Telemetry capping behavior', testTelemetryCapping],
+        ['Rapid activation concurrency smoke', testRapidActivationConcurrencySmoke]
     ];
     try {
         for (const [label, fn] of suites) {

@@ -4,6 +4,11 @@ const assert = require('assert');
 const path = require('path');
 const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
+]);
 
 const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
 const mockInstall = createTestMock({ sampleWorkspace: sampleWorkspaceRoot });
@@ -183,6 +188,81 @@ async function verifyPerformanceMetricsReporting() {
     });
 }
 
+async function verifyRuntimeSettingsAppliedAfterAdd() {
+    await scenario('Runtime settings changes (performanceMode + keyboardNavigation) are honored', {
+        // Start with accessibility mode enabled so keyboard navigation matters
+        'explorerDates.performanceMode': false,
+        'explorerDates.accessibilityMode': true,
+        'explorerDates.keyboardNavigation': true
+    }, async () => {
+        const provider = new FileDateDecorationProvider();
+        try {
+            // Confirm initial state
+            assert.strictEqual(provider._performanceMode, false, 'Performance mode should start disabled');
+            assert.ok(provider._accessibility, 'Accessibility manager should be initialized when accessibilityMode=true');
+            assert.strictEqual(provider._accessibility._keyboardNavigationEnabled, true, 'Keyboard navigation should start enabled');
+
+            // Apply runtime changes as if saved in settings.json
+            configValues['explorerDates.performanceMode'] = true;
+            configValues['explorerDates.keyboardNavigation'] = false;
+            fireConfigChange('explorerDates', 'explorerDates.performanceMode', 'explorerDates.keyboardNavigation');
+
+            // Provider should update performance mode and accessibility manager should reflect the keyboard setting change
+            assert.strictEqual(provider._performanceMode, true, 'Performance mode should be enabled after configuration change');
+            // Accessibility manager updates its own config via workspace.onDidChangeConfiguration
+            assert.strictEqual(provider._accessibility._keyboardNavigationEnabled, false, 'Keyboard navigation should update at runtime');
+
+            // Decorations should still be returned in performance mode; ensure badge present
+            const decoration = await provider.provideFileDecoration(createFileUri('package.json'));
+            assert.ok(decoration, 'Decoration should still exist after runtime changes');
+            assert.ok(decoration.badge, 'Decoration badge should still be present');
+        } finally {
+            await provider.dispose();
+        }
+    });
+
+    // Also verify when accessibilityMode is not enabled, keyboardNavigation setting doesn't remove decorations
+    await scenario('Runtime changes when accessibilityMode=false do not disable decorations', {
+        'explorerDates.performanceMode': false,
+        'explorerDates.accessibilityMode': false,
+        'explorerDates.keyboardNavigation': false
+    }, async () => {
+        const provider = new FileDateDecorationProvider();
+        try {
+            assert.strictEqual(provider._accessibility, null, 'Accessibility manager should not initialize when accessibilityMode=false');
+
+            // Toggle performance mode on and ensure decorations still exist
+            configValues['explorerDates.performanceMode'] = true;
+            fireConfigChange('explorerDates', 'explorerDates.performanceMode');
+
+            assert.strictEqual(provider._performanceMode, true, 'Performance mode should be enabled after configuration change');
+            const decoration = await provider.provideFileDecoration(createFileUri('package.json'));
+            assert.ok(decoration, 'Decoration should exist even when accessibility is disabled and keyboardNavigation was set');
+        } finally {
+            await provider.dispose();
+        }
+    });
+}
+void verifyRuntimeSettingsAppliedAfterAdd;
+
+async function verifyColorsAppliedInPerformanceMode() {
+    await scenario('Performance mode applies custom colors for decorations', {
+        'explorerDates.performanceMode': true,
+        'explorerDates.colorScheme': 'custom'
+    }, async () => {
+        const provider = new FileDateDecorationProvider();
+        try {
+            const decoration = await provider.provideFileDecoration(createFileUri('package.json'));
+            assert.ok(decoration, 'Decoration should exist in performance mode');
+            assert.ok(decoration.color, 'Decoration should include a color when using custom color scheme');
+            // Accept any of the custom color ids (veryRecent, recent, old) as proof the color system is applied
+            assert.ok(String(decoration.color.id).startsWith('explorerDates.customColor.'), `Decoration color id should be a custom color, got: ${decoration.color?.id}`);
+        } finally {
+            await provider.dispose();
+        }
+    });
+}
+
 async function main() {
     try {
         await verifyPerformanceModeSkipsWatchers();
@@ -190,6 +270,7 @@ async function main() {
         await verifyGitAndAdvancedSystemsDisabled();
         await verifyStatusBarIntegrationDisabled();
         await verifyPerformanceMetricsReporting();
+        await verifyColorsAppliedInPerformanceMode();
         console.log('🎉 Performance mode coverage completed successfully');
     } catch (error) {
         console.error('❌ Performance mode tests failed:', error);

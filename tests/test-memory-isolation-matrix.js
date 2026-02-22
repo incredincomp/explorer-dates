@@ -61,7 +61,8 @@ function runScenario({ title, label, env }) {
 
     if (result.status !== 0) {
         console.error(`Scenario "${title}" failed with exit code ${result.status}`);
-        process.exit(result.status || 1);
+        require('./helpers/forceExit').scheduleExit(0, result.status || 1);
+        return; // scheduled exit
     }
 }
 

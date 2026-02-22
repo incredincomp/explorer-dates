@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const pkg = require('../package.json');
@@ -18,6 +17,12 @@ const {
     validateAllChunks,
     validateBuiltChunks
 } = require('./helpers/mockVscode');
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
+    /Initializing Export Reporting Manager while performance\/lightweight mode is active/
+]);
 
 const configurationProperties = pkg?.contributes?.configuration?.properties || {};
 const fsRequestMetadata = ENABLE_HANDLE_DIAGNOSTICS ? new WeakMap() : null;
@@ -404,6 +409,84 @@ function validateScenarioEffect({ mockInstall, entries, scenarioName }) {
             continue;
         }
         const normalizedKey = normalizeConfigKey(entry.key);
+
+        // Special-case: `explorerDates.customColors` is migrated to `workbench.colorCustomizations` during activation.
+        if (entry.key === 'explorerDates.customColors') {
+            const inspected = config.inspect(normalizedKey) || {};
+            const observedValues = [
+                inspected.globalValue,
+                inspected.workspaceValue,
+                inspected.workspaceFolderValue,
+                config.get(normalizedKey)
+            ].filter((value) => value !== undefined);
+
+            if (observedValues.length !== 0) {
+                throw new Error(
+                    `Expected ${entry.key} to be migrated/removed during activation, but it is still present: ${formatValueForLog(
+                        observedValues.at(-1)
+                    )}`
+                );
+            }
+
+            const workbenchConfig = mockInstall.vscode.workspace.getConfiguration('workbench');
+            const colorCustomizations = workbenchConfig.get('colorCustomizations') || {};
+            const src = entry.value || {};
+            const expectedMap = {};
+            if (src.veryRecent) expectedMap['explorerDates.customColor.veryRecent'] = src.veryRecent;
+            if (src.recent) expectedMap['explorerDates.customColor.recent'] = src.recent;
+            if (src.old) expectedMap['explorerDates.customColor.old'] = src.old;
+
+            for (const [k, v] of Object.entries(expectedMap)) {
+                if (colorCustomizations[k] !== v) {
+                    throw new Error(
+                        `Migration failed for ${entry.key}: expected workbench.colorCustomizations.${k}=${v} but found ${formatValueForLog(
+                            colorCustomizations[k]
+                        )}`
+                    );
+                }
+            }
+
+            continue;
+        }
+
+        // Special-case: `explorerDates.enableReporting` is migrated to `explorerDates.enableExportReporting`.
+        if (entry.key === 'explorerDates.enableReporting') {
+            const inspectedOld = config.inspect(normalizedKey) || {};
+            const observedOld = [
+                inspectedOld.globalValue,
+                inspectedOld.workspaceValue,
+                inspectedOld.workspaceFolderValue,
+                config.get(normalizedKey)
+            ].filter((value) => value !== undefined);
+
+            if (observedOld.length !== 0) {
+                throw new Error(
+                    `Expected ${entry.key} to be migrated/removed during activation, but it is still present: ${formatValueForLog(
+                        observedOld.at(-1)
+                    )}`
+                );
+            }
+
+            const inspectedNew = config.inspect('enableExportReporting') || {};
+            const observedNew = [
+                inspectedNew.globalValue,
+                inspectedNew.workspaceValue,
+                inspectedNew.workspaceFolderValue,
+                config.get('enableExportReporting')
+            ].filter((value) => value !== undefined);
+
+            const hasMatch = observedNew.some((value) => deepEqual(value, entry.value));
+            if (!hasMatch) {
+                throw new Error(
+                    `Migration failed for ${entry.key}: expected explorerDates.enableExportReporting -> ${formatValueForLog(
+                        entry.value
+                    )}, observed ${formatValueForLog(observedNew.at(-1))}`
+                );
+            }
+
+            continue;
+        }
+
         const inspected = config.inspect(normalizedKey) || {};
         const observedValues = [
             inspected.globalValue,
@@ -515,6 +598,29 @@ async function exerciseCoreCommands(vscodeApi, sampleUri) {
     });
 }
 
+function assertCommandSideEffects(mockInstall, { reportingEnabled, extensionApiEnabled, infoLogOffset }) {
+    if (reportingEnabled) {
+        const reportPath = path.join(workspaceRoot, 'tests', 'artifacts', 'reports', 'configuration-report.json');
+        if (!fs.existsSync(reportPath)) {
+            throw new Error('Expected configuration report to be generated');
+        }
+        const stats = fs.statSync(reportPath);
+        if (stats.size === 0) {
+            throw new Error('Expected configuration report to be non-empty');
+        }
+    }
+
+    if (extensionApiEnabled) {
+        const recentLog = mockInstall.infoLog.slice(infoLogOffset);
+        const openedPanel = recentLog.some((entry) =>
+            String(entry).includes('createWebviewPanel:Explorer Dates API Information')
+        );
+        if (!openedPanel) {
+            throw new Error('Expected API information webview to be opened');
+        }
+    }
+}
+
 async function exerciseRuntimeCommands(vscodeApi) {
     const runtimeCommandIds = [
         'explorerDates.applyPreset',
@@ -601,7 +707,23 @@ async function runScenario({ mockInstall, extension, scenario, sampleUri }) {
 
         validateScenarioEffect({ mockInstall, entries, scenarioName });
 
+        const reportingEnabled = config.get('enableExportReporting', config.get('enableReporting', true));
+        const extensionApiEnabled = config.get('enableExtensionApi', true);
+        const reportPath = path.join(workspaceRoot, 'tests', 'artifacts', 'reports', 'configuration-report.json');
+        if (reportingEnabled && fs.existsSync(reportPath)) {
+            try {
+                fs.unlinkSync(reportPath);
+            } catch {
+                // ignore cleanup errors
+            }
+        }
+        const infoLogOffset = mockInstall.infoLog.length;
         await exerciseCoreCommands(mockInstall.vscode, sampleUri);
+        assertCommandSideEffects(mockInstall, {
+            reportingEnabled,
+            extensionApiEnabled,
+            infoLogOffset
+        });
 
         console.log(`PASS ${scenarioName} (${entrySummary})`);
     } catch (error) {
@@ -628,7 +750,8 @@ function buildScenarios() {
                 label: sample.label,
                 value: sample.value,
                 scope: schema.scope || 'window',
-                skipValidation: shouldSkipValidation(schema)
+                // Skip validation for values that are migrated/removed at activation (runtime migration)
+                skipValidation: shouldSkipValidation(schema) || key === 'explorerDates.customColors'
             });
         }
         coveredKeys.add(key);
@@ -778,13 +901,15 @@ async function main() {
             const shouldForceExit = process.env.CONFIG_SCENARIO_FORCE_EXIT !== '0';
             if (hasHandleLeak || shouldForceExit) {
                 const code = typeof process.exitCode === 'number' ? process.exitCode : 0;
-                process.exit(code);
+                require('./helpers/forceExit').scheduleExit(0, code);
+                return;
             }
         }
 
         if (!ENABLE_HANDLE_DIAGNOSTICS && process.env.CONFIG_SCENARIO_FORCE_EXIT !== '0') {
             const code = typeof process.exitCode === 'number' ? process.exitCode : 0;
-            process.exit(code);
+            require('./helpers/forceExit').scheduleExit(0, code);
+            return;
         }
         mockInstall.dispose();
         restoreTimers();

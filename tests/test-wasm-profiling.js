@@ -6,7 +6,7 @@
  */
 
 const { performance } = require('perf_hooks');
-const fs = require('fs');
+const fs = require('fs'); void fs;
 const path = require('path');
 
 // Set up VS Code mock
@@ -202,12 +202,12 @@ if (require.main === module) {
         .then(success => {
             // Clean up mock
             mockSetup.dispose();
-            process.exit(success ? 0 : 1);
+            require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
         })
         .catch(error => {
             console.error('❌ Test runner error:', error);
             mockSetup.dispose();
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         });
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
+const path = require('path'); void path;
 const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
@@ -13,7 +13,7 @@ async function main() {
             'explorerDates.showGitInfo': 'both'
         }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     let testsRun = 0;
@@ -48,7 +48,7 @@ async function main() {
                 // Mock git command to fail with ENOENT (git not found)
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('git: command not found');
                         error.code = 'ENOENT';
                         error.errno = -2;
@@ -81,7 +81,7 @@ async function main() {
                 // Mock git blame to fail with repository corruption
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('fatal: not a git repository (or any of the parent directories): .git');
                         error.code = 'ENOTDIR';
                         throw error;
@@ -113,7 +113,7 @@ async function main() {
                 // Mock git blame to timeout
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         return new Promise((resolve, reject) => {
                             setTimeout(() => {
                                 const error = new Error('Command timeout');
@@ -149,7 +149,7 @@ async function main() {
                 // Mock git blame with malformed output
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         // Return malformed git blame data
                         return {
                             author: '', // Empty author
@@ -185,7 +185,7 @@ async function main() {
                 // Mock git subprocess to crash
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('git subprocess crashed');
                         error.code = 'ECONNRESET';
                         error.signal = 'SIGSEGV';
@@ -217,7 +217,7 @@ async function main() {
 
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         callCount++;
                         if (callCount === 1) {
                             // First file has valid git info
@@ -267,7 +267,7 @@ async function main() {
                 // Mock git to fail with permission error
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('fatal: could not open .git/config: Permission denied');
                         error.code = 'EACCES';
                         error.errno = -13;
@@ -300,7 +300,7 @@ async function main() {
                 // Mock git to return partial/incomplete information
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         return {
                             author: undefined, // Missing author
                             date: new Date(),
@@ -335,7 +335,7 @@ async function main() {
                 // Mock git in detached HEAD state
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('HEAD detached at abc123');
                         error.code = 'DETACHED_HEAD';
                         throw error;
@@ -367,7 +367,7 @@ async function main() {
                 // Mock git to warn about large file
                 provider._gitIntegration = {
                     ...provider._gitIntegration,
-                    async getGitBlameInfo(filePath) {
+                    async getGitBlameInfo(filePath) { void filePath;
                         const error = new Error('warning: file is larger than 100 MB');
                         error.code = 'LARGE_FILE';
                         throw error;

@@ -14,10 +14,10 @@ const mockInstall = createTestMock({
         'enableWasmDigest': true
     }
 });
-const { vscode } = mockInstall;
+const { vscode } = mockInstall; void vscode;
 
 // Now safe to require modules that depend on vscode
-const { getFeatureConfig } = require('../src/featureFlags');
+const { getFeatureConfig } = require('../src/featureFlags'); void getFeatureConfig;
 
 // Test git insights conditional loading logic
 function testGitGatingLogic() {
@@ -128,7 +128,7 @@ function testBundleSizeImpact() {
                 const stats = fs.statSync(path.join(__dirname, '..', file));
                 totalSize += stats.size;
                 console.log(`  ${file}: ${Math.round(stats.size / 1024 * 100) / 100}KB`);
-            } catch (error) {
+            } catch {
                 console.log(`  ${file}: File not found`);
             }
         });
@@ -180,9 +180,9 @@ function runTests() {
 if (require.main === module) {
     const ok = runTests();
     if (!ok) {
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }
-}
+} 
 
 module.exports = {
     testGitGatingLogic,

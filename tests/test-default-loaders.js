@@ -5,7 +5,6 @@
  */
 
 const assert = require('assert');
-const path = require('path');
 const { createTestMock } = require('./helpers/mockVscode');
 
 // Set up mock vscode environment
@@ -20,7 +19,6 @@ const mockInstall = createTestMock({
         'enableExtensionApi': true
     }
 });
-const { vscode } = mockInstall;
 
 async function testDefaultLoaders() {
     console.log('🧪 Testing Default Loaders for Tests and CLI Scripts...\n');
@@ -208,7 +206,7 @@ async function testProductionBehavior() {
         
         // Test that fallback still works for non-existent chunks
         try {
-            const result = await featureFlags.loadFeatureModule('nonExistentChunk');
+            await featureFlags.loadFeatureModule('nonExistentChunk');
             // Should try production resolver first, then fall back
             console.log('✅ Fallback behavior works even with production resolver set');
             passed++;
@@ -262,12 +260,12 @@ async function runAllTests() {
 // Run tests if this is the main module
 if (require.main === module) {
     runAllTests().then(success => {
-        process.exit(success ? 0 : 1);
+        require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
     }).catch(error => {
         console.error('💥 Test runner failed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     });
-}
+} 
 
 module.exports = {
     testDefaultLoaders,

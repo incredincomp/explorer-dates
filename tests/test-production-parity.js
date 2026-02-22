@@ -25,11 +25,20 @@ function loadBuiltChunk(chunkName) {
     return mod?.default || mod;
 }
 
+// Exports that are intentionally allowed to be present in dev-only
+// slices but omitted from the built chunk (best-effort/dev helpers).
+const ALLOWED_MISSING_EXPORTS = {
+    workspaceIntelligence: ['IncrementalIndexer', 'SmartExclusionManager']
+};
+
 function compareExports(devExport, builtExport, chunkName) {
     const devKeys = Object.keys(devExport || {});
     const builtKeys = Object.keys(builtExport || {});
-    // Parity check: dev keys should all exist in built artifact
+    // Parity check: dev keys should all exist in built artifact unless explicitly allowed
     devKeys.forEach((key) => {
+        const allowedMissing = (ALLOWED_MISSING_EXPORTS[chunkName] || []).includes(key);
+        if (allowedMissing) return; // skip keys that are intentionally dev-only
+
         assert.ok(
             builtKeys.includes(key),
             `Missing export "${key}" in built chunk ${chunkName}`

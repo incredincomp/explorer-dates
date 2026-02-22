@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
-const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
@@ -40,7 +39,7 @@ async function main() {
             const mockFs = require('fs').promises;
             const originalStat = mockFs.stat;
             let operationInProgress = true;
-            mockFs.stat = async (filePath) => {
+            mockFs.stat = async (_filePath) => { void _filePath;
                 if (operationInProgress) {
                     // Simulate long-running operation
                     await new Promise(resolve => setTimeout(resolve, 50));
@@ -54,7 +53,7 @@ async function main() {
 
             // Start decoration operation
             const uri = vscode.Uri.file('/active-workspace/test-file.js');
-            const decorationPromise = provider.provideFileDecoration(uri);
+            const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
             // Dispose provider while operation is active
             provider.dispose();
@@ -104,7 +103,7 @@ async function main() {
             }
 
             // Verify cache has entries (optional check since cache may be optimized)
-            const cacheSize = provider._decorationCache?.size || 0;
+            const cacheSize = provider._decorationCache?.size || 0; void cacheSize;
 
             // Dispose and verify cleanup
             provider.dispose();
@@ -161,7 +160,7 @@ async function main() {
             const provider = new FileDateDecorationProvider();
 
             // Mock file watcher
-            let watcherDisposed = false;
+            let watcherDisposed = false; void watcherDisposed;
             const mockWatcher = {
                 onDidChange: () => ({ dispose: () => {} }),
                 onDidCreate: () => ({ dispose: () => {} }),
@@ -266,7 +265,7 @@ async function main() {
             // Mock slow file operation
             const mockFs = require('fs').promises;
             const originalStat = mockFs.stat;
-            mockFs.stat = async (filePath) => {
+            mockFs.stat = async (_filePath) => { void _filePath;
                 // Simulate slow operation
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return {
@@ -278,7 +277,7 @@ async function main() {
 
             // Start operation
             const startTime = Date.now();
-            const decorationPromise = provider.provideFileDecoration(uri);
+            const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
             // Dispose quickly (should not wait for slow operation)
             provider.dispose();
@@ -316,12 +315,12 @@ async function main() {
         console.log(`\n🎉 Resource cleanup & disposal tests completed: ${testsPassed}/${testsRun} passed`);
 
         if (testsPassed !== testsRun) {
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         }
 
     } catch (error) {
         console.error('\n❌ Test suite failed:', error.message);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }
 }
 
@@ -329,8 +328,8 @@ async function main() {
 if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }).finally(scheduleExit);
-}
+} 
 
 module.exports = { main };

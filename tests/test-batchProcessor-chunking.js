@@ -8,6 +8,8 @@
 const assert = require('assert');
 const { createTestMock } = require('./helpers/mockVscode');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { applyProgressiveLoadingSetting, loadBatchProcessorIfNeeded } = require('../src/chunks/decoration-batch-chunk');
+const { scheduleExit } = require('./helpers/forceExit');
 
 addWarningFilters([/feature flags bridge unavailable for decorationsAdvanced chunk/]);
 
@@ -38,7 +40,7 @@ async function testProgressiveLoadingDisabled() {
         });
         
         try {
-            await provider._applyProgressiveLoadingSetting();
+            await applyProgressiveLoadingSetting(provider);
             assert.strictEqual(provider._batchProcessor, null);
             assert.strictEqual(provider._progressiveLoadingEnabled, false);
         } finally {
@@ -54,11 +56,11 @@ async function testProgressiveLoadingDisabled() {
         
         try {
             vscode.workspace.getConfiguration = config(true);
-            await provider._applyProgressiveLoadingSetting();
+            await applyProgressiveLoadingSetting(provider);
             assert.notStrictEqual(provider._batchProcessor, null);
             
             vscode.workspace.getConfiguration = config(false);
-            await provider._applyProgressiveLoadingSetting();
+            await applyProgressiveLoadingSetting(provider);
             assert.strictEqual(provider._batchProcessor, null);
             assert.strictEqual(provider._progressiveLoadingEnabled, false);
         } finally {
@@ -70,7 +72,7 @@ async function testProgressiveLoadingDisabled() {
 async function testPerformanceMode() {
     await runTest('Skips BatchProcessor while in performance mode', async provider => {
         provider._performanceMode = true;
-        const result = await provider._loadBatchProcessorIfNeeded();
+        const result = await loadBatchProcessorIfNeeded(provider);
         assert.strictEqual(result, null);
         assert.strictEqual(provider._batchProcessor, null);
     });
@@ -81,15 +83,15 @@ async function testDynamicLoading() {
         assert.strictEqual(provider._batchProcessor, null);
         assert.strictEqual(provider._batchProcessorModule, null);
         
-        const result = await provider._loadBatchProcessorIfNeeded();
+        const result = await loadBatchProcessorIfNeeded(provider);
         assert.notStrictEqual(result, null);
         assert.notStrictEqual(provider._batchProcessor, null);
         assert.notStrictEqual(provider._batchProcessorModule, null);
     });
     
     await runTest('Reuses existing BatchProcessor instance', async provider => {
-        const first = await provider._loadBatchProcessorIfNeeded();
-        const second = await provider._loadBatchProcessorIfNeeded();
+        const first = await loadBatchProcessorIfNeeded(provider);
+        const second = await loadBatchProcessorIfNeeded(provider);
         assert.strictEqual(first, second);
         assert.strictEqual(provider._batchProcessor, first);
     });
@@ -113,6 +115,7 @@ async function main() {
         // runTest already sets exit code/logs
     } finally {
         mockSetup.dispose();
+        scheduleExit(0, typeof process.exitCode === 'number' ? process.exitCode : 0);
     }
 }
 

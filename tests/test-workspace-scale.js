@@ -14,7 +14,7 @@ async function main() {
             'explorerDates.forceEnableForLargeWorkspaces': false
         }
     });
-    const { vscode, appliedUpdates, VSCodeUri } = mockInstall;
+    const { vscode, appliedUpdates } = mockInstall;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     const scenarios = [

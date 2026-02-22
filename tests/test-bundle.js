@@ -14,8 +14,8 @@ const repoRoot = path.join(__dirname, '..');
 const bundlePath = path.join(repoRoot, 'dist', 'extension.js');
 if (!fs.existsSync(bundlePath)) {
     console.error('❌ Bundle not found at:', bundlePath);
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+} 
 
 const stats = fs.statSync(bundlePath);
 const sizeKB = Math.round(stats.size / 1024);
@@ -88,9 +88,9 @@ try {
     
 } catch (error) {
     console.error('❌ Bundle validation failed:', error.message);
-    process.exit(1);
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
 }
-
 // Test 4: Check VSIX package
 const pkg = require('../package.json');
 const vsixPath = path.join(repoRoot, `explorer-dates-${pkg.version}.vsix`);
@@ -112,8 +112,8 @@ if (fs.existsSync(vsixPath)) {
 
 if (failed) {
     console.error('\n❌ Bundle validation failed');
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+} 
 
 console.log('\n🎉 Bundle validation complete!');
 console.log('\n📋 Testing Instructions:');

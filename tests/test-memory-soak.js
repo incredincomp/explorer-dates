@@ -27,7 +27,8 @@ if (typeof global.gc !== 'function') {
     console.error('❌ Memory soak test requires Node to run with "--expose-gc".');
     console.error('   Use "npm run test:memory" or run the script manually with:');
     console.error('   node --expose-gc tests/test-memory-soak.js');
-    process.exit(1);
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
 }
 
 const memoryProfile = resolveMemoryProfile({ defaultProfile: '250k' });
@@ -108,7 +109,8 @@ const sampleFiles = [
 if (sampleFiles.length === 0) {
     console.error('❌ Could not locate sample files for soak test.');
     mockInstall.dispose();
-    process.exit(1);
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
 }
 
 const CAPTURE_SNAPSHOTS = process.env.MEMORY_SOAK_CAPTURE_SNAPSHOTS === '1';
@@ -676,6 +678,7 @@ function persistSoakLog(payload) {
             softThresholdAlert
         });
         mockInstall.dispose();
-        process.exit(exitCode);
+        // Use scheduled exit to tolerate lingering handles while ensuring process terminates
+        require('./helpers/forceExit').scheduleExit(0, exitCode);
     }
 })();

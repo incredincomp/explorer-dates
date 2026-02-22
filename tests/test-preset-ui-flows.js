@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
+const path = require('path'); void path;
 const mockHelpers = require('./helpers/mockVscode');
 const mockInstall = mockHelpers.createTestMock();
 const { createExtensionContext } = mockHelpers;
@@ -93,7 +93,9 @@ async function testShowPresetComparison() {
     
     let informationMessageShown = false;
     let informationMessage = '';
+    void informationMessage;
     vscode.window.showInformationMessage = async (message, options, ...actions) => {
+        void options; void actions;
         informationMessageShown = true;
         informationMessage = message;
         return 'Apply'; // User confirms preset application
@@ -164,12 +166,12 @@ async function testPresetComparisonBrowseFlow() {
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
     
-    const { vscode, configValues } = mockInstall;
+    const { vscode, configValues } = mockInstall; void configValues;
     
     let quickPickCallCount = 0;
     let informationMessageShown = false;
     
-    vscode.window.showQuickPick = async (items, options) => {
+    vscode.window.showQuickPick = async (items, options) => { void options;
         quickPickCallCount++;
         
         if (quickPickCallCount === 1) {
@@ -182,7 +184,7 @@ async function testPresetComparisonBrowseFlow() {
         return null;
     };
     
-    vscode.window.showInformationMessage = async (message, options, ...actions) => {
+    vscode.window.showInformationMessage = async (message, options, ...actions) => { void options; void actions;
         informationMessageShown = true;
         return 'Apply'; // User confirms preset application
     };
@@ -223,7 +225,7 @@ async function testShowAllPresets() {
     let quickPickItems = null;
     let quickPickOptions = null;
     let informationShown = false;
-    let presetApplied = null;
+    let presetApplied = null; void presetApplied;
     
     vscode.window.showQuickPick = async (items, options) => {
         quickPickItems = items;
@@ -235,7 +237,7 @@ async function testShowAllPresets() {
         return items.find(item => item.preset) || null;
     };
     
-    vscode.window.showInformationMessage = async (message, options, ...actions) => {
+    vscode.window.showInformationMessage = async (message, options, ...actions) => { void options; void actions;
         informationShown = true;
         presetApplied = message;
         return 'Apply'; // User confirms
@@ -395,6 +397,7 @@ async function testCommandIntegration() {
         errorShown = true;
         return message;
     };
+    void errorShown;
     
     // Register commands
     await registerRuntimeCommands(context);
@@ -475,7 +478,7 @@ async function testPresetUIEdgeCases() {
     
     // Test showAllPresets with user cancellation
     let confirmationShown = false;
-    vscode.window.showQuickPick = async (items) => {
+    vscode.window.showQuickPick = async (items) => { void items;
         return null; // User cancels preset selection
     };
     vscode.window.showInformationMessage = async () => {
@@ -520,7 +523,7 @@ async function testChunkDescriptions() {
     // Import the module to access the getChunkDescription function
     const runtimeCommandsPath = require.resolve('../src/commands/runtimeCommands.js');
     delete require.cache[runtimeCommandsPath];
-    const runtimeCommands = require('../src/commands/runtimeCommands.js');
+    const runtimeCommands = require('../src/commands/runtimeCommands.js'); void runtimeCommands;
     
     // Access internal function through evaluation (since it's not exported)
     const moduleCode = require('fs').readFileSync(runtimeCommandsPath, 'utf8');

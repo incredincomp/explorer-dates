@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
-const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 
 // Allow workspace scans to consider the higher large/extreme thresholds without truncation
 process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULTS = '500000';

@@ -4,7 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { createTestMock } = require('./helpers/mockVscode');
+const { createTestMock, createFeatureLoaderStub } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 // Ensure VS Code API calls route through the shared mock (all feature flags enabled)
 const mockSetup = createTestMock({
@@ -23,12 +24,12 @@ async function testFeatureFlags() {
     try {
         // Import feature flags module
         const featureFlags = require('../src/featureFlags');
-        const stubLoader = (name) => async () => ({ feature: name });
-        featureFlags.registerFeatureLoader('onboarding', stubLoader('onboarding'));
-        featureFlags.registerFeatureLoader('reporting', stubLoader('reporting'));
-        featureFlags.registerFeatureLoader('templates', stubLoader('templates'));
-        featureFlags.registerFeatureLoader('analysis', stubLoader('analysis'));
-        featureFlags.registerFeatureLoader('advancedCache', stubLoader('advancedCache'));
+        // Use canonical test stubs that mirror production chunk shapes where useful
+        featureFlags.registerFeatureLoader('onboarding', createFeatureLoaderStub('onboarding'));
+        featureFlags.registerFeatureLoader('reporting', createFeatureLoaderStub('reporting'));
+        featureFlags.registerFeatureLoader('templates', createFeatureLoaderStub('templates'));
+        featureFlags.registerFeatureLoader('analysis', createFeatureLoaderStub('analysis'));
+        featureFlags.registerFeatureLoader('advancedCache', createFeatureLoaderStub('advancedCache'));
         
         // Test feature configuration detection
         console.log('📊 Feature Configuration:');
@@ -201,10 +202,18 @@ async function runTests() {
 runTests()
     .then(success => {
         mockSetup.dispose();
-        process.exit(success ? 0 : 1);
+        try {
+            scheduleExit(0, success ? 0 : 1);
+        } catch {
+            require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
+        }
     })
     .catch(error => {
         console.error('💥 Test runner failed:', error);
         mockSetup.dispose();
-        process.exit(1);
+        try {
+            scheduleExit(0, 1);
+        } catch {
+            require('./helpers/forceExit').scheduleExit(0, 1);
+        }
     });

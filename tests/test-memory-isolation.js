@@ -22,8 +22,9 @@ const {
 if (typeof global.gc !== 'function') {
     console.error('❌ Memory isolation test requires Node to run with "--expose-gc".');
     console.error('   Use: node --expose-gc tests/test-memory-isolation.js');
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
+} 
 
 const memoryProfile = resolveMemoryProfile({ defaultProfile: '250k' });
 applyProfileEnv(memoryProfile);
@@ -71,8 +72,9 @@ const sampleFiles = [
 if (sampleFiles.length === 0) {
     console.error('❌ Could not locate sample files for isolation test.');
     mockInstall.dispose();
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
+} 
 
 function heapUsedMB() {
     return Number((process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2));
@@ -199,6 +201,11 @@ function delay(ms) {
             await provider.dispose();
         }
         mockInstall.dispose();
-        process.exit(exitCode);
+        try {
+            const { scheduleExit } = require('./helpers/forceExit');
+            scheduleExit(0, exitCode);
+        } catch {
+            require('./helpers/forceExit').scheduleExit(0, exitCode);
+        }
     }
 })();

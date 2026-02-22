@@ -7,9 +7,10 @@
 
 const assert = require('assert');
 const { createTestMock } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 
 // Create mock before importing extension modules
-const mock = createTestMock({});
+const mock = createTestMock({}); void mock;
 const { SecurityValidator, SecureFileOperations, detectSecurityEnvironment } = require('../src/utils/securityUtils');
 
 async function testPathTraversalDetection() {
@@ -511,6 +512,9 @@ async function main() {
         console.log('   ✅ Secure file operations');
         console.log('   ✅ Extension integration');
         console.log('   ✅ Environment detection');
+
+        // All tests passed — exit promptly to avoid lingering handles
+        scheduleExit(0, 0);
 
     } catch (error) {
         console.error('\n❌ Security utility tests failed:', error);

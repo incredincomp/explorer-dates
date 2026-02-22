@@ -87,11 +87,16 @@ function restoreWarningFilters() {
     activePatterns.clear();
 }
 
+function getActiveWarningPatterns() {
+    return Array.from(activePatterns.values());
+}
+
 installDefaultWarningFilters();
 
 module.exports = {
     DEFAULT_WARNING_PATTERNS,
     installDefaultWarningFilters,
     addWarningFilters,
-    restoreWarningFilters
+    restoreWarningFilters,
+    getActiveWarningPatterns
 };

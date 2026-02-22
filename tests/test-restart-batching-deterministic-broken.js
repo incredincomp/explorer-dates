@@ -139,7 +139,7 @@ async function testDeterministicDebounceTimer() {
         let promptCount = 0;
         const capturedPrompts = [];
         
-        vscode.window.showInformationMessage = async (message, ...args) => {
+        vscode.window.showInformationMessage = async (message, ...args) => { void args;
             promptCount++;
             capturedPrompts.push({ message, args, timestamp: Date.now() });
             return 'Reload Later';
@@ -200,7 +200,7 @@ async function testTimerCleanupOnTeardown() {
         const { vscode } = mockInstall;
         const context = createExtensionContext();
         
-        vscode.window.showInformationMessage = async (...args) => 'Reload Later';
+        vscode.window.showInformationMessage = async (...args) => { void args; return 'Reload Later'; };
         
         const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
         const runtimeManager = new RuntimeConfigManager(context);
@@ -263,7 +263,7 @@ async function testQueuedSettingsPersistence() {
         const mockInstall1 = mockHelpers.createTestMock();
         const context1 = createExtensionContext();
         
-        mockInstall1.vscode.window.showInformationMessage = async (...args) => 'Reload Later';
+        mockInstall1.vscode.window.showInformationMessage = async (...args) => { void args; return 'Reload Later'; };
         
         const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
         const runtimeManager1 = new RuntimeConfigManager(context1);
@@ -293,7 +293,7 @@ async function testQueuedSettingsPersistence() {
         let promptCount = 0;
         let restoredPromptMessage = '';
         
-        mockInstall2.vscode.window.showInformationMessage = async (message, ...args) => {
+        mockInstall2.vscode.window.showInformationMessage = async (message, ...args) => { void args;
             promptCount++;
             restoredPromptMessage = message;
             return 'Reload Now'; // User finally chooses to reload
@@ -348,7 +348,7 @@ async function testTimerCancellationAndReplacement() {
         const context = createExtensionContext();
         
         let promptCount = 0;
-        vscode.window.showInformationMessage = async (...args) => {
+        vscode.window.showInformationMessage = async (...args) => { void args;
             promptCount++;
             return 'Reload Later';
         };
@@ -414,7 +414,7 @@ async function testMultiplePromptsWithinDebounceWindow() {
         const context = createExtensionContext();
         
         const executionLog = [];
-        vscode.window.showInformationMessage = async (message, ...args) => {
+        vscode.window.showInformationMessage = async (message, ...args) => { void args;
             executionLog.push({ type: 'prompt', message, timestamp: Date.now() });
             return 'Reload Later';
         };
@@ -489,12 +489,12 @@ async function testTimerFiresDuringDeactivation() {
         let promptCount = 0;
         let promptError = null;
         
-        vscode.window.showInformationMessage = async (message, ...args) => {
+        vscode.window.showInformationMessage = async (message, ...args) => { void message; void args;
             promptCount++;
             // Check if VS Code APIs are still available during deactivation
             try {
                 // Simulate accessing VS Code API during deactivation
-                const config = vscode.workspace.getConfiguration('explorerDates');
+                const config = vscode.workspace.getConfiguration('explorerDates'); void config;
                 return 'Reload Later';
             } catch (error) {
                 promptError = error;

@@ -7,7 +7,7 @@
  */
 
 const assert = require('assert');
-const path = require('path');
+const path = require('path'); void path;
 
 // Mock vscode module first before any requires
 const Module = require('module');
@@ -17,7 +17,7 @@ Module.prototype.require = function(id) {
     if (id === 'vscode') {
         return {
             workspace: {
-                getConfiguration: (section) => {
+                getConfiguration: (section) => { void section;
                     const configs = {
                         enableWorkspaceIntelligence: process.env.TEST_WS_INTELLIGENCE === 'true'
                     };
@@ -26,7 +26,7 @@ Module.prototype.require = function(id) {
                         get: (key, defaultValue) => configs[key] ?? defaultValue
                     };
                 },
-                onDidChangeConfiguration: (callback) => ({ dispose: () => {} }),
+                onDidChangeConfiguration: (callback) => { void callback; return ({ dispose: () => {} }); },
                 workspaceFolders: []
             },
             window: {
@@ -153,8 +153,8 @@ async function testWorkspaceIntelligenceChunk() {
 // Run test
 if (require.main === module) {
     testWorkspaceIntelligenceChunk().then(success => {
-        process.exit(success ? 0 : 1);
+        require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
     });
-}
+} 
 
 module.exports = { testWorkspaceIntelligenceChunk };

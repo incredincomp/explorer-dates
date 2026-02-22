@@ -29,7 +29,8 @@ async function testDynamicChunkLoad() {
     const inst = new FileDateDecorationProvider();
     assert.ok(inst && inst._isFake === true, 'Expected dynamic chunk to provide fake implementation');
 
-    // Cleanup
+    // Cleanup - dispose provider to avoid leaving background timers/watchers active
+    try { inst?.dispose?.(); } catch { /* ignore */ }
     delete require.cache[require.resolve(chunkPath)];
     console.log('\t✅ dynamic chunk load works');
 }
@@ -50,7 +51,8 @@ async function testFallbackToLocalImpl() {
     // Local implementation sets _instanceId and _logger; check for one of those
     assert.ok(inst && (typeof inst._instanceId === 'string' || typeof inst._logger === 'object'), 'Expected fallback to local implementation');
 
-    // Cleanup
+    // Cleanup - dispose provider instance so background timers/watchers stop
+    try { inst?.dispose?.(); } catch { /* ignore */ }
     delete require.cache[require.resolve(chunkPath)];
     console.log('\t✅ fallback to local implementation works');
 }

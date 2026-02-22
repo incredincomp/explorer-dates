@@ -7,9 +7,9 @@
  * that could occur in real-world VS Code usage scenarios.
  */
 
-const fs = require('fs').promises;
-const path = require('path');
-const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
+const fs = require('fs').promises; void fs;
+const path = require('path'); void path;
+const { createTestMock, VSCodeUri } = require('./helpers/mockVscode'); void VSCodeUri;
 
 /**
  * Create controlled delay utility
@@ -36,9 +36,7 @@ async function testConcurrentSameFileRequests() {
         const fileUri = vscode.Uri.file('/workspace1/file1.js');
         
         // Launch multiple concurrent requests for the same file
-        const concurrentRequests = Array(5).fill().map((_, index) => {
-            return provider.provideFileDecoration(fileUri, { isCancellationRequested: false });
-        });
+        const concurrentRequests = Array(5).fill().map(() => provider.provideFileDecoration(fileUri, { isCancellationRequested: false }));
         
         const results = await Promise.all(concurrentRequests);
         
@@ -185,7 +183,7 @@ async function testFileSystemEventsDuringDecorations() {
             }
         }, 10);
         
-        const result = await decorationPromise;
+        await decorationPromise;
         
         // Should complete without errors
         console.log('✅ File system events during decoration handled gracefully');
@@ -411,9 +409,7 @@ async function testEventFloodingScenarios() {
         );
         
         // Flood with decoration requests
-        const floodPromises = fileUris.map((uri, index) => {
-            return provider.provideFileDecoration(uri, { isCancellationRequested: false });
-        });
+        const floodPromises = fileUris.map(uri => provider.provideFileDecoration(uri, { isCancellationRequested: false }));
         
         const results = await Promise.all(floodPromises);
         
@@ -477,9 +473,11 @@ async function runRaceConditionTests() {
     
     if (failed > 0) {
         console.log(`\n⚠️ ${failed} race condition tests failed - these indicate potential thread safety issues`);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     } else {
         console.log('\n🎉 All race condition tests passed - extension is thread-safe!');
+        // Ensure test process exits even if background watchers/timers remain
+        require('./helpers/forceExit').scheduleExit(0, 0);
     }
 }
 
@@ -487,8 +485,8 @@ async function runRaceConditionTests() {
 if (require.main === module) {
     runRaceConditionTests().catch(error => {
         console.error('Race condition test suite crashed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     });
-}
+} 
 
 module.exports = { runRaceConditionTests };

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
+const path = require('path'); void path;
 const mockHelpers = require('./helpers/mockVscode');
 const mockInstall = mockHelpers.createTestMock();
 const { createExtensionContext, createTestMock } = mockHelpers;
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /Show chunk status: runtime managers unavailable, using fallback state/
+]);
 
 async function disposeContext(context) {
     if (!context?.subscriptions) return;
@@ -40,7 +45,7 @@ async function testFormatRegressionDetection() {
         
         let capturedItems = [];
         
-        vscode.window.showQuickPick = async (items, options) => {
+        vscode.window.showQuickPick = async (items, options) => { void options;
             capturedItems = [...items];
             return null;
         };
@@ -141,7 +146,7 @@ async function testQuickPickRegressionPoints() {
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
-    const { vscode, configValues } = testMock;
+    const { vscode, configValues } = testMock; void configValues;
     
     // Set up configuration with extreme values to test edge cases
     configValues['explorerDates.enableOnboardingSystem'] = true;
@@ -410,12 +415,12 @@ async function testBrowseAllPresetsBranch() {
     const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
     const context = createExtensionContext();
     const runtimeManager = new RuntimeConfigManager(context);
-    const { vscode, configValues } = mockInstall;
+    const { vscode, configValues } = mockInstall; void configValues;
     
     let quickPickCallOrder = [];
     let informationMessages = [];
     
-    vscode.window.showQuickPick = async (items, options) => {
+    vscode.window.showQuickPick = async (items, options) => { void options;
         quickPickCallOrder.push({
             type: 'quickpick',
             itemCount: items.length,
@@ -435,7 +440,7 @@ async function testBrowseAllPresetsBranch() {
         return null;
     };
     
-    vscode.window.showInformationMessage = async (message, options, ...actions) => {
+    vscode.window.showInformationMessage = async (message, options, ...actions) => { void options; void actions;
         informationMessages.push(message);
         return 'Apply'; // User confirms
     };

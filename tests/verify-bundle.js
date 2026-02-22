@@ -38,7 +38,8 @@ try {
 
     if (missingPattern) {
         console.error('❌ Bundle validation failed: required patterns missing');
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
+        return;
     }
     
     console.log('\n📦 Bundle Summary:');
@@ -50,5 +51,6 @@ try {
     
 } catch (error) {
     console.error('❌ Bundle test failed:', error.message);
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
+}  

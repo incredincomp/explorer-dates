@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 const {
     resolveMemoryProfile,
     applyProfileEnv
@@ -28,8 +29,9 @@ if (typeof global.gc !== 'function') {
     console.error('❌ Fuzz memory test requires Node to run with "--expose-gc".');
     console.error('   Use "npm run test:memory-fuzz" or run manually with:');
     console.error('   node --expose-gc tests/test-memory-fuzz.js');
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
+} 
 
 const memoryProfile = resolveMemoryProfile({ defaultProfile: '100k' });
 applyProfileEnv(memoryProfile);
@@ -199,10 +201,11 @@ function pickSampleFiles() {
     const failing = runsLog.filter((r) => r.error);
     if (failing.length) {
         console.error(`❌ ${failing.length} run(s) failed. See log for details.`);
-        process.exit(1);
+        scheduleExit(0, 1);
+        return; // scheduled exit
     }
 
     const worstDelta = Math.max(...runsLog.map((r) => r.delta ?? 0));
     console.log(`✅ All fuzz runs passed. Worst heap delta: ${worstDelta} MB (limit ${MAX_HEAP_DELTA_MB} MB)`);
-    process.exit(exitCode);
+    scheduleExit(0, exitCode);
 })();

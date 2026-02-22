@@ -14,8 +14,8 @@
  * - Configuration change timing issues
  */
 
-const fs = require('fs').promises;
-const path = require('path');
+const fs = require('fs').promises; void fs;
+const path = require('path'); void path;
 const { createTestMock } = require('./helpers/mockVscode');
 
 // Mock vscode globally BEFORE requiring provider
@@ -84,7 +84,7 @@ async function testThemeChangeDuringDecorations() {
         // Simulate theme change during decoration
         const mockThemeChange = {
             kind: 1 // ColorTheme
-        };
+        }; void mockThemeChange;
         
         // If theme change listeners exist, trigger them
         if (mock.window.onDidChangeActiveColorTheme) {
@@ -458,7 +458,7 @@ async function testExtensionContextEdgeCases() {
     // Test 1: Extension activation timing
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createTestMock();
+        const { vscode: mock, dispose: localDispose } = createTestMock(); void mock;
         
         // Test provider initialization in various activation scenarios
         const provider = new FileDateDecorationProvider();
@@ -482,7 +482,7 @@ async function testExtensionContextEdgeCases() {
     // Test 2: Extension context disposal edge cases
     total++;
     try {
-        const { vscode: mock, dispose: localDispose } = createTestMock();
+        const { vscode: mock, dispose: localDispose } = createTestMock(); void mock;
         
         const provider = new FileDateDecorationProvider();
         
@@ -590,7 +590,7 @@ async function testCommandExecutionFailures() {
                     await provider.provideFileDecoration(uri);
                 }
                 handledCount++;
-            } catch (error) {
+            } catch {
                 // Expected for invalid URIs
                 handledCount++;
             }
@@ -851,12 +851,14 @@ runAllTests()
         const allPassed = passed === total;
         if (!allPassed) {
             console.error(`\n❌ VS Code API edge cases tests failed: ${passed}/${total} passed`);
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
             return;
         }
         console.log('\n🎉 VS Code API edge cases tests completed');
+        // Ensure the process exits cleanly on success (prevents test-runner timeouts when handles leak)
+        require('./helpers/forceExit').scheduleExit(0, 0);
     })
     .catch((error) => {
         console.error('Test runner failed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     });

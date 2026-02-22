@@ -562,12 +562,20 @@ async function main() {
         console.log(`\n🎉 Configuration edge case tests completed: ${testsPassed}/${testsRun} passed`);
 
         if (testsPassed !== testsRun) {
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
+        } else {
+            // Ensure process exits on success too (guard against lingering handles)
+            try {
+                require('./helpers/forceExit').scheduleExit(0, 0);
+            } catch (e) {
+                // fallback to immediate exit if scheduleExit isn't available
+                setImmediate(() => process.exit(0));
+            }
         }
 
     } catch (error) {
         console.error('\n❌ Test suite failed:', error.message);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }
 }
 
@@ -575,7 +583,7 @@ async function main() {
 if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }).finally(scheduleExit);
 }
 

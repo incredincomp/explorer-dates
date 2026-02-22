@@ -6,6 +6,14 @@ const assert = require('assert');
 const path = require('path');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
 const { createExtensionContext } = require('./helpers/mockVscode');
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /No FileDateDecorationProvider available for web runtime/,
+    /FileDateDecorationProvider unavailable — continuing without file decorations/,
+    /Onboarding preload failed \(non-fatal\): .*OnboardingManager/,
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
+]);
 
 async function runWebSmokeTest() {
     const extensionRoot = path.join(__dirname, '..');
@@ -73,7 +81,13 @@ async function runWebSmokeTest() {
         process.exitCode = 1;
     } finally {
         harness.restore();
-        process.exit(process.exitCode ?? 0);
+        // Force the process to exit even if a hidden handle stays open
+        try {
+            const { scheduleExit } = require('./helpers/forceExit');
+            scheduleExit(0, process.exitCode ?? 0);
+        } catch {
+            require('./helpers/forceExit').scheduleExit(0, process.exitCode ?? 0);
+        }
     }
 }
 
