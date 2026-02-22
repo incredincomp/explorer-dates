@@ -293,12 +293,14 @@ class IndexWorkerHost {
         });
     }
 
-    dispose() {
+    async dispose() {
         if (this._worker) {
-            if (isWebBuild) {
-                this._worker.terminate();
-            } else {
-                this._worker.terminate();
+            try {
+                // Worker.terminate returns a Promise - await it to ensure worker stops
+                await this._worker.terminate();
+                console.log('🐝 IndexWorkerHost: worker.terminate() awaited');
+            } catch (error) {
+                this._logger.debug('Error terminating worker:', error);
             }
             this._worker = null;
         }
@@ -334,6 +336,14 @@ class IndexWorkerHost {
             this._logger.debug('worker_threads unavailable; worker disabled');
             this._enabled = false;
             return null;
+        }
+        // Debugging: log stack to identify who requested a worker
+        try {
+            const stack = (new Error('Worker creation stack')).stack || '';
+            const short = stack.split('\n').slice(2, 8).join('\n');
+            console.log('🐝 IndexWorkerHost creating worker. Stack:\n' + short);
+        } catch {
+            // ignore
         }
         const workerOptions = {
             eval: true,

@@ -1,6 +1,26 @@
-const { getLogger } = require('./utils/logger');
-const { normalizePath, getUriPath } = require('./utils/pathUtils');
-const { isDateLike, ensureDate } = require('./utils/dateHelpers');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
+let normalizePath = (input) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.normalizePath === 'function') { normalizePath = chunk.normalizePath; return normalizePath(input); } } } catch { /* ignore */ } return String(input || '').replace(/\\/g, '/'); };
+let getUriPath = (u) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.getUriPath === 'function') { getUriPath = chunk.getUriPath; return getUriPath(u); } } } catch { /* ignore */ } if (!u) return ''; if (typeof u === 'string') return u; if (typeof u.fsPath === 'string' && u.fsPath.length > 0) return u.fsPath; if (typeof u.path === 'string' && u.path.length > 0) return u.path; try { return u.toString(true); } catch { return u.toString(); } };
+// Prefer shared utils chunk when available
+let isDateLike, ensureDate;
+try {
+    const shared = require('./chunks/utils-shared-chunk');
+    if (shared) { isDateLike = shared.isDateLike; ensureDate = shared.ensureDate; }
+} catch { /* ignore */ }
+if (!ensureDate || !isDateLike) {
+    const dateHelpers = require('./utils/dateHelpers');
+    isDateLike = isDateLike || dateHelpers.isDateLike;
+    ensureDate = ensureDate || dateHelpers.ensureDate;
+}
 
 class IncrementalIndexer {
     constructor(fileSystem) {

@@ -3,9 +3,29 @@
  * Now includes lazy loading of webview assets
  */
 
-const { OnboardingManager } = require('../onboarding');
+let OnboardingManager = null;
+let _createOnboardingManager = null;
 const { getLogger } = require('../utils/logger');
 const logger = getLogger();
+
+async function _ensureOnboardingLogic() {
+    if (OnboardingManager && _createOnboardingManager) return;
+    try {
+        const chunk = await import('./onboarding-logic-chunk.js');
+        OnboardingManager = chunk.OnboardingManager;
+        _createOnboardingManager = chunk.createOnboardingManager;
+    } catch {
+        // Fallback: try dynamic import of local module (dev fallback)
+        try {
+            const mod = await import('../onboarding.js');
+            OnboardingManager = mod.OnboardingManager;
+            _createOnboardingManager = (context) => new OnboardingManager(context);
+        } catch (e) {
+            logger.warn('Onboarding logic unavailable', e);
+            throw e;
+        }
+    }
+}
 
 // Lazy loader for onboarding assets
 let assetsLoaded = false;
@@ -34,7 +54,10 @@ const loadOnboardingAssets = async () => {
 
 module.exports = {
     OnboardingManager,
-    createOnboardingManager: (context) => new OnboardingManager(context),
+    createOnboardingManager: async (context) => {
+        await _ensureOnboardingLogic();
+        return _createOnboardingManager(context);
+    },
     loadOnboardingAssets,
     getAssetsMemoryInfo: () => {
         if (onboardingAssets) {

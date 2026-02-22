@@ -1,6 +1,9 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
-const { getFileName, getRelativePath } = require('../utils/pathUtils');
+// Prefer shared utils chunk for path helpers
+let getFileName, getRelativePath;
+try { const shared = require('../chunks/utils-shared-chunk'); if (shared) { getFileName = shared.getFileName; getRelativePath = shared.getRelativePath; } } catch { /* ignore */ }
+if (!getFileName) { const pathUtils = require('../utils/pathUtils'); getFileName = getFileName || pathUtils.getFileName; getRelativePath = getRelativePath || pathUtils.getRelativePath; }
 
 const isWeb = process.env.VSCODE_WEB === 'true';
 let childProcess = null;

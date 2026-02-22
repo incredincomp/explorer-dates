@@ -2,7 +2,16 @@ const vscode = require('vscode');
 const { isWebEnvironment } = require('../utils/env');
 const { normalizePath } = require('../utils/pathUtils');
 const { ExtensionError, ERROR_CODES, isPermissionError } = require('../utils/errors');
-const { ensureDate } = require('../utils/dateHelpers');
+// Prefer shared utils chunk when available to reduce duplication
+let ensureDate;
+try {
+    const shared = require('../chunks/utils-shared-chunk');
+    if (shared) ensureDate = shared.ensureDate;
+} catch { /* ignore */ }
+if (!ensureDate) {
+    const dateHelpers = require('../utils/dateHelpers');
+    ensureDate = dateHelpers.ensureDate;
+}
 
 const isWebBuild = process.env.VSCODE_WEB === 'true';
 const forceWorkspaceFs = process.env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';

@@ -1,5 +1,14 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { generateWorkspaceKey, detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('./utils/workspaceDetection');
 const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RESTART_REQUIRED_SETTINGS } = require('./presetDefinitions');
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
@@ -338,16 +347,40 @@ class RuntimeConfigManager {
         // Add to pending restart list
         const pending = this._globalState.get(this._pendingRestartKey, []);
         const newPending = [...new Set([...pending, ...settingKeys])];
-        this._globalState.update(this._pendingRestartKey, newPending);
-        
+        // Persist pending restart state but handle failures explicitly to avoid unhandled rejections
+        try {
+            const p = this._globalState.update(this._pendingRestartKey, newPending);
+            if (p && typeof p.then === 'function') {
+                p.catch(err => {
+                    try { logger.warn('Failed to persist pending restart state:', err && err.message); } catch {}
+                });
+            }
+        } catch (err) {
+            try { logger.warn('Failed to persist pending restart state (sync):', err && err.message); } catch {}
+        }
+
         // Debounce restart prompt (2-second delay to batch multiple changes)
         if (this._restartDebounceTimer) {
             clearTimeout(this._restartDebounceTimer);
         }
-        
-        this._restartDebounceTimer = setTimeout(async () => {
-            await this._showBatchedRestartPrompt();
-            this._restartDebounceTimer = null;
+
+        // Use a non-awaiting wrapper that catches and logs any errors to avoid unhandled promise rejections
+        this._restartDebounceTimer = setTimeout(() => {
+            (async () => {
+                try {
+                    await this._showBatchedRestartPrompt();
+                } catch (err) {
+                    logger.error('Failed to show batched restart prompt:', err);
+                    // Best-effort clear pending restarts to avoid repeated failures
+                    try {
+                        await this._globalState.update(this._pendingRestartKey, []);
+                    } catch (e) {
+                        logger.warn('Failed to clear pending restarts after prompt failure:', e && e.message);
+                    }
+                } finally {
+                    this._restartDebounceTimer = null;
+                }
+            })();
         }, 2000);
     }
     
@@ -355,29 +388,48 @@ class RuntimeConfigManager {
      * Shows consolidated restart prompt for all pending chunk changes
      */
     async _showBatchedRestartPrompt() {
-        const pendingChunks = this._globalState.get(this._pendingRestartKey, []);
-        if (pendingChunks.length === 0) return;
-        
-        const chunkNames = pendingChunks.map(chunk => this._formatChunkName(chunk)).join(', ');
-        const settingsText = pendingChunks.length === 1 
-            ? `"${chunkNames}"`
-            : `${pendingChunks.length} settings (${chunkNames})`;
+        // Protect the prompt flow against exceptions so callers (e.g., setTimeout wrapper)
+        // never observe an unhandled rejection. Always attempt to clear pending restarts
+        // on completion or failure to avoid stale state.
+        try {
+            const pendingChunks = this._globalState.get(this._pendingRestartKey, []);
+            if (pendingChunks.length === 0) return;
             
-        const message = `${settingsText} changed. Reload to apply chunk optimizations?`;
-        
-        const action = await vscode.window.showInformationMessage(
-            message,
-            { modal: false },
-            'Reload Now',
-            'Reload Later'
-        );
-        
-        if (action === 'Reload Now') {
-            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            const chunkNames = pendingChunks.map(chunk => this._formatChunkName(chunk)).join(', ');
+            const settingsText = pendingChunks.length === 1 
+                ? `"${chunkNames}"`
+                : `${pendingChunks.length} settings (${chunkNames})`;
+                
+            const message = `${settingsText} changed. Reload to apply chunk optimizations?`;
+            
+            let action;
+            try {
+                action = await vscode.window.showInformationMessage(
+                    message,
+                    { modal: false },
+                    'Reload Now',
+                    'Reload Later'
+                );
+            } catch (err) {
+                logger.warn('User prompt for restart failed:', err && err.message);
+            }
+            
+            if (action === 'Reload Now') {
+                try {
+                    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+                } catch (err) {
+                    logger.warn('Failed to execute reload command:', err && err.message);
+                }
+            }
+        } catch (err) {
+            logger.error('Error while showing batched restart prompt:', err);
+        } finally {
+            try {
+                await this._globalState.update(this._pendingRestartKey, []);
+            } catch (err) {
+                logger.warn('Failed to clear pending restarts:', err && err.message);
+            }
         }
-        
-        // Clear pending restarts regardless of action
-        await this._globalState.update(this._pendingRestartKey, []);
     }
     
     /**

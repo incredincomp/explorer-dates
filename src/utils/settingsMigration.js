@@ -6,6 +6,8 @@ const vscode = require('vscode');
 const { getLogger } = require('./logger');
 const { getSettingsCoordinator } = require('./settingsCoordinator');
 const { SettingsOrganizer } = require('./settingsOrganizer');
+const { getLocalization } = require('./localization');
+const l10n = getLocalization();
 
 class SettingsMigrationManager {
     constructor() {
@@ -25,7 +27,7 @@ class SettingsMigrationManager {
             () => this.migrateReportingSettings(),
             () => this.migrateCustomColorSettings(),
             () => this.validateFeatureFlags(),
-            () => this.cleanupDeprecatedSettings(),
+            () => this.cleanupDeprecatedSettings(context),
             () => this.trackMigrationMetrics(context)
         ];
 
@@ -41,7 +43,24 @@ class SettingsMigrationManager {
 
         if (results.length > 0) {
             this._logger.info('Settings migration completed', { migratedSettings: results });
-            this._showMigrationNotification(results);
+
+            // Avoid spamming the user with repeated migration notifications on every activation.
+            // Record when we last showed the migration notification and skip if it was shown recently.
+            try {
+                const lastShown = context?.globalState?.get ? context.globalState.get('explorerDates.lastMigrationNotificationShown') : null;
+                const now = Date.now();
+                const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+                if (!lastShown || (now - new Date(lastShown).getTime()) > ONE_DAY_MS) {
+                    await this._showMigrationNotification(results, context);
+                    if (context?.globalState?.update) {
+                        await context.globalState.update('explorerDates.lastMigrationNotificationShown', new Date().toISOString());
+                    }
+                } else {
+                    this._logger.info('Skipping migration notification - recently shown');
+                }
+            } catch (err) {
+                this._logger.debug('Failed to persist migration notification timestamp', err?.message || err);
+            }
         }
 
         return results;
@@ -53,52 +72,69 @@ class SettingsMigrationManager {
     async migrateReportingSettings() {
         const legacy = this._settings.inspect('enableReporting');
         const current = this._settings.inspect('enableExportReporting');
+        let clearedLegacy = false;
 
         // Check if legacy setting exists and new setting doesn't have a user-defined value
-        if (legacy?.globalValue !== undefined && current?.globalValue === undefined) {
+        if (legacy?.globalValue !== undefined) {
             try {
-                await this._settings.updateSetting('enableExportReporting', legacy.globalValue, {
-                    scope: 'user',
-                    reason: 'migrate-enableReporting-global'
-                });
-                this._migratedSettings.add('enableReporting→enableExportReporting (Global)');
-                this._logger.info('Migrated global enableReporting to enableExportReporting', { 
-                    oldValue: legacy.globalValue 
-                });
+                if (current?.globalValue === undefined) {
+                    await this._settings.updateSetting('enableExportReporting', legacy.globalValue, {
+                        scope: 'user',
+                        reason: 'migrate-enableReporting-global'
+                    });
+                    this._migratedSettings.add('enableReporting→enableExportReporting (Global)');
+                    this._logger.info('Migrated global enableReporting to enableExportReporting', {
+                        oldValue: legacy.globalValue
+                    });
+                }
+                await this._settings.clearSetting('enableReporting', { scope: 'user', reason: 'cleanup-migrated-enableReporting-global' });
+                clearedLegacy = true;
             } catch (error) {
                 this._logger.error('Failed to migrate global enableReporting setting', error);
             }
         }
 
         // Also handle workspace-level settings
-        if (legacy?.workspaceValue !== undefined && current?.workspaceValue === undefined) {
+        if (legacy?.workspaceValue !== undefined) {
             try {
-                await this._settings.updateSetting('enableExportReporting', legacy.workspaceValue, {
-                    scope: 'workspace',
-                    reason: 'migrate-enableReporting-workspace'
-                });
-                this._migratedSettings.add('enableReporting→enableExportReporting (Workspace)');
-                this._logger.info('Migrated workspace enableReporting to enableExportReporting', { 
-                    oldValue: legacy.workspaceValue 
-                });
+                if (current?.workspaceValue === undefined) {
+                    await this._settings.updateSetting('enableExportReporting', legacy.workspaceValue, {
+                        scope: 'workspace',
+                        reason: 'migrate-enableReporting-workspace'
+                    });
+                    this._migratedSettings.add('enableReporting→enableExportReporting (Workspace)');
+                    this._logger.info('Migrated workspace enableReporting to enableExportReporting', {
+                        oldValue: legacy.workspaceValue
+                    });
+                }
+                await this._settings.clearSetting('enableReporting', { scope: 'workspace', reason: 'cleanup-migrated-enableReporting-workspace' });
+                clearedLegacy = true;
             } catch (error) {
                 this._logger.error('Failed to migrate workspace enableReporting setting', error);
             }
         }
 
-        if (legacy?.workspaceFolderValue !== undefined && current?.workspaceFolderValue === undefined) {
+        if (legacy?.workspaceFolderValue !== undefined) {
             try {
-                await this._settings.updateSetting('enableExportReporting', legacy.workspaceFolderValue, {
-                    scope: 'workspaceFolder',
-                    reason: 'migrate-enableReporting-folder'
-                });
-                this._migratedSettings.add('enableReporting→enableExportReporting (WorkspaceFolder)');
-                this._logger.info('Migrated workspace folder enableReporting to enableExportReporting', {
-                    oldValue: legacy.workspaceFolderValue
-                });
+                if (current?.workspaceFolderValue === undefined) {
+                    await this._settings.updateSetting('enableExportReporting', legacy.workspaceFolderValue, {
+                        scope: 'workspaceFolder',
+                        reason: 'migrate-enableReporting-folder'
+                    });
+                    this._migratedSettings.add('enableReporting→enableExportReporting (WorkspaceFolder)');
+                    this._logger.info('Migrated workspace folder enableReporting to enableExportReporting', {
+                        oldValue: legacy.workspaceFolderValue
+                    });
+                }
+                await this._settings.clearSetting('enableReporting', { scope: 'workspaceFolder', reason: 'cleanup-migrated-enableReporting-folder' });
+                clearedLegacy = true;
             } catch (error) {
                 this._logger.error('Failed to migrate workspace folder enableReporting setting', error);
             }
+        }
+
+        if (clearedLegacy) {
+            this._migratedSettings.add('deprecatedSettings→removed');
         }
 
         return (
@@ -145,6 +181,23 @@ class SettingsMigrationManager {
                 reason: 'migrate-customColors'
             });
             this._migratedSettings.add('customColors→workbench.colorCustomizations');
+            const legacyInspect = explorerConfig.inspect('customColors');
+            let clearedLegacy = false;
+            if (legacyInspect?.globalValue !== undefined) {
+                await this._settings.clearSetting('customColors', { scope: 'user', reason: 'cleanup-migrated-customColors-global' });
+                clearedLegacy = true;
+            }
+            if (legacyInspect?.workspaceValue !== undefined) {
+                await this._settings.clearSetting('customColors', { scope: 'workspace', reason: 'cleanup-migrated-customColors-workspace' });
+                clearedLegacy = true;
+            }
+            if (legacyInspect?.workspaceFolderValue !== undefined) {
+                await this._settings.clearSetting('customColors', { scope: 'workspaceFolder', reason: 'cleanup-migrated-customColors-folder' });
+                clearedLegacy = true;
+            }
+            if (clearedLegacy) {
+                this._migratedSettings.add('deprecatedSettings→removed');
+            }
             this._logger.info('Migrated custom colors to workbench.colorCustomizations', { 
                 oldColors: legacyColors,
                 newColors: newColors 
@@ -221,11 +274,21 @@ class SettingsMigrationManager {
     /**
      * Clean up deprecated settings (with user consent)
      */
-    async cleanupDeprecatedSettings() {
+    async cleanupDeprecatedSettings(context) {
         const deprecatedSettings = [
             'customColors',  // Replaced by workbench.colorCustomizations
             'enableReporting'  // Replaced by enableExportReporting
         ];
+
+        // Don't repeatedly prompt users (or tests) about deprecated settings
+        try {
+            if (context?.globalState && context.globalState.get('explorerDates.deprecatedSettingsAsked')) {
+                this._logger.debug('Skipping deprecated settings prompt - already asked this workspace.');
+                return false;
+            }
+        } catch (err) {
+            this._logger.debug('Failed to read deprecatedSettingsAsked flag', err?.message || err);
+        }
 
         const foundDeprecated = [];
         for (const setting of deprecatedSettings) {
@@ -243,16 +306,31 @@ class SettingsMigrationManager {
             return false;
         }
 
+        // Emit telemetry that we are about to show a deprecated settings prompt
+        await this._emitTelemetry(context, 'migrationPromptShown', { type: 'deprecatedSettings', found: foundDeprecated.length, settings: foundDeprecated });
+
         // Ask user for permission to clean up
         const action = await vscode.window.showInformationMessage(
-            `Explorer Dates found ${foundDeprecated.length} deprecated setting(s). Would you like to remove them?`,
+            l10n.getString('deprecatedPrompt', foundDeprecated.length),
             { modal: false },
-            'Clean Up Now',
-            'Keep Old Settings',
-            'Ask Later'
+            l10n.getString('deprecatedClean'),
+            l10n.getString('deprecatedKeep'),
+            l10n.getString('deprecatedAskLater')
         );
 
-        if (action === 'Clean Up Now') {
+        // Record telemetry about the user's response
+        await this._emitTelemetry(context, 'migrationPromptResponded', { type: 'deprecatedSettings', action });
+
+        // Record that we asked so we don't prompt again immediately
+        try {
+            if (context?.globalState && context.globalState.update) {
+                await context.globalState.update('explorerDates.deprecatedSettingsAsked', new Date().toISOString());
+            }
+        } catch (err) {
+            this._logger.debug('Failed to persist deprecatedSettingsAsked flag', err?.message || err);
+        }
+
+        if (action === l10n.getString('deprecatedClean')) {
             for (const setting of foundDeprecated) {
                 try {
                     // Remove from both global and workspace
@@ -270,6 +348,48 @@ class SettingsMigrationManager {
 
         return false;
     }
+
+    /**
+     * Emit lightweight telemetry events for diagnostics.
+     * Events are gated by the `EXPLORER_DATES_TELEMETRY` env flag to respect privacy.
+     */
+    async _emitTelemetry(context, eventName, payload) {
+        try {
+            // Telemetry is enabled when either the environment flag is set, or the user opts in via settings
+            const configOptIn = this._settings && typeof this._settings.getValue === 'function' ? this._settings.getValue('enableTelemetry') : false;
+            if (process.env.EXPLORER_DATES_TELEMETRY !== '1' && !configOptIn) return;
+            if (!context?.globalState?.update || !context?.globalState?.get) return;
+
+            const events = context.globalState.get('explorerDates.telemetryEvents', []);
+
+            // Determine source and extension version for standardized schema
+            const source = process.env.EXPLORER_DATES_TELEMETRY === '1' ? 'env' : (configOptIn ? 'config' : 'unknown');
+            const extensionVersion = context?.extension?.packageJSON?.version || null;
+
+            const record = {
+                timestamp: new Date().toISOString(),
+                event: eventName,
+                payload,
+                source,
+                extensionVersion
+            };
+
+            events.push(record);
+
+            // Keep telemetry storage bounded to avoid unbounded globalState growth
+            const MAX_EVENTS = 100;
+            if (events.length > MAX_EVENTS) {
+                events.splice(0, events.length - MAX_EVENTS);
+            }
+
+            await context.globalState.update('explorerDates.telemetryEvents', events);
+            this._logger.debug('Telemetry emitted', record);
+        } catch (err) {
+            this._logger.debug('Failed to emit telemetry event', err?.message || err);
+        }
+    }
+
+
 
     /**
      * Track migration metrics for telemetry/debugging
@@ -297,6 +417,10 @@ class SettingsMigrationManager {
         await context.globalState.update('explorerDates.migrationHistory', migrationHistory);
         
         this._logger.info('Recorded migration metrics', migrationRecord);
+
+        // Also emit a telemetry event (env-gated)
+        await this._emitTelemetry(context, 'migrationMetricsRecorded', { record: migrationRecord });
+
         return true;
     }
 
@@ -330,7 +454,7 @@ class SettingsMigrationManager {
                         details.push(`${summary.sortedFiles.length} file(s) tidied`);
                     }
                     const detailText = details.length ? ` (${details.join(' • ')})` : '';
-                    vscode.window.showInformationMessage(`Explorer Dates cleaned up project settings${detailText}.`);
+                    vscode.window.showInformationMessage(l10n.getString('organizeSettingsResult', detailText));
                 }
 
                 this._logger.info('Explorer Dates settings auto-organized', {
@@ -363,22 +487,26 @@ class SettingsMigrationManager {
     /**
      * Show user-friendly migration notification
      */
-    async _showMigrationNotification(migratedSettings) {
+    async _showMigrationNotification(migratedSettings, context) {
         const settingsCount = migratedSettings.length;
-        const message = `Explorer Dates updated ${settingsCount} setting(s) for compatibility. Your configuration has been preserved.`;
-        
+            // Emit telemetry that the migration notification was shown
+        await this._emitTelemetry(context, 'migrationPromptShown', { type: 'migrationNotification', count: settingsCount, details: migratedSettings });
+
         const action = await vscode.window.showInformationMessage(
-            message,
+            l10n.getString('migrationNotificationMessage', settingsCount),
             { modal: false },
-            'View Changes',
-            'Open Settings'
+            l10n.getString('migrationViewChanges'),
+            l10n.getString('migrationOpenSettings')
         );
 
+        // Emit telemetry about the user's response
+        await this._emitTelemetry(context, 'migrationPromptResponded', { type: 'migrationNotification', action });
+
         switch (action) {
-            case 'View Changes':
+            case l10n.getString('migrationViewChanges'):
                 await this._showMigrationDetails();
                 break;
-            case 'Open Settings':
+            case l10n.getString('migrationOpenSettings'):
                 await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
                 break;
         }
@@ -390,7 +518,7 @@ class SettingsMigrationManager {
     async _showMigrationDetails() {
         const panel = vscode.window.createWebviewPanel(
             'explorerDatesMigration',
-            'Explorer Dates - Settings Migration',
+            l10n.getString('migrationDetailsTitle'),
             vscode.ViewColumn.One,
             { enableScripts: false }
         );
@@ -403,7 +531,7 @@ class SettingsMigrationManager {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Settings Migration</title>
+                <title>${l10n.getString('migrationDetailsTitle')}</title>
                 <style>
                     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; }
                     h1 { color: #007ACC; }

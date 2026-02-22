@@ -1,21 +1,87 @@
 const vscode = require('vscode');
 const { getLogger } = require('../utils/logger');
-const { RuntimeConfigManager } = require('../runtimeConfigManager');
-const { TeamConfigPersistenceManager } = require('../teamConfigPersistence');
 
 const logger = getLogger();
 
 /**
- * Registers runtime chunk management commands
+ * Registers runtime chunk management commands lazily to avoid pulling heavy
+ * runtime managers into this chunk at module-load time. Managers are
+ * dynamically imported on-demand when commands are invoked.
  */
 function registerRuntimeCommands(context) {
-    const runtimeManager = new RuntimeConfigManager(context);
-    const teamPersistenceManager = new TeamConfigPersistenceManager(context);
-    
+    // Lazy instances
+    let runtimeManager = null;
+    let teamPersistenceManager = null;
+    let managersInitializing = null;
+
+    // Lightweight proxies returned immediately so extension activation doesn't
+    // depend on heavy modules to load synchronously
+    const runtimeManagerProxy = {
+        dispose: () => {
+            if (runtimeManager && typeof runtimeManager.dispose === 'function') {
+                try { runtimeManager.dispose(); } catch (e) { logger.warn('Error during runtimeManager.dispose proxy', e); }
+            }
+        }
+    };
+
+    const teamPersistenceManagerProxy = {
+        dispose: () => {
+            if (teamPersistenceManager && typeof teamPersistenceManager.dispose === 'function') {
+                try { teamPersistenceManager.dispose(); } catch (e) { logger.warn('Error during teamPersistenceManager.dispose proxy', e); }
+            }
+        }
+    };
+
+    function loadTeamPersistenceModule() {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire !== 'function') {
+            return null;
+        }
+        const candidates = [
+            '../chunks/teamPersistence',
+            '../chunks/team-persistence-chunk'
+        ];
+        for (const candidate of candidates) {
+            try {
+                const mod = dynamicRequire(candidate);
+                if (mod) return mod.default || mod;
+            } catch {
+                // try next candidate
+            }
+        }
+        return null;
+    }
+
+    async function ensureManagers() {
+        if (managersInitializing) return managersInitializing;
+        managersInitializing = (async () => {
+            if (!runtimeManager) {
+                const heavy = await import('../chunks/runtime-management-heavy.js');
+                runtimeManager = new heavy.RuntimeConfigManager(context);
+            }
+            if (!teamPersistenceManager) {
+                const persistence = loadTeamPersistenceModule();
+                if (persistence?.createTeamPersistenceManager) {
+                    teamPersistenceManager = persistence.createTeamPersistenceManager(context);
+                } else if (persistence?.TeamConfigPersistenceManager) {
+                    teamPersistenceManager = new persistence.TeamConfigPersistenceManager(context);
+                } else {
+                    const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+                    if (typeof dynamicRequire === 'function') {
+                        const mod = dynamicRequire('../teamConfigPersistence.proxy');
+                        teamPersistenceManager = new mod.TeamConfigPersistenceManager(context);
+                    }
+                }
+            }
+        })();
+        return managersInitializing;
+    }
+
     const commands = [
         // Apply preset configuration
         vscode.commands.registerCommand('explorerDates.applyPreset', async () => {
             try {
+                await ensureManagers();
                 await runtimeManager.showAllPresets();
             } catch (error) {
                 logger.error('Apply preset command failed:', error);
@@ -26,6 +92,7 @@ function registerRuntimeCommands(context) {
         // Restore previous preset from backup
         vscode.commands.registerCommand('explorerDates.restorePreviousPreset', async () => {
             try {
+                await ensureManagers();
                 const result = await runtimeManager.restorePreviousPreset();
                 if (!result.restored) {
                     logger.info('No preset backup available to restore');
@@ -39,6 +106,7 @@ function registerRuntimeCommands(context) {
         // Show runtime configuration optimizer
         vscode.commands.registerCommand('explorerDates.configureRuntime', async () => {
             try {
+                await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
                 await runtimeManager.showPresetComparison(state.currentSettings);
             } catch (error) {
@@ -50,6 +118,7 @@ function registerRuntimeCommands(context) {
         // Suggest optimal preset for current workspace
         vscode.commands.registerCommand('explorerDates.suggestOptimalPreset', async () => {
             try {
+                await ensureManagers();
                 await runtimeManager.checkAutoSuggestion();
             } catch (error) {
                 logger.error('Suggest optimal preset command failed:', error);
@@ -60,21 +129,36 @@ function registerRuntimeCommands(context) {
         // Show current chunk status
         vscode.commands.registerCommand('explorerDates.showChunkStatus', async () => {
             try {
+                await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
                 await showChunkStatusQuickPick(state);
             } catch (error) {
-                logger.error('Show chunk status command failed:', error);
-                vscode.window.showErrorMessage(`Failed to show chunk status: ${error.message}`);
+                // Fallback: runtime manager chunks may be unavailable in lightweight
+                // test or runtime environments — show chunk status using config only.
+                logger.warn('Show chunk status: runtime managers unavailable, using fallback state', error);
+                try {
+                    const cfg = vscode.workspace.getConfiguration('explorerDates');
+                    // Compute an approximate bundle size: base (99KB) + sum of enabled chunk sizes
+                    const chunkSizes = [34,23,17,15,14,28,31,19];
+                    const chunkKeys = ['enableOnboardingSystem','enableAnalysisCommands','enableExportReporting','enableExtensionApi','enableWorkspaceTemplates','enableAdvancedCache','enableWorkspaceIntelligence','enableIncrementalWorkers'];
+                    const enabledSum = chunkKeys.reduce((acc, k, i) => acc + (cfg.get(k, true) ? chunkSizes[i] : 0), 0);
+                    const fallbackState = { currentBundleSize: 99 + enabledSum };
+                    await showChunkStatusQuickPick(fallbackState);
+                } catch (fallbackErr) {
+                    logger.error('Show chunk status fallback failed:', fallbackErr);
+                    vscode.window.showErrorMessage(`Failed to show chunk status: ${fallbackErr.message}`);
+                }
             }
         }),
         
         // Optimize bundle size
         vscode.commands.registerCommand('explorerDates.optimizeBundle', async () => {
             try {
+                await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
                 
                 if (state.analysis) {
-                    const recommendedProfile = determineOptimalProfile(state.analysis);
+                    const recommendedProfile = await determineOptimalProfile(state.analysis);
                     await runtimeManager.showPresetComparison(state.currentSettings, recommendedProfile);
                 } else {
                     await runtimeManager.showAllPresets();
@@ -88,6 +172,7 @@ function registerRuntimeCommands(context) {
         // Team configuration validation
         vscode.commands.registerCommand('explorerDates.validateTeamConfig', async () => {
             try {
+                await ensureManagers();
                 const validation = await teamPersistenceManager.validateTeamConfiguration();
                 
                 if (validation.hasTeamConfig) {
@@ -113,7 +198,7 @@ function registerRuntimeCommands(context) {
     
     logger.info('Runtime management commands registered');
     
-    return { runtimeManager, teamPersistenceManager };
+    return { runtimeManager: runtimeManagerProxy, teamPersistenceManager: teamPersistenceManagerProxy };
 }
 
 /**
@@ -179,7 +264,7 @@ function getChunkDescription(chunkKey) {
 /**
  * Determines optimal profile based on workspace analysis
  */
-function determineOptimalProfile(analysis) {
+async function determineOptimalProfile(analysis) {
     if (!analysis) return null;
     
     const { workspaceSize, isRemoteEnvironment } = analysis;
@@ -193,8 +278,9 @@ function determineOptimalProfile(analysis) {
         presetId = 'enterprise';  // Use full enterprise preset for small local workspaces
     }
     
-    // Import preset definitions to return full preset object
-    const { PRESET_DEFINITIONS } = require('../presetDefinitions');
+    // Dynamically import preset definitions to avoid bundling them with runtime commands
+    const pd = await import('../presetDefinitions.js');
+    const PRESET_DEFINITIONS = pd.PRESET_DEFINITIONS;
     return PRESET_DEFINITIONS[presetId] || PRESET_DEFINITIONS.balanced;
 }
 

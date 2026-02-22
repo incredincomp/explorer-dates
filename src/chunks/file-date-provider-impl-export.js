@@ -1,0 +1,2 @@
+const impl = require('./file-date-provider-impl');
+module.exports = { FileDateDecorationProvider: impl.FileDateDecorationProvider, FileDateDecorationProviderImpl: impl.FileDateDecorationProviderImpl || impl.FileDateDecorationProvider };

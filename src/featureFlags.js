@@ -2,7 +2,16 @@
  * Feature flags for optional components to reduce bundle size
  */
 
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { CHUNK_SIZES } = require('./presetDefinitions');
 const { getChunkSourcePath, getAllChunkNames } = require('./shared/chunkMap');
 const { registerFeatureFlagsGlobal } = require('./utils/featureFlagsBridge');
@@ -18,6 +27,7 @@ const CHUNK_METHOD_ALIASES = {
 };
 
 const DEV_CHUNK_PATH_CACHE = new Map();
+const LAST_FEATURE_FAILURES = new Map();
 
 function getDevChunkImportPath(chunkName) {
     if (DEV_CHUNK_PATH_CACHE.has(chunkName)) {
@@ -335,6 +345,7 @@ function clearFeatureLoaders() {
 }
 
 async function loadFeatureModule(name) {
+    LAST_FEATURE_FAILURES.delete(name);
     let loader = featureLoaders.get(name);
     if (!loader && chunkResolver) {
         loader = () => chunkResolver(name);
@@ -346,6 +357,7 @@ async function loadFeatureModule(name) {
     try {
         return await runWithChunkTimeout(() => loader(), name);
     } catch (error) {
+        LAST_FEATURE_FAILURES.set(name, error);
         logFeature('warn', 'Feature loader failed', {
             feature: name,
             error: error.message,
@@ -355,6 +367,10 @@ async function loadFeatureModule(name) {
         announceChunkSavings(name);
         return null;
     }
+}
+
+function getFeatureLoadFailure(name) {
+    return LAST_FEATURE_FAILURES.get(name);
 }
 
 /**
@@ -498,6 +514,10 @@ const featureFlags = {
         return loadFeatureModule('decorationsAdvanced');
     },
 
+    async decorationsProviderImpl() {
+        return loadFeatureModule('decorationsProviderImpl');
+    },
+
     async gitInsights() {
         // Git insights are loaded conditionally when git features are needed
         // No feature flag check - this is a performance optimization
@@ -596,6 +616,7 @@ const exportedFeatureFlags = {
     unregisterFeatureLoader,
     clearFeatureLoaders,
     loadFeatureModule,
+    getFeatureLoadFailure,
     registerDefaultLoaders
 };
 

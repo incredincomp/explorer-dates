@@ -1,8 +1,29 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
-const { getFileName, getRelativePath } = require('../utils/pathUtils');
-const { ensureDate } = require('../utils/dateHelpers');
+// Prefer shared utils chunk when available to reduce duplication
+let getFileName, getRelativePath, ensureDate;
+try {
+    const shared = require('../chunks/utils-shared-chunk');
+    if (shared) {
+        getFileName = shared.getFileName;
+        getRelativePath = shared.getRelativePath;
+        ensureDate = shared.ensureDate;
+    }
+} catch { /* ignore */ }
+if (!getFileName || !ensureDate) {
+    const pathUtils = require('../utils/pathUtils');
+    const dateHelpers = require('../utils/dateHelpers');
+    getFileName = getFileName || pathUtils.getFileName;
+    getRelativePath = getRelativePath || pathUtils.getRelativePath;
+    ensureDate = ensureDate || dateHelpers.ensureDate;
+}
 const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
+// Localization is lazily imported to avoid bundling the full translations
+// into this chunk at build time. This keeps the analysis chunk small.
+async function _getL10n() {
+    const mod = await import('../utils/localization');
+    return mod.getLocalization();
+}
 
 const settingsCoordinator = getSettingsCoordinator();
 
@@ -38,13 +59,15 @@ function registerAnalysisCommands({
     }
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showWorkspaceActivity', async () => {
+        let l10n;
         try {
+            l10n = await _getL10n();
             // Check if analysis commands feature is still enabled
             const vscodeConfig = vscode.workspace.getConfiguration('explorerDates');
             const analysisCommandsEnabled = vscodeConfig.get('enableAnalysisCommands', true);
             
             if (!analysisCommandsEnabled) {
-                vscode.window.showInformationMessage('Analysis commands are disabled. Enable explorerDates.enableAnalysisCommands to use this feature.');
+                vscode.window.showInformationMessage(l10n.getString('analysisCommandsDisabled'));
                 return;
             }
             
@@ -58,7 +81,7 @@ function registerAnalysisCommands({
             );
 
             if (!vscode.workspace.workspaceFolders) {
-                vscode.window.showWarningMessage('No workspace folder open');
+                vscode.window.showWarningMessage(l10n.getString('noWorkspaceFolderOpen'));
                 return;
             }
 
@@ -87,12 +110,14 @@ function registerAnalysisCommands({
             logger.info('Workspace activity panel opened');
         } catch (error) {
             logger.error('Failed to show workspace activity', error);
-            vscode.window.showErrorMessage(`Failed to show workspace activity: ${error.message}`);
+            vscode.window.showErrorMessage(l10n?.getString('failedToShowWorkspaceActivity', error.message) || `Failed to show workspace activity: ${error.message}`);
         }
     }));
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.showPerformanceAnalytics', async () => {
+        let l10n;
         try {
+            l10n = await _getL10n();
             const { generatePerformanceAnalyticsHTML } = await loadDiagnosticsGenerators();
             
             const panel = vscode.window.createWebviewPanel(
@@ -107,12 +132,14 @@ function registerAnalysisCommands({
             logger.info('Performance analytics panel opened');
         } catch (error) {
             logger.error('Failed to show performance analytics', error);
-            vscode.window.showErrorMessage(`Failed to show performance analytics: ${error.message}`);
+            vscode.window.showErrorMessage(l10n?.getString('failedToShowPerformanceAnalytics', error.message) || `Failed to show performance analytics: ${error.message}`);
         }
     }));
 
     subscriptions.push(vscode.commands.registerCommand('explorerDates.debugCache', async () => {
+        let l10n;
         try {
+            l10n = await _getL10n();
             if (fileDateProvider) {
                 const metrics = fileDateProvider.getMetrics();
                 const debugInfo = {
@@ -136,7 +163,7 @@ function registerAnalysisCommands({
             }
         } catch (error) {
             logger.error('Failed to show cache debug info', error);
-            vscode.window.showErrorMessage(`Failed to show cache debug info: ${error.message}`);
+            vscode.window.showErrorMessage(l10n?.getString('failedToShowCacheDebugInfo', error.message) || `Failed to show cache debug info: ${error.message}`);
         }
     }));
 

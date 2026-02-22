@@ -648,6 +648,87 @@ class OnboardingAssets {
     }
 
     /**
+     * Provide configuration presets via the assets chunk to keep onboarding lightweight
+     */
+    getPresets() {
+        return {
+            minimal: {
+                name: 'Minimal',
+                description: 'Clean and simple - just show modification times in short format',
+                settings: {
+                    dateDecorationFormat: 'relative-short',
+                    colorScheme: 'none',
+                    highContrastMode: false,
+                    showFileSize: false,
+                    showGitInfo: 'none',
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: false,
+                    showStatusBar: false
+                }
+            },
+            developer: {
+                name: 'Developer',
+                description: 'Perfect for development - includes Git info, file sizes, and color coding',
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'recency',
+                    showFileSize: true,
+                    showGitInfo: 'author',
+                    badgePriority: 'time',
+                    fadeOldFiles: true,
+                    enableContextMenu: true,
+                    showStatusBar: true
+                }
+            },
+            accessible: {
+                name: 'Accessible',
+                description: 'High contrast and screen reader friendly with detailed tooltips',
+                settings: {
+                    dateDecorationFormat: 'relative-short',
+                    colorScheme: 'none',
+                    highContrastMode: true,
+                    accessibilityMode: true,
+                    showFileSize: false,
+                    showGitInfo: 'none',
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    keyboardNavigation: true
+                }
+            }
+        };
+    }
+
+    /**
+     * Provide tips for the tips and tricks dialog
+     */
+    getTips() {
+        return [
+            {
+                icon: '⌨️',
+                title: 'Keyboard Shortcuts',
+                description: 'Use Ctrl+Shift+D (Cmd+Shift+D on Mac) to quickly toggle decorations on/off.'
+            },
+            {
+                icon: '🎯',
+                title: 'Smart Exclusions',
+                description: 'The extension automatically detects and suggests excluding build folders for better performance.'
+            },
+            {
+                icon: '📊',
+                title: 'Performance Analytics',
+                description: 'Use "Show Performance Analytics" to monitor cache performance and optimization opportunities.'
+            },
+            {
+                icon: '🔍',
+                title: 'Context Menu',
+                description: 'Right-click any file to access Git history, file details, and quick actions.'
+            }
+        ];
+    }
+
+    /**
      * Get memory usage info for this chunk
      */
     getMemoryInfo() {
@@ -673,6 +754,8 @@ class OnboardingAssets {
 module.exports = {
     OnboardingAssets,
     createOnboardingAssets: () => new OnboardingAssets(),
+    getPresets: () => new OnboardingAssets().getPresets(),
+    getTips: () => new OnboardingAssets().getTips(),
     getMemoryInfo: (() => {
         let sharedInstance = null;
         return () => {

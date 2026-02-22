@@ -51,6 +51,41 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.migrateSettings",
+        "title": "Migrate Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.organizeSettings",
+        "title": "Organize Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.validateConfiguration",
+        "title": "Validate Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.cleanLegacySettings",
+        "title": "Clean Legacy Settings",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showMigrationHistory",
+        "title": "Show Migration History",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.exportConfiguration",
+        "title": "Export Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.clearTelemetryData",
+        "title": "Clear Telemetry Data",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.applyCustomColors",
         "title": "Apply Custom Colors",
         "category": "Explorer Dates"
@@ -93,6 +128,36 @@
       {
         "command": "explorerDates.showPerformanceAnalytics",
         "title": "Show Performance Analytics",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.showChunkStatus",
+        "title": "Show Chunk Status",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.optimizeBundle",
+        "title": "Optimize Bundle Size",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.applyPreset",
+        "title": "Apply Configuration Preset",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.suggestOptimalPreset",
+        "title": "Suggest Optimal Configuration",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.configureRuntime",
+        "title": "Configure Runtime Chunks",
+        "category": "Explorer Dates"
+      },
+      {
+        "command": "explorerDates.validateTeamConfig",
+        "title": "Validate Team Configuration",
         "category": "Explorer Dates"
       },
       {
@@ -600,6 +665,12 @@
           "description": "Maximum memory usage in MB for caching",
           "scope": "window"
         },
+        "explorerDates.strictPersistentCacheValidation": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, persisted cache snapshots are strictly validated and malformed entries are rejected on load (safer but less forgiving)",
+          "scope": "window"
+        },
         "explorerDates.accessibilityMode": {
           "type": "boolean",
           "default": false,
@@ -703,6 +774,112 @@
             "Clockify specific format"
           ],
           "scope": "window"
+        },
+        "explorerDates.performanceMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable performance mode to reduce CPU and memory usage for large workspaces",
+          "scope": "window"
+        },
+        "explorerDates.featureLevel": {
+          "type": "string",
+          "enum": ["auto", "full", "enhanced", "standard", "minimal"],
+          "default": "auto",
+          "description": "Feature profile that tunes performance and behavior for different workspace sizes",
+          "scope": "window"
+        },
+        "explorerDates.smartFileWatching": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the adaptive smart file watching pipeline for better performance in large workspaces",
+          "scope": "window"
+        },
+        "explorerDates.smartWatcherMaxPatterns": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "description": "Maximum number of glob patterns to use for smart watcher analysis",
+          "scope": "window"
+        },
+        "explorerDates.smartWatcherExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["ts","tsx","js","jsx","mjs","cjs","mts","cts","vue","py","go","rb","rs","java","kt","swift","cs","cpp","c","php","scala","sql","md","mdx","json","jsonc","yml","yaml","toml","ini","txt","html","css","scss"],
+          "description": "File extensions prioritized by the smart watcher (normalized without leading dot)",
+          "scope": "window"
+        },
+        "explorerDates.adaptiveBatchProcessing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically adapt batch sizes to workspace scale and queue depth",
+          "scope": "window"
+        },
+        "explorerDates.maxTrackedActivityFiles": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 0,
+          "description": "Maximum number of files to retain in activity tracking (0 disables activity tracking)",
+          "scope": "window"
+        },
+        "explorerDates.badgeRefreshInterval": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 600000,
+          "description": "Interval (ms) to periodically refresh badges and clear caches (10s–10m)",
+          "scope": "window"
+        },
+        "explorerDates.security.enforceWorkspaceBoundaries": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace boundary enforcement for security-sensitive operations",
+          "scope": "window"
+        },
+        "explorerDates.security.allowedExtraPaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Additional paths to allow when enforcing workspace boundaries",
+          "scope": "window"
+        },
+        "explorerDates.security.allowTestPaths": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow test paths during testing environments (relaxes boundary enforcement)",
+          "scope": "window"
+        },
+        "explorerDates.decorationPoolSize": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 128,
+          "description": "Maximum size of the internal decoration pool (trimmed when exceeded)",
+          "scope": "window"
+        },
+        "explorerDates.flyweightCacheSize": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 256,
+          "description": "Capacity for flyweight caches (badges and readable strings)",
+          "scope": "window"
+        },
+        "explorerDates.enableAdvancedCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the optional advanced persistent cache (improves startup in large workspaces)",
+          "scope": "window"
+        },
+        "explorerDates.consoleLogLevel": {
+          "type": "string",
+          "enum": ["debug","info","warn","error"],
+          "default": "warn",
+          "description": "Console log level for internal diagnostic messages",
+          "scope": "window"
+        },
+        "explorerDates.enableTelemetry": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable optional diagnostic telemetry (opt-in). When enabled, telemetry events are recorded locally in extension global state. You can also enable telemetry via the EXPLORER_DATES_TELEMETRY environment flag for ad-hoc diagnostics.",
+          "scope": "window"
         }
       }
     }
@@ -723,22 +900,32 @@
   "icon": "icons/explorer-dates.png",
   "scripts": {
     "lint": "eslint .",
-    "test:critical": "npm run lint && npm run test:config && npm run test:config-scenarios",
+    "test:critical": "npm run lint && npm run test:config && npm run test:config-audit && npm run test:config-scenarios",
     "test": "npm run test:suite",
-    "test:suite": "npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle",
-    "test:config": "node tests/verify-config.js",
-    "test:config-scenarios": "node tests/test-configuration-scenarios.js",
-    "test:feature-gates": "node tests/test-feature-gates.js",
-    "test:flows": "node tests/exercise-flows.js",
-    "test:bundle": "node tests/test-bundle.js",
-    "test:verify-bundle": "node tests/verify-bundle.js",
-    "test:performance-baselines": "node tests/test-performance-baselines.js",
-    "compile": "node esbuild.js",
+    "test:suite": "npm run compile && npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:extras && npm run test:performance",
+    "test:config": "node -r ./tests/helpers/strictConsole.js tests/verify-config.js",
+    "test:config-audit": "node -r ./tests/helpers/strictConsole.js tests/test-schema-audit.js",
+    "test:config-scenarios": "node -r ./tests/helpers/strictConsole.js tests/test-configuration-scenarios.js",
+    "test:feature-gates": "node -r ./tests/helpers/strictConsole.js tests/test-feature-gates.js",
+    "test:flows": "node -r ./tests/helpers/strictConsole.js tests/exercise-flows.js",
+    "test:bundle": "node -r ./tests/helpers/strictConsole.js tests/test-bundle.js",
+    "test:verify-bundle": "node -r ./tests/helpers/strictConsole.js tests/verify-bundle.js",
+    "test:performance-baselines": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js",
+    "test:extras": "node -r ./tests/helpers/strictConsole.js scripts/run-test-suite.js",
+    "test:fuzz-long": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-fuzz-long.js",
+    "test:stress-crossplatform": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-crossplatform-stress.js",
+    "test:performance": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-mode.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-under-load.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-regression.js",
+    "test:memory-suite": "node scripts/run-memory-suite.js",
+    "test:memory-profiles": "node scripts/run-memory-profiles.js",
+    "generate-locales": "node scripts/generate-locales.js",
+    "compile": "npm run generate-locales && node esbuild-federation.js --chunks && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "vscode:prepublish": "npm run package-bundle",
     "package": "vsce package",
-    "package-bundle": "node esbuild.js --production",
+    "package-bundle": "npm run generate-locales && node esbuild-federation.js --production --chunks && node esbuild.js --production",
+    "package-chunks": "npm run generate-locales && node esbuild-federation.js --production --chunks",
+    "watch-chunks": "node esbuild-federation.js --watch --chunks",
     "publish": "vsce publish"
   },
   "devDependencies": {
