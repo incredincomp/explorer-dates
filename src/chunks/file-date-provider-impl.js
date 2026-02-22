@@ -1121,6 +1121,18 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    clearDecoration(uri) {
+        try {
+            const target = uri ? (typeof uri === 'string' ? uri : getUriPath(uri)) : '';
+            const cacheKey = this._getCacheKey ? this._getCacheKey(uri) : buildCacheKey(target);
+            try { if (this._decorationCache && typeof this._decorationCache.delete === 'function') this._decorationCache.delete(cacheKey); } catch { /* ignore */ }
+            try { if (this._advancedCache && typeof this._advancedCache.delete === 'function') this._advancedCache.delete(cacheKey); } catch { /* ignore */ }
+            try { this._onDidChangeFileDecorations.fire(uri); } catch { /* ignore */ }
+        } catch (error) {
+            this._logger?.debug && this._logger.debug('clearDecoration failed', error);
+        }
+    }
+
     _acquireDecorationFromPool({ badge, tooltip, color }) {
         try {
             const vscode = require('vscode');
