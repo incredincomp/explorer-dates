@@ -1113,6 +1113,22 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    applyPreviewSettings(settings) {
+        try {
+            if (settings && typeof settings === 'object') {
+                this._previewSettings = settings;
+                this._logger?.info && this._logger.info('Preview settings applied', settings);
+            } else {
+                this._previewSettings = null;
+                this._logger?.info && this._logger.info('Preview settings cleared');
+            }
+            try { this.clearAllCaches(); } catch { /* ignore */ }
+            this.refreshAll();
+        } catch (error) {
+            this._logger?.debug && this._logger.debug('applyPreviewSettings failed', error);
+        }
+    }
+
     refreshDecoration(uri) {
         try {
             this._onDidChangeFileDecorations.fire(uri);
