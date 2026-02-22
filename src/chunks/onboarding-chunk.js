@@ -8,10 +8,60 @@ let _createOnboardingManager = null;
 const { getLogger } = require('../utils/logger');
 const logger = getLogger();
 const vscode = require('vscode');
+const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
+
+const FALLBACK_PRESETS = {
+    minimal: {
+        name: 'Minimal',
+        description: 'Clean and simple - just show modification times in short format',
+        settings: {
+            dateDecorationFormat: 'relative-short',
+            colorScheme: 'none',
+            highContrastMode: false,
+            showFileSize: false,
+            showGitInfo: 'none',
+            badgePriority: 'time',
+            fadeOldFiles: false,
+            enableContextMenu: false,
+            showStatusBar: false
+        }
+    },
+    developer: {
+        name: 'Developer',
+        description: 'Perfect for development - includes Git info, file sizes, and color coding',
+        settings: {
+            dateDecorationFormat: 'smart',
+            colorScheme: 'recency',
+            showFileSize: true,
+            showGitInfo: 'author',
+            badgePriority: 'time',
+            fadeOldFiles: true,
+            enableContextMenu: true,
+            showStatusBar: true
+        }
+    },
+    accessible: {
+        name: 'Accessible',
+        description: 'High contrast and screen reader friendly with detailed tooltips',
+        settings: {
+            dateDecorationFormat: 'relative-short',
+            colorScheme: 'none',
+            highContrastMode: true,
+            accessibilityMode: true,
+            showFileSize: false,
+            showGitInfo: 'none',
+            badgePriority: 'time',
+            fadeOldFiles: false,
+            enableContextMenu: true,
+            keyboardNavigation: true
+        }
+    }
+};
 
 class FallbackOnboardingManager {
     constructor(context) {
         this._context = context;
+        this._settings = getSettingsCoordinator();
     }
 
     async showQuickSetupWizard() {
@@ -21,7 +71,73 @@ class FallbackOnboardingManager {
             vscode.ViewColumn.One,
             { enableScripts: true, retainContextWhenHidden: true }
         );
-        panel.webview.html = `<!DOCTYPE html>
+
+        const presets = await this._getPresets();
+        const assets = await loadOnboardingAssets();
+        if (assets && typeof assets.getSetupWizardHTML === 'function') {
+            panel.webview.html = await assets.getSetupWizardHTML(presets);
+        } else {
+            panel.webview.html = this._getMinimalSetupHtml();
+        }
+
+        panel.webview.onDidReceiveMessage(async (message) => {
+            await this._handleSetupWizardMessage(message, panel);
+        });
+    }
+
+    async showFeatureTour() {
+        const panel = vscode.window.createWebviewPanel(
+            'explorerDatesFeatureTour',
+            'Explorer Dates Feature Tour',
+            vscode.ViewColumn.One,
+            { enableScripts: false, retainContextWhenHidden: false }
+        );
+        const assets = await loadOnboardingAssets();
+        if (assets && typeof assets.getFeatureTourHTML === 'function') {
+            panel.webview.html = await assets.getFeatureTourHTML();
+        } else {
+            panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Feature Tour</title></head><body><h1>Explorer Dates Feature Tour</h1><p>Feature tour is unavailable in this session.</p></body></html>`;
+        }
+    }
+
+    async showWhatsNew(version = '') {
+        const panel = vscode.window.createWebviewPanel(
+            'explorerDatesWhatsNew',
+            `Explorer Dates ${version ? `v${version}` : ''} - What's New`,
+            vscode.ViewColumn.One,
+            { enableScripts: false, retainContextWhenHidden: false }
+        );
+        const assets = await loadOnboardingAssets();
+        if (assets && typeof assets.getWhatsNewHTML === 'function') {
+            panel.webview.html = await assets.getWhatsNewHTML(version);
+        } else {
+            panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>What's New</title></head><body><h1>What's New ${version}</h1><p>What's new content is unavailable in this session.</p></body></html>`;
+        }
+    }
+
+    async showWelcomeMessage() {
+        await vscode.window.showInformationMessage('Explorer Dates onboarding is unavailable. Open settings to configure.', 'Open Settings')
+            .then((choice) => {
+                if (choice === 'Open Settings') {
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+                }
+            });
+    }
+
+    async _getPresets() {
+        try {
+            const assets = await loadOnboardingAssets();
+            if (assets && typeof assets.getPresets === 'function') {
+                return assets.getPresets();
+            }
+        } catch {
+            // ignore
+        }
+        return FALLBACK_PRESETS;
+    }
+
+    _getMinimalSetupHtml() {
+        return `<!DOCTYPE html>
             <html>
             <head><meta charset="UTF-8"><title>Quick Setup</title></head>
             <body>
@@ -32,33 +148,70 @@ class FallbackOnboardingManager {
             </html>`;
     }
 
-    async showFeatureTour() {
-        const panel = vscode.window.createWebviewPanel(
-            'explorerDatesFeatureTour',
-            'Explorer Dates Feature Tour',
-            vscode.ViewColumn.One,
-            { enableScripts: false, retainContextWhenHidden: false }
-        );
-        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Feature Tour</title></head><body><h1>Explorer Dates Feature Tour</h1><p>Feature tour is unavailable in this session.</p></body></html>`;
+    async _handleSetupWizardMessage(message, panel) {
+        try {
+            switch (message.command) {
+                case 'applyConfiguration':
+                    await this._applyQuickConfiguration(message.configuration);
+                    if (this._context?.globalState?.update) {
+                        await this._context.globalState.update('explorerDates.hasCompletedSetup', true);
+                    }
+                    vscode.window.showInformationMessage('✅ Explorer Dates configured successfully!');
+                    panel.dispose();
+                    break;
+                case 'previewConfiguration':
+                    if (message.settings) {
+                        await vscode.commands.executeCommand('explorerDates.previewConfiguration', message.settings);
+                    }
+                    break;
+                case 'clearPreview':
+                    await vscode.commands.executeCommand('explorerDates.clearPreview');
+                    break;
+                case 'skipSetup':
+                    if (this._context?.globalState?.update) {
+                        await this._context.globalState.update('explorerDates.hasCompletedSetup', true);
+                    }
+                    panel.dispose();
+                    break;
+                case 'openSettings':
+                    await vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+                    panel.dispose();
+                    break;
+            }
+        } catch (error) {
+            logger.warn('Fallback onboarding message handling failed', error);
+        }
     }
 
-    async showWhatsNew(version = '') {
-        const panel = vscode.window.createWebviewPanel(
-            'explorerDatesWhatsNew',
-            `Explorer Dates ${version ? `v${version}` : ''} - What's New`,
-            vscode.ViewColumn.One,
-            { enableScripts: false, retainContextWhenHidden: false }
-        );
-        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>What's New</title></head><body><h1>What's New ${version}</h1><p>What's new content is unavailable in this session.</p></body></html>`;
-    }
-
-    async showWelcomeMessage() {
-        await vscode.window.showInformationMessage('Explorer Dates onboarding is unavailable. Open settings to configure.', 'Open Settings')
-            .then((choice) => {
-                if (choice === 'Open Settings') {
-                    vscode.commands.executeCommand('workbench.action.openSettings', 'explorerDates');
+    async _applyQuickConfiguration(configuration = {}) {
+        if (!configuration) return;
+        try {
+            if (configuration.preset) {
+                const presets = await this._getPresets();
+                const preset = presets[configuration.preset];
+                if (preset?.settings) {
+                    await this._settings.applySettings(preset.settings, {
+                        scope: 'user',
+                        reason: `onboarding-preset:${configuration.preset}`
+                    });
                 }
-            });
+            }
+
+            if (configuration.individual) {
+                await this._settings.applySettings(configuration.individual, {
+                    scope: 'user',
+                    reason: 'onboarding-individual'
+                });
+            }
+
+            try {
+                await vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
+            } catch {
+                // ignore
+            }
+        } catch (error) {
+            logger.warn('Fallback onboarding apply failed', error);
+        }
     }
 }
 
