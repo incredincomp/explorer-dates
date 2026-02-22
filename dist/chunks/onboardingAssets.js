@@ -1,26 +1,26 @@
-var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,module)=>{var vscode=require("vscode"),isWebRuntime=process.env.VSCODE_WEB==="true",inspectValue=isWebRuntime?r=>{if(typeof r=="string")return r;try{return JSON.stringify(r,null,2)}catch{return"<<unable to serialize log arg>>"}}:eval("require")("util").inspect,DEFAULT_LOG_PROFILE="default",SUPPORTED_PROFILES=new Set(["default","stress","soak"]),LOG_LEVEL_ORDER=["debug","info","warn","error"],DEFAULT_CONSOLE_LEVEL="warn",TEST_CONSOLE_LEVEL=process.env.EXPLORER_DATES_TEST_MODE==="1"?"warn":null,Logger=class{constructor(){this.e=vscode.window.createOutputChannel("Explorer Dates"),this.r=!1,this.n=null,this.a=process.env.EXPLORER_DATES_TEST_MODE==="1",this.o=(process.env.EXPLORER_DATES_LOG_PROFILE||DEFAULT_LOG_PROFILE).toLowerCase(),SUPPORTED_PROFILES.has(this.o)||(this.o=DEFAULT_LOG_PROFILE),this.i=new Map,this.f=DEFAULT_CONSOLE_LEVEL,this.g(),this.n=vscode.workspace.onDidChangeConfiguration(e=>{(e.affectsConfiguration("explorerDates.enableLogging")||e.affectsConfiguration("explorerDates.consoleLogLevel"))&&this.g()})}g(){let e=vscode.workspace.getConfiguration("explorerDates");this.r=e.get("enableLogging",!1);let t=(process.env.EXPLORER_DATES_LOG_LEVEL||"").toLowerCase(),i=(e.get("consoleLogLevel",DEFAULT_CONSOLE_LEVEL)||"").toLowerCase(),n=TEST_CONSOLE_LEVEL||t||i||DEFAULT_CONSOLE_LEVEL;this.f=LOG_LEVEL_ORDER.includes(n)?n:DEFAULT_CONSOLE_LEVEL,TEST_CONSOLE_LEVEL&&(this.r=!1)}setLogProfile(e=DEFAULT_LOG_PROFILE){let t=(e||DEFAULT_LOG_PROFILE).toLowerCase();this.o=SUPPORTED_PROFILES.has(t)?t:DEFAULT_LOG_PROFILE,this.resetThrottle()}resetThrottle(e){if(e){this.i.delete(e);return}this.i.clear()}debug(e,...t){this.r&&this.c("debug",null,e,t)}info(e,...t){this.c("info",null,e,t)}infoWithOptions(e,t,...i){this.c("info",e||null,t,i)}warn(e,...t){this.c("warn",null,e,t)}error(e,t,...i){let s=`[${new Date().toISOString()}] [ERROR] ${e}`;this.a||(this.e.appendLine(s),t instanceof Error?(this.e.appendLine(`Error: ${t.message}`),t.stack&&this.e.appendLine(`Stack: ${t.stack}`)):t&&this.e.appendLine(this.u(t)));let o=this.v(i);o.length>0&&!this.a&&o.forEach(d=>this.e.appendLine(this.u(d)));let a=[];t!=null&&a.push(t),o.length>0&&a.push(...o),this.p("error",s,a)}show(){this.e.show()}clear(){this.e.clear()}dispose(){this.e.dispose(),this.n&&(this.n.dispose(),this.n=null);let e="__explorerDatesLogger";typeof global<"u"&&global[e]===this?global[e]=null:typeof globalThis<"u"&&globalThis[e]===this?globalThis[e]=null:typeof globalThis<"u"&&globalThis.window?.[e]===this&&(globalThis.window[e]=null),loggerInstance===this&&(loggerInstance=null)}c(e,t,i,n){if(e==="debug"&&!this.r||this.h(e,t))return;let o=`[${new Date().toISOString()}] [${e.toUpperCase()}] ${i}`;this.a||this.e.appendLine(o);let a=this.v(n);a.length>0&&!this.a&&a.forEach(d=>this.e.appendLine(this.u(d))),this.p(e,o,a)}v(e){return!e||e.length===0?[]:e.map(t=>{if(typeof t!="function")return t;try{return t()}catch(i){return`<<log arg threw: ${i.message}>>`}})}u(e){try{return typeof e=="string"?e:typeof e=="object"?JSON.stringify(e,null,2):inspectValue(e)}catch(t){return`<<failed to serialize log arg: ${t.message}>>`}}h(e,t){if(e!=="info"||!t||!t.throttleKey)return!1;let i=(t.profile||"stress").toLowerCase();if(!this.b(i))return!1;let n=Number(t.throttleLimit)||50,s=t.throttleKey,o=this.i.get(s)||{count:0,suppressed:0,noticeLogged:!1};if(o.count<n)return o.count+=1,this.i.set(s,o),!1;if(o.suppressed+=1,!o.noticeLogged){o.noticeLogged=!0;let a=`[${new Date().toISOString()}] [INFO] \u23F8\uFE0F Suppressing further logs for "${s}" after ${n} entries (profile=${this.o})`;this.e.appendLine(a),this.p("info",a)}return this.i.set(s,o),!0}b(e){let t=this.o||DEFAULT_LOG_PROFILE;return e==="default"?t===DEFAULT_LOG_PROFILE:t===e}m(e){let t=LOG_LEVEL_ORDER.indexOf(this.f),i=LOG_LEVEL_ORDER.indexOf(e);return t===-1||i===-1?!1:i>=t}p(e,t,i=[]){if(!this.m(e))return;(e==="warn"?console.warn:e==="error"?console.error:console.log).call(console,t,...i)}},GLOBAL_LOGGER_KEY="__explorerDatesLogger";function getLogger(){return typeof global<"u"?(global[GLOBAL_LOGGER_KEY]||(global[GLOBAL_LOGGER_KEY]=new Logger),global[GLOBAL_LOGGER_KEY]):typeof globalThis<"u"?(globalThis[GLOBAL_LOGGER_KEY]||(globalThis[GLOBAL_LOGGER_KEY]=new Logger),globalThis.window&&(globalThis.window[GLOBAL_LOGGER_KEY]=globalThis[GLOBAL_LOGGER_KEY]),globalThis[GLOBAL_LOGGER_KEY]):(loggerInstance||(loggerInstance=new Logger),loggerInstance)}var loggerInstance=null;module.exports={Logger,getLogger}});var{getLogger:p}=l(),c=class{constructor(){this._logger=p(),this.t=null,this.s=!1}async initialize(){if(!this.s)try{this.t={setupWizardTemplate:this.L(),featureTourTemplate:this.E(),whatsNewTemplate:this.x(),sharedStyles:this.d(),sharedScripts:this.l()},this.s=!0,this._logger.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(e){throw this._logger.error("Failed to initialize onboarding assets",e),e}}async getSetupWizardHTML(e){return await this.initialize(),this.O(this.t.setupWizardTemplate,e)}async getFeatureTourHTML(){return await this.initialize(),this.t.featureTourTemplate}async getWhatsNewHTML(e){return await this.initialize(),this.w(this.t.whatsNewTemplate,e)}O(e,t){let i=Object.entries(t).map(([s,o])=>`
-            <div class="preset-option" data-preset="${s}" 
-                 onmouseenter="previewConfiguration({preset: '${s}'})" 
+var f=(t,e)=>()=>(e||t((e={exports:{}}).exports,e),e.exports);var u=f((h,l)=>{var r="__explorerDatesLogger",s=class{constructor(){this.o=null}i(e,i){if(this.o&&typeof this.o[e]=="function")try{return this.o[e](...i)}catch{}switch(e){case"debug":break;case"info":break;case"warn":break;case"error":break;default:break}}debug(...e){return this.i("debug",e)}info(...e){return this.i("info",e)}warn(...e){return this.i("warn",e)}error(...e){return this.i("error",e)}u(e){this.o=e}};function g(){return typeof global<"u"?(global[r]||(global[r]=new s),global[r]):typeof globalThis<"u"?(globalThis[r]||(globalThis[r]=new s),globalThis[r]):(c||(c=new s),c)}var d=class extends s{},c=null;l.exports={Logger:d,getLogger:g}});var{getLogger:v}=u(),o=class{constructor(){this._logger=v(),this.e=null,this.t=!1}async initialize(){if(!this.t)try{this.e={setupWizardTemplate:this.n(),featureTourTemplate:this.a(),whatsNewTemplate:this.c(),sharedStyles:this.r(),sharedScripts:this.s()},this.t=!0,this._logger.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(e){throw this._logger.error("Failed to initialize onboarding assets",e),e}}async getSetupWizardHTML(e){return await this.initialize(),this.d(this.e.setupWizardTemplate,e)}async getFeatureTourHTML(){return await this.initialize(),this.e.featureTourTemplate}async getWhatsNewHTML(e){return await this.initialize(),this.l(this.e.whatsNewTemplate,e)}d(e,i){let p=Object.entries(i).map(([n,a])=>`
+            <div class="preset-option" data-preset="${n}" 
+                 onmouseenter="previewConfiguration({preset: '${n}'})" 
                  onmouseleave="clearPreview()">
-                <h3>${o.name}</h3>
-                <p>${o.description}</p>
+                <h3>${a.name}</h3>
+                <p>${a.description}</p>
                 <div class="preset-actions">
-                    <button onclick="previewConfiguration({preset: '${s}'})">\u{1F441}\uFE0F Preview</button>
-                    <button onclick="applyConfiguration({preset: '${s}'})">\u2705 Select ${o.name}</button>
+                    <button onclick="previewConfiguration({preset: '${n}'})">\u{1F441}\uFE0F Preview</button>
+                    <button onclick="applyConfiguration({preset: '${n}'})">\u2705 Select ${a.name}</button>
                 </div>
             </div>
-        `).join("");return e.replace("{{PRESET_OPTIONS}}",i).replace("{{MORE_OPTIONS_LINK}}",`
+        `).join("");return e.replace("{{PRESET_OPTIONS}}",p).replace("{{MORE_OPTIONS_LINK}}",`
             <div class="more-options">
                 <p><strong>Need more options?</strong> Try the <a href="#" onclick="showAllPresets()">Power User</a> or <a href="#" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
             </div>
-        `).replace("{{PRESETS_JSON}}",JSON.stringify(t))}w(e,t){return e.replace(/{{VERSION}}/g,t)}L(){return`
+        `).replace("{{PRESETS_JSON}}",JSON.stringify(i))}l(e,i){return e.replace(/{{VERSION}}/g,i)}n(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Quick Setup</title>
                 <style>
-                    ${this.d()}
+                    ${this.r()}
                     .preset-option {
                         border: 2px solid var(--vscode-widget-border);
                         border-radius: 8px;
@@ -95,7 +95,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </div>
 
                 <script>
-                    ${this.l()}
+                    ${this.s()}
                     
                     // Specific setup wizard functionality
                     let selectedPreset = null;
@@ -159,14 +159,14 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </script>
             </body>
             </html>
-        `}E(){return`
+        `}a(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Feature Tour</title>
                 <style>
-                    ${this.d()}
+                    ${this.r()}
                     .feature-grid {
                         display: grid;
                         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -307,7 +307,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </div>
 
                 <script>
-                    ${this.l()}
+                    ${this.s()}
 
                     function openSetting(setting) {
                         vscode.postMessage({
@@ -325,7 +325,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </script>
             </body>
             </html>
-        `}x(){return`
+        `}c(){return`
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -333,7 +333,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Explorer Dates - What's New</title>
                 <style>
-                    ${this.d()}
+                    ${this.r()}
                     
                     .feature {
                         margin-bottom: 25px;
@@ -445,7 +445,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </div>
 
                 <script>
-                    ${this.l()}
+                    ${this.s()}
 
                     function tryFeature(feature) {
                         vscode.postMessage({
@@ -468,7 +468,7 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
                 </script>
             </body>
             </html>
-        `}d(){return`
+        `}r(){return`
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 padding: 20px;
@@ -526,6 +526,6 @@ var u=(r,e)=>()=>(e||r((e={exports:{}}).exports,e),e.exports);var l=u((exports,m
             .btn.secondary:hover {
                 background: var(--vscode-button-secondaryHoverBackground);
             }
-        `}l(){return`
+        `}s(){return`
             const vscode = acquireVsCodeApi();
-        `}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this.s,templateCount:this.t?Object.keys(this.t).length:0,loaded:this.s}}dispose(){this.t=null,this.s=!1,this._logger.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets:c,createOnboardingAssets:()=>new c,getMemoryInfo:(()=>{let r=null;return()=>(r||(r=new c),r.getMemoryInfo())})()};
+        `}getPresets(){return{minimal:{name:"Minimal",description:"Clean and simple - just show modification times in short format",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!1,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!1,showStatusBar:!1}},developer:{name:"Developer",description:"Perfect for development - includes Git info, file sizes, and color coding",settings:{dateDecorationFormat:"smart",colorScheme:"recency",showFileSize:!0,showGitInfo:"author",badgePriority:"time",fadeOldFiles:!0,enableContextMenu:!0,showStatusBar:!0}},accessible:{name:"Accessible",description:"High contrast and screen reader friendly with detailed tooltips",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!0,accessibilityMode:!0,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!0,keyboardNavigation:!0}}}}getTips(){return[{icon:"\u2328\uFE0F",title:"Keyboard Shortcuts",description:"Use Ctrl+Shift+D (Cmd+Shift+D on Mac) to quickly toggle decorations on/off."},{icon:"\u{1F3AF}",title:"Smart Exclusions",description:"The extension automatically detects and suggests excluding build folders for better performance."},{icon:"\u{1F4CA}",title:"Performance Analytics",description:'Use "Show Performance Analytics" to monitor cache performance and optimization opportunities.'},{icon:"\u{1F50D}",title:"Context Menu",description:"Right-click any file to access Git history, file details, and quick actions."}]}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this.t,templateCount:this.e?Object.keys(this.e).length:0,loaded:this.t}}dispose(){this.e=null,this.t=!1,this._logger.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets:o,createOnboardingAssets:()=>new o,getPresets:()=>new o().getPresets(),getTips:()=>new o().getTips(),getMemoryInfo:(()=>{let t=null;return()=>(t||(t=new o),t.getMemoryInfo())})()};
