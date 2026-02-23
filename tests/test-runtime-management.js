@@ -61,7 +61,7 @@ async function testPresetAutoSuggestion() {
     try {
         const explorerConfig = vscode.workspace.getConfiguration('explorerDates');
 
-        // Balanced preset disables reporting/API and enables performance mode
+        // Balanced preset disables reporting/API and keeps performance mode off
         assert.strictEqual(
             explorerConfig.get('enableExportReporting'),
             false,
@@ -74,8 +74,8 @@ async function testPresetAutoSuggestion() {
         );
         assert.strictEqual(
             explorerConfig.get('performanceMode'),
-            true,
-            'Balanced preset should enable performance mode'
+            false,
+            'Balanced preset should keep performance mode disabled'
         );
 
         assert.strictEqual(
@@ -90,7 +90,7 @@ async function testPresetAutoSuggestion() {
         );
         assert.strictEqual(
             workspaceConfigValues['explorerDates.performanceMode'],
-            true,
+            false,
             'Balanced preset should persist performance mode override at workspace scope'
         );
 

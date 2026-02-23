@@ -38,8 +38,11 @@ const PRESET_DEFINITIONS = {
             'explorerDates.enableAdvancedCache': true,
             'explorerDates.enableWorkspaceIntelligence': false,
             'explorerDates.enableIncrementalWorkers': false,
-            'explorerDates.performanceMode': true,
-            'explorerDates.smartFileWatching': true
+            'explorerDates.performanceMode': false,
+            'explorerDates.smartFileWatching': true,
+            'explorerDates.dateDecorationFormat': 'smart',
+            'explorerDates.colorScheme': 'recency',
+            'explorerDates.badgePriority': 'time'
         },
         targetScenarios: [
             'Most development workflows',
@@ -62,7 +65,9 @@ const PRESET_DEFINITIONS = {
             'explorerDates.enableWorkspaceIntelligence': false,
             'explorerDates.enableIncrementalWorkers': true,
             'explorerDates.showGitInfo': 'author',
-            'explorerDates.colorScheme': 'file-type'
+            'explorerDates.colorScheme': 'file-type',
+            'explorerDates.dateDecorationFormat': 'smart',
+            'explorerDates.badgePriority': 'time'
         },
         targetScenarios: [
             'JavaScript/TypeScript projects',
@@ -85,7 +90,10 @@ const PRESET_DEFINITIONS = {
             'explorerDates.enableWorkspaceIntelligence': true,
             'explorerDates.enableIncrementalWorkers': true,
             'explorerDates.persistentCache': true,
-            'explorerDates.smartExclusions': true
+            'explorerDates.smartExclusions': true,
+            'explorerDates.dateDecorationFormat': 'smart',
+            'explorerDates.colorScheme': 'recency',
+            'explorerDates.badgePriority': 'time'
         },
         targetScenarios: [
             'Team lead workflows',
@@ -108,7 +116,9 @@ const PRESET_DEFINITIONS = {
             'explorerDates.enableAdvancedCache': true,
             'explorerDates.enableWorkspaceIntelligence': true,
             'explorerDates.enableIncrementalWorkers': false,
-            'explorerDates.dateDecorationFormat': 'iso-detailed'
+            'explorerDates.dateDecorationFormat': 'iso-detailed',
+            'explorerDates.colorScheme': 'recency',
+            'explorerDates.badgePriority': 'time'
         },
         targetScenarios: [
             'Jupyter notebooks',

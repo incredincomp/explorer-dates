@@ -43,28 +43,51 @@ function _getPresetDefinitionsSync() {
             name: 'Balanced',
             description: 'Default feature mix for most workspaces.',
             targetScenarios: ['General development', 'Mixed workloads'],
-            settings: { 'explorerDates.enableOnboardingSystem': true, 'explorerDates.enableAnalysisCommands': true }
+            settings: {
+                'explorerDates.enableOnboardingSystem': true,
+                'explorerDates.enableAnalysisCommands': true,
+                'explorerDates.performanceMode': false,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
         },
         'web-development': {
             id: 'web-development',
             name: 'Web Development',
             description: 'Optimized for frontend and full-stack web projects.',
             targetScenarios: ['Web apps', 'Frontend teams'],
-            settings: { 'explorerDates.enableOnboardingSystem': true }
+            settings: {
+                'explorerDates.enableOnboardingSystem': true,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'file-type',
+                'explorerDates.badgePriority': 'time'
+            }
         },
         enterprise: {
             id: 'enterprise',
             name: 'Enterprise',
             description: 'Full feature set with reporting and integrations enabled.',
             targetScenarios: ['Large teams', 'Governed environments'],
-            settings: { 'explorerDates.enableExportReporting': true, 'explorerDates.enableExtensionApi': true }
+            settings: {
+                'explorerDates.enableExportReporting': true,
+                'explorerDates.enableExtensionApi': true,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
         },
         'data-science': {
             id: 'data-science',
             name: 'Data Science',
             description: 'Insight-focused profile for data-heavy projects.',
             targetScenarios: ['Data analysis', 'Research workflows'],
-            settings: { 'explorerDates.enableWorkspaceIntelligence': true }
+            settings: {
+                'explorerDates.enableWorkspaceIntelligence': true,
+                'explorerDates.dateDecorationFormat': 'iso-detailed',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
         }
     };
 

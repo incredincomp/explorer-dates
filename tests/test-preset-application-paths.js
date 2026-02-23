@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path'); void path;
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /Configuration update failed for explorerDates\.enableWorkspaceTemplates/,
+    /Preset application failed for (minimal|enterprise): Failed to apply/,
+    /Failed to persist pending restart state/,
+    /Failed to clear pending restarts/
+]);
 
 // Ensure unhandled rejections and exceptions cause tests to exit cleanly and report failure
 process.on('unhandledRejection', (reason) => {
@@ -61,6 +68,21 @@ async function testPresetApplicationWorkflow() {
         const context = createExtensionContext();
         const runtimeManager = new RuntimeConfigManager(context);
         const { vscode, configValues, appliedUpdates } = mockInstall;
+
+        // Ensure non-minimal presets define visible decoration defaults
+        const decorationPresets = ['balanced', 'web-development', 'enterprise', 'data-science'];
+        for (const presetId of decorationPresets) {
+            const preset = PRESET_DEFINITIONS[presetId];
+            assert.ok(preset, `Expected ${presetId} preset to exist`);
+            assert.ok(
+                preset.settings && preset.settings['explorerDates.colorScheme'],
+                `${presetId} preset should define explorerDates.colorScheme`
+            );
+            assert.ok(
+                preset.settings && preset.settings['explorerDates.dateDecorationFormat'],
+                `${presetId} preset should define explorerDates.dateDecorationFormat`
+            );
+        }
         
         // Track configuration changes and restart prompts
         const settingsUpdates = [];
