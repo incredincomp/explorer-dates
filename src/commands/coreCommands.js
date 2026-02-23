@@ -5,7 +5,8 @@ let getFileName, getRelativePath;
 try { const shared = require('../chunks/utils-shared-chunk'); if (shared) { getFileName = shared.getFileName; getRelativePath = shared.getRelativePath; } } catch { /* ignore */ }
 if (!getFileName) { const pathUtils = require('../utils/pathUtils'); getFileName = getFileName || pathUtils.getFileName; getRelativePath = getRelativePath || pathUtils.getRelativePath; }
 
-const isWeb = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWeb = env.VSCODE_WEB === 'true';
 let childProcess = null;
 function loadChildProcess() {
     if (!childProcess && !isWeb) {

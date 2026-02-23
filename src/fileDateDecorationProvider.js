@@ -13,6 +13,7 @@ let getLogger = () => {
 // Localization will be lazily hydrated per-instance to reduce bundle size
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 // Theme and accessibility managers loaded conditionally via ui-adapters chunk
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 const { formatFileSize } = require('./utils/formatters');
 let getFileName = (p) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { let chunk = null; try { chunk = dynamicRequire('../chunks/utils-shared-chunk'); } catch { /* ignore */ } try { if (!chunk) chunk = dynamicRequire('./chunks/utils-shared-chunk'); } catch { /* ignore */ } try { if (!chunk) chunk = dynamicRequire('./chunks/path-utils-chunk'); } catch { /* ignore */ } if (chunk && typeof chunk.getFileName === 'function') { getFileName = chunk.getFileName; return getFileName(p); } } } catch { /* ignore */ } try { const s = String(p || ''); const normalized = s.replace(/\\/g, '/'); const idx = normalized.lastIndexOf('/'); return idx === -1 ? normalized : normalized.substring(idx + 1); } catch { return 'unknown'; } };
 let getExtension = (p) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { let chunk = null; try { chunk = dynamicRequire('../chunks/utils-shared-chunk'); } catch { /* ignore */ } try { if (!chunk) chunk = dynamicRequire('./chunks/utils-shared-chunk'); } catch { /* ignore */ } try { if (!chunk) chunk = dynamicRequire('./chunks/path-utils-chunk'); } catch { /* ignore */ } if (chunk && typeof chunk.getExtension === 'function') { getExtension = chunk.getExtension; return getExtension(p); } } } catch { /* ignore */ } try { const name = String(p || ''); const dotIndex = name.lastIndexOf('.'); return dotIndex <= 0 ? '' : name.substring(dotIndex).toLowerCase(); } catch { return ''; } };
@@ -35,7 +36,7 @@ const { isWebEnvironment } = require('./utils/env');
 
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { SecurityValidator, SecureFileOperations, detectSecurityEnvironment } = require('./utils/securityUtils');
-const DISABLE_GIT_FEATURES = process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
+const DISABLE_GIT_FEATURES = env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
 
 // Conditional path import for Node.js environments
 let nodePath = null;
@@ -90,22 +91,22 @@ const pathCompat = {
 const CONFIG_DEFAULT_CACHE_TIMEOUT = 30000;
 const CACHE_NAMESPACE_SEPARATOR = '::';
 
-const DEFAULT_DYNAMIC_WATCHER_LIMIT = Number(process.env.EXPLORER_DATES_MAX_DYNAMIC_WATCHERS || 200);
-const DEFAULT_WATCHER_INACTIVITY_MS = Number(process.env.EXPLORER_DATES_WATCHER_TTL_MS || 10 * 60 * 1000);
+const DEFAULT_DYNAMIC_WATCHER_LIMIT = Number(env.EXPLORER_DATES_MAX_DYNAMIC_WATCHERS || 200);
+const DEFAULT_WATCHER_INACTIVITY_MS = Number(env.EXPLORER_DATES_WATCHER_TTL_MS || 10 * 60 * 1000);
 // Small local fallbacks — prefer loading full defaults from `decorationsAdvanced` chunk at runtime
 const DEFAULT_SMART_WATCHER_EXTENSIONS = ['js','ts','json','md','py','java'];
 const SMART_WATCHER_PRIORITY = new Map([[ 'src', 100 ], [ 'lib', 65 ], [ 'test', 30 ]]);
 
-const WORKSPACE_SCAN_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT || 7000);
+const WORKSPACE_SCAN_TIMEOUT_MS = Number(env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT || 7000);
 const WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT = WORKSPACE_SCALE_EXTREME_THRESHOLD;
 const VIEWPORT_DEFAULT_WINDOW_MS = 5 * 60 * 1000;
-const DEFAULT_VIEWPORT_HISTORY_LIMIT = Number(process.env.EXPLORER_DATES_VIEWPORT_HISTORY_LIMIT || 400);
+const DEFAULT_VIEWPORT_HISTORY_LIMIT = Number(env.EXPLORER_DATES_VIEWPORT_HISTORY_LIMIT || 400);
 const FEATURE_LEVELS = ['full', 'enhanced', 'standard', 'minimal'];
-const DEFAULT_INDEXER_MAX_FILES = Math.max(100, Number(process.env.EXPLORER_DATES_INDEXER_MAX_FILES || 2000));
+const DEFAULT_INDEXER_MAX_FILES = Math.max(100, Number(env.EXPLORER_DATES_INDEXER_MAX_FILES || 2000));
 const SECURITY_EXTRA_PATHS_ENV = 'EXPLORER_DATES_SECURITY_EXTRA_PATHS';
-const DEFAULT_SECURITY_THROTTLE_MS = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
-const SECURITY_WARNING_CACHE_LIMIT = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_CACHE || 500);
-const DEFAULT_SECURITY_MAX_WARNINGS = Number(process.env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
+const DEFAULT_SECURITY_THROTTLE_MS = Number(env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
+const SECURITY_WARNING_CACHE_LIMIT = Number(env.EXPLORER_DATES_SECURITY_WARNING_CACHE || 500);
+const DEFAULT_SECURITY_MAX_WARNINGS = Number(env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
 
 // Local minimal describeFile fallback. We will delegate to decorations-static when available
 let describeFile = (input = '') => {

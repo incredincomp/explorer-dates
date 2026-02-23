@@ -1,5 +1,7 @@
 const vscode = require('vscode');
 const { DEFAULT_DYNAMIC_WATCHER_LIMIT, DEFAULT_WATCHER_INACTIVITY_MS } = require('../constants');
+const proc = (typeof process !== 'undefined') ? process : null;
+const env = proc?.env || {};
 // Prefer shared utils chunk when available
 let normalizePath, getUriPath;
 try { const shared = require('../chunks/utils-shared-chunk'); if (shared) { normalizePath = shared.normalizePath; getUriPath = shared.getUriPath; } } catch { /* ignore */ }
@@ -88,7 +90,7 @@ class WatcherManager {
         }
 
         const config = vscode.workspace.getConfiguration('explorerDates');
-        const envDisabled = process.env.EXPLORER_DATES_DISABLE_SMART_WATCHERS === '1';
+        const envDisabled = env.EXPLORER_DATES_DISABLE_SMART_WATCHERS === '1';
         this._provider._smartWatcherEnabled = !envDisabled && config.get('smartFileWatching', true);
         this._provider._enableWatcherFallbacks = this._provider._smartWatcherEnabled && config.get('enableSmartWatcherFallbacks', 'auto');
         const rawMaxPatterns = config.get('smartWatcherMaxPatterns', 20);
@@ -199,10 +201,10 @@ class WatcherManager {
             const enable = this._provider._enableWatcherFallbacks;
             if (enable === false) return false;
             if (enable === 'auto' || enable === true) {
-                const platform = process.platform;
-                const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV;
+                const platform = proc?.platform;
+                const isWSL = env.WSL_DISTRO_NAME || env.WSLENV;
                 const isRemote = vscode.env.remoteName;
-                const isDocker = process.env.DOCKER_CONTAINER;
+                const isDocker = env.DOCKER_CONTAINER;
                 return isWSL || isRemote || isDocker || platform === 'android';
             }
             return false;

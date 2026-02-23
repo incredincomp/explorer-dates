@@ -1,6 +1,7 @@
 const { getLogger } = require('../utils/logger');
 
-const isWebBuild = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWebBuild = env.VSCODE_WEB === 'true';
 const WebWorkerCtor = typeof globalThis !== 'undefined' && typeof globalThis.Worker === 'function'
     ? globalThis.Worker
     : null;
@@ -389,7 +390,7 @@ class IndexWorkerHost {
     }
 
     _resolveWasmPath(explicitPath) {
-        const candidate = explicitPath || process.env.EXPLORER_DATES_WASM_PATH || DEFAULT_WASM_PATH;
+        const candidate = explicitPath || env.EXPLORER_DATES_WASM_PATH || DEFAULT_WASM_PATH;
         if (!candidate || !NodeFs) {
             return null;
         }

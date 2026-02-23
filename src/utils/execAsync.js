@@ -2,7 +2,8 @@
  * Async execution utility for running shell commands
  */
 
-const isWebEnvironment = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWebEnvironment = env.VSCODE_WEB === 'true';
 
 let execAsync = null;
 

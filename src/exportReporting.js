@@ -14,7 +14,8 @@ const { getLocalization } = require('./utils/localization');
 const l10n = getLocalization();
 
 const logger = getLogger();
-const isWeb = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWeb = env.VSCODE_WEB === 'true';
 const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test'];
 const DEFAULT_EXCLUDED_PATTERNS = ['**/*.tmp', '**/*.log', '**/.git/**', '**/node_modules/**'];
 const DEFAULT_MAX_TRACKED_FILES = 3000;
@@ -42,12 +43,12 @@ class ExportReportingManager {
         this._fileWatcherSubscriptions = [];
         this._userActivityDisposables = [];
         this._recentUserInteraction = new Map();
-        this._userInteractionTtlMs = Number(process.env.EXPLORER_DATES_USER_ACTIVITY_TTL_MS || 5 * 60 * 1000);
+        this._userInteractionTtlMs = Number(env.EXPLORER_DATES_USER_ACTIVITY_TTL_MS || 5 * 60 * 1000);
         this._activitySourceStats = {
             user: 0,
             watcher: 0
         };
-        this._lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+        this._lightweightMode = env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
         this._trackingDisabled = false;
         this._loadConfiguration();
         this._setupConfigurationWatcher();

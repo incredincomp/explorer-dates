@@ -1,8 +1,9 @@
-const WORKSPACE_SCAN_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT_MS || 5000);
-const WORKSPACE_SCAN_MAX_RESULTS = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULT || 10000);
-const WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT || 1000000);
-const WORKSPACE_SCALE_LARGE_THRESHOLD = Number(process.env.EXPLORER_DATES_WORKSPACE_SCALE_LARGE_THRESHOLD || 100000);
-const WORKSPACE_SCALE_EXTREME_THRESHOLD = Number(process.env.EXPLORER_DATES_WORKSPACE_SCALE_EXTREME_THRESHOLD || 200000);
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const WORKSPACE_SCAN_TIMEOUT_MS = Number(env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT_MS || 5000);
+const WORKSPACE_SCAN_MAX_RESULTS = Number(env.EXPLORER_DATES_WORKSPACE_SCAN_MAX_RESULT || 10000);
+const WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT = Number(env.EXPLORER_DATES_WORKSPACE_SCAN_TIMEOUT_FALLBACK_COUNT || 1000000);
+const WORKSPACE_SCALE_LARGE_THRESHOLD = Number(env.EXPLORER_DATES_WORKSPACE_SCALE_LARGE_THRESHOLD || 100000);
+const WORKSPACE_SCALE_EXTREME_THRESHOLD = Number(env.EXPLORER_DATES_WORKSPACE_SCALE_EXTREME_THRESHOLD || 200000);
 
 function _safeRequireVscode() {
     try { return require('vscode'); } catch { return null; }
@@ -35,7 +36,7 @@ async function findWorkspaceFilesWithTimeout(provider, maxResults) {
 function startWorkspaceScanWatchdog(provider) {
     if (provider._workspaceScanTimedOut) return Promise.resolve();
 
-    const configuredMs = Number(process.env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS);
+    const configuredMs = Number(env.EXPLORER_DATES_WORKSPACE_SCAN_WATCHDOG_MS);
     const baseTimeout = Number.isFinite(WORKSPACE_SCAN_TIMEOUT_MS) && WORKSPACE_SCAN_TIMEOUT_MS > 0 ? WORKSPACE_SCAN_TIMEOUT_MS : 5000;
     const derivedMs = Number.isFinite(configuredMs) ? configuredMs : Math.min(20000, Math.max(3000, baseTimeout + 2000));
 

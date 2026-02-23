@@ -8,6 +8,7 @@ const { getSettingsCoordinator } = require('./settingsCoordinator');
 const { SettingsOrganizer } = require('./settingsOrganizer');
 const { getLocalization } = require('./localization');
 const l10n = getLocalization();
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
 class SettingsMigrationManager {
     constructor() {
@@ -364,13 +365,13 @@ class SettingsMigrationManager {
         try {
             // Telemetry is enabled when either the environment flag is set, or the user opts in via settings
             const configOptIn = this._settings && typeof this._settings.getValue === 'function' ? this._settings.getValue('enableTelemetry') : false;
-            if (process.env.EXPLORER_DATES_TELEMETRY !== '1' && !configOptIn) return;
+            if (env.EXPLORER_DATES_TELEMETRY !== '1' && !configOptIn) return;
             if (!context?.globalState?.update || !context?.globalState?.get) return;
 
             const events = context.globalState.get('explorerDates.telemetryEvents', []);
 
             // Determine source and extension version for standardized schema
-            const source = process.env.EXPLORER_DATES_TELEMETRY === '1' ? 'env' : (configOptIn ? 'config' : 'unknown');
+            const source = env.EXPLORER_DATES_TELEMETRY === '1' ? 'env' : (configOptIn ? 'config' : 'unknown');
             const extensionVersion = context?.extension?.packageJSON?.version || null;
 
             const record = {

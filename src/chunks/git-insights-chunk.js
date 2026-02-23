@@ -11,7 +11,8 @@ let getRelativePath;
 try { const shared = require('../chunks/utils-shared-chunk'); if (shared) getRelativePath = shared.getRelativePath; } catch { /* ignore */ }
 if (!getRelativePath) { const pathUtils = require('../utils/pathUtils'); getRelativePath = pathUtils.getRelativePath; }
 
-const DISABLE_GIT_FEATURES = process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const DISABLE_GIT_FEATURES = env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
 
 class GitInsightsManager {
     constructor() {

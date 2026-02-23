@@ -13,8 +13,9 @@ if (!ensureDate) {
     ensureDate = dateHelpers.ensureDate;
 }
 
-const isWebBuild = process.env.VSCODE_WEB === 'true';
-const forceWorkspaceFs = process.env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWebBuild = env.VSCODE_WEB === 'true';
+const forceWorkspaceFs = env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
 let nodeFs = null;
 if (!isWebBuild && !forceWorkspaceFs) {
     try {

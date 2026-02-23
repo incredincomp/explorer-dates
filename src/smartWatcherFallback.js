@@ -5,6 +5,8 @@
  */
 
 const vscode = require('vscode');
+const proc = (typeof process !== 'undefined') ? process : null;
+const env = proc?.env || {};
 let getLogger = () => {
     try {
         const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
@@ -238,10 +240,10 @@ class SmartWatcherFallback {
      */
     static platformRequiresFallback() {
         // Check for known problematic platforms
-        const platform = process.platform;
-        const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV;
+        const platform = proc?.platform;
+        const isWSL = env.WSL_DISTRO_NAME || env.WSLENV;
         const isRemote = vscode.env.remoteName;
-        const isDocker = process.env.DOCKER_CONTAINER;
+        const isDocker = env.DOCKER_CONTAINER;
         
         // Add other platform-specific checks as needed
         return isWSL || isRemote || isDocker || platform === 'android';

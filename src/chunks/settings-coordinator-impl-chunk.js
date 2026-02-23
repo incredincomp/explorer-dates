@@ -1,5 +1,6 @@
 // Heavy helpers for SettingsCoordinator moved to a lazy chunk
 // Exports a robust ensureMinimumVscodeShape to normalize the VS Code API surface
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 function createFallbackVscode() {
     const noopConfiguration = {
         get: () => undefined,
@@ -277,7 +278,7 @@ class SettingsCoordinatorImpl {
         this._defaultSection = options.defaultSection || 'explorerDates';
         this._locks = new Map();
         this._waitStats = new Map();
-        this._lockWarnMs = Number(process.env.EXPLORER_DATES_LOCK_WAIT_WARN_MS || 1000);
+        this._lockWarnMs = Number(env.EXPLORER_DATES_LOCK_WAIT_WARN_MS || 1000);
         try {
             this._logger = require('../utils/logger').getLogger();
         } catch {

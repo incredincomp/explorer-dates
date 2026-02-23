@@ -1,5 +1,7 @@
 let vscode = null;
 try { vscode = require('vscode'); } catch { /* gracefully fallback when required in non-VS Code contexts */ }
+const proc = (typeof process !== 'undefined') ? process : null;
+const env = proc?.env || {};
 const { getFeatureFlagsGlobal } = require('../utils/featureFlagsBridge');
 const featureFlags = getFeatureFlagsGlobal();
 // Local copy so chunk can validate feature level values without referencing host globals
@@ -324,10 +326,10 @@ function shouldUseFallbackWatcher(provider) {
 }
 
 function isPlatformFallbackRequired() {
-    const platform = process.platform;
-    const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV;
+    const platform = proc?.platform;
+    const isWSL = env.WSL_DISTRO_NAME || env.WSLENV;
     const isRemote = vscode.env.remoteName;
-    const isDocker = process.env.DOCKER_CONTAINER;
+    const isDocker = env.DOCKER_CONTAINER;
     return isWSL || isRemote || isDocker || platform === 'android';
 }
 
@@ -495,7 +497,7 @@ function formatDateReadable(provider, date) {
 }
 
 async function getGitBlameInfo(provider, filePath, statMtimeMs = null) {
-    if (process.env.DISABLE_GIT_FEATURES === '1' || provider._disableGitFeatures) return null;
+    if (env.DISABLE_GIT_FEATURES === '1' || provider._disableGitFeatures) return null;
     try {
         const gitManager = await featureFlags.gitInsights();
         if (!gitManager || typeof gitManager.getGitBlameInfo !== 'function') return null;
@@ -803,7 +805,7 @@ function maybeShedWorkload(provider) {
             return;
         }
         const current = (() => {
-            try { return process?.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0; } catch { return 0; }
+            try { return proc?.memoryUsage ? proc.memoryUsage().heapUsed / 1024 / 1024 : 0; } catch { return 0; }
         })();
         if (!current) return;
 
@@ -823,7 +825,7 @@ function maybeShedWorkload(provider) {
                     deltaMB: Number(delta.toFixed(2)),
                     baselineMB: provider._memoryBaselineMB,
                     heapMB: current,
-                    rssMB: (() => { try { return process?.memoryUsage ? process.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })(),
+                    rssMB: (() => { try { return proc?.memoryUsage ? proc.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })(),
                     cacheSize: provider._decorationCache.size,
                     cacheLimit: provider._maxCacheSize
                 });
@@ -842,7 +844,7 @@ function maybeShedWorkload(provider) {
                 provider._refreshIntervalOverride || provider._refreshInterval || provider._memoryShedRefreshIntervalMs,
                 provider._memoryShedRefreshIntervalMs
             );
-            const rssMB = (() => { try { return process?.memoryUsage ? process.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })();
+            const rssMB = (() => { try { return proc?.memoryUsage ? proc.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })();
             const event = {
                 timestamp: new Date().toISOString(),
                 deltaMB: Number(delta.toFixed(2)),

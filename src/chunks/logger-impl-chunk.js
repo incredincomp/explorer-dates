@@ -1,6 +1,6 @@
 const vscode = require('vscode');
-
-const isWebRuntime = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWebRuntime = env.VSCODE_WEB === 'true';
 const inspectValue = (() => {
     if (!isWebRuntime) {
         return eval('require')('util').inspect;
@@ -15,7 +15,7 @@ const DEFAULT_LOG_PROFILE = 'default';
 const SUPPORTED_PROFILES = new Set(['default', 'stress', 'soak']);
 const LOG_LEVEL_ORDER = ['debug', 'info', 'warn', 'error'];
 const DEFAULT_CONSOLE_LEVEL = 'warn';
-const TEST_CONSOLE_LEVEL = (process.env.NODE_ENV === 'test' || process.env.EXPLORER_DATES_TEST_MODE === '1')
+const TEST_CONSOLE_LEVEL = (env.NODE_ENV === 'test' || env.EXPLORER_DATES_TEST_MODE === '1')
     ? 'warn'
     : null;
 
@@ -26,8 +26,8 @@ class Logger {
         this._outputChannel = vscode.window.createOutputChannel('Explorer Dates');
         this._isEnabled = false;
         this._configurationWatcher = null;
-        this._muteOutputChannel = (process.env.NODE_ENV === 'test' || process.env.EXPLORER_DATES_TEST_MODE === '1') === true;
-        this._logProfile = (process.env.EXPLORER_DATES_LOG_PROFILE || DEFAULT_LOG_PROFILE).toLowerCase();
+        this._muteOutputChannel = (env.NODE_ENV === 'test' || env.EXPLORER_DATES_TEST_MODE === '1') === true;
+        this._logProfile = (env.EXPLORER_DATES_LOG_PROFILE || DEFAULT_LOG_PROFILE).toLowerCase();
         if (!SUPPORTED_PROFILES.has(this._logProfile)) this._logProfile = DEFAULT_LOG_PROFILE;
         this._throttleState = new Map();
         this._consoleLevel = DEFAULT_CONSOLE_LEVEL;
@@ -42,7 +42,7 @@ class Logger {
     _updateConfig() {
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._isEnabled = config.get('enableLogging', false);
-        const envConsoleLevel = (process.env.EXPLORER_DATES_LOG_LEVEL || '').toLowerCase();
+        const envConsoleLevel = (env.EXPLORER_DATES_LOG_LEVEL || '').toLowerCase();
         const configuredConsoleLevel = (config.get('consoleLogLevel', DEFAULT_CONSOLE_LEVEL) || '').toLowerCase();
         const chosenLevel = TEST_CONSOLE_LEVEL || envConsoleLevel || configuredConsoleLevel || DEFAULT_CONSOLE_LEVEL;
         this._consoleLevel = LOG_LEVEL_ORDER.includes(chosenLevel) ? chosenLevel : DEFAULT_CONSOLE_LEVEL;

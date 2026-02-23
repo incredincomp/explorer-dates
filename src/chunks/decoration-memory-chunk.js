@@ -1,7 +1,9 @@
+const proc = (typeof process !== 'undefined') ? process : null;
+
 function maybeShedWorkload(provider) {
     try {
         if (!provider._memorySheddingEnabled || provider._memorySheddingActive) return;
-        const current = (() => { try { return process?.memoryUsage ? process.memoryUsage().heapUsed / 1024 / 1024 : 0; } catch { return 0; } })();
+        const current = (() => { try { return proc?.memoryUsage ? proc.memoryUsage().heapUsed / 1024 / 1024 : 0; } catch { return 0; } })();
         if (!current) return;
 
         if (!provider._memoryBaselineMB) {
@@ -20,7 +22,7 @@ function maybeShedWorkload(provider) {
                     deltaMB: Number(delta.toFixed(2)),
                     baselineMB: provider._memoryBaselineMB,
                     heapMB: current,
-                    rssMB: (() => { try { return process?.memoryUsage ? process.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })(),
+                    rssMB: (() => { try { return proc?.memoryUsage ? proc.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })(),
                     cacheSize: provider._decorationCache.size,
                     cacheLimit: provider._maxCacheSize
                 });
@@ -37,7 +39,7 @@ function maybeShedWorkload(provider) {
                 provider._refreshIntervalOverride || provider._refreshInterval || provider._memoryShedRefreshIntervalMs,
                 provider._memoryShedRefreshIntervalMs
             );
-            const rssMB = (() => { try { return process?.memoryUsage ? process.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })();
+            const rssMB = (() => { try { return proc?.memoryUsage ? proc.memoryUsage().rss / 1024 / 1024 : 0; } catch { return 0; } })();
             const event = {
                 timestamp: new Date().toISOString(),
                 deltaMB: Number(delta.toFixed(2)),

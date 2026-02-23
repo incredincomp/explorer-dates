@@ -13,12 +13,13 @@ const {
     WORKSPACE_SCALE_EXTREME_THRESHOLD
 } = require('../constants');
 const { isWebEnvironment } = require('../utils/env');
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
 // Local defaults that are present in the main provider module —
 // re-declare here so the implementation chunk is self-contained.
 const VIEWPORT_DEFAULT_WINDOW_MS = 5 * 60 * 1000;
-const DEFAULT_VIEWPORT_HISTORY_LIMIT = Number(process.env.EXPLORER_DATES_VIEWPORT_HISTORY_LIMIT || 400);
-const DEFAULT_SECURITY_MAX_WARNINGS = Number(process.env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
+const DEFAULT_VIEWPORT_HISTORY_LIMIT = Number(env.EXPLORER_DATES_VIEWPORT_HISTORY_LIMIT || 400);
+const DEFAULT_SECURITY_MAX_WARNINGS = Number(env.EXPLORER_DATES_SECURITY_MAX_WARNINGS_PER_FILE ?? 1);
 // Recognized feature level profiles (keeps parity with the proxy and decorations-advanced)
 const FEATURE_LEVELS = ['full', 'enhanced', 'standard', 'minimal'];
 
@@ -155,7 +156,7 @@ class LazyHierarchicalDecorationCache {
     enforceLimit(maxSize = 0) { if (this._proxy) return this._proxy.enforceLimit(maxSize); if (!maxSize || this._fallback.size <= maxSize) return 0; let removed = 0; const keys = Array.from(this._fallback.keys()); const toRemove = keys.slice(0, Math.max(1, Math.ceil(this._fallback.size - maxSize))); for (const k of toRemove) { this._fallback.delete(k); removed++; } return removed; }
 }
 
-const isWebBuild = process.env.VSCODE_WEB === 'true';
+const isWebBuild = env.VSCODE_WEB === 'true';
 
 class FileDateDecorationProviderImpl {
     constructor() {
@@ -182,9 +183,9 @@ class FileDateDecorationProviderImpl {
         this._readableDateFlyweightOrder = [];
         this._readableDateFlyweightLimit = DEFAULT_FLYWEIGHT_CACHE_SIZE;
         this._readableFlyweightStats = { hits: 0, misses: 0, allocations: 0, reuses: 0 };
-        this._enableDecorationPool = process.env.EXPLORER_DATES_ENABLE_DECORATION_POOL !== '0';
-        this._enableFlyweights = process.env.EXPLORER_DATES_ENABLE_FLYWEIGHTS !== '0';
-        this._lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+        this._enableDecorationPool = env.EXPLORER_DATES_ENABLE_DECORATION_POOL !== '0';
+        this._enableFlyweights = env.EXPLORER_DATES_ENABLE_FLYWEIGHTS !== '0';
+        this._lightweightMode = env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
         // Performance mode flag (defaults to false in this minimal implementation)
         this._performanceMode = false;
         // Align initial performanceMode with workspace configuration when available
@@ -192,12 +193,12 @@ class FileDateDecorationProviderImpl {
             const cfg = (vscode.workspace.getConfiguration)('explorerDates');
             this._performanceMode = !!cfg.get('performanceMode', this._performanceMode);
         } catch (e) { /* ignore config read errors */ }
-        this._memorySheddingEnabled = process.env.EXPLORER_DATES_MEMORY_SHEDDING === '1';
-        this._memorySheddingThresholdMB = Number(process.env.EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB || 3);
+        this._memorySheddingEnabled = env.EXPLORER_DATES_MEMORY_SHEDDING === '1';
+        this._memorySheddingThresholdMB = Number(env.EXPLORER_DATES_MEMORY_SHED_THRESHOLD_MB || 3);
         this._memorySheddingActive = false;
         this._memoryBaselineMB = this._memorySheddingEnabled ? this._safeHeapUsedMB() : 0;
-        this._memoryShedCacheLimit = Number(process.env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT || 1000);
-        this._memoryShedRefreshIntervalMs = Number(process.env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS || 60000);
+        this._memoryShedCacheLimit = Number(env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT || 1000);
+        this._memoryShedRefreshIntervalMs = Number(env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS || 60000);
         this._refreshIntervalOverride = null;
         // Periodic refresh / incremental refresh bookkeeping
         this._refreshInterval = null;
@@ -206,8 +207,8 @@ class FileDateDecorationProviderImpl {
         this._incrementalRefreshInProgress = false;
         this._scheduledRefreshPending = false;
 
-        this._forceCacheBypass = process.env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
-        this._lightweightPurgeInterval = Number(process.env.EXPLORER_DATES_LIGHTWEIGHT_PURGE_INTERVAL || 400);
+        this._forceCacheBypass = env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
+        this._lightweightPurgeInterval = Number(env.EXPLORER_DATES_LIGHTWEIGHT_PURGE_INTERVAL || 400);
         this._isWeb = isWebBuild || isWebEnvironment();
         this._baselineDesktopCacheTimeout = DEFAULT_CACHE_TIMEOUT * 4;
         this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout;
@@ -231,8 +232,8 @@ class FileDateDecorationProviderImpl {
         this._workspaceTemplatesLoading = null;
         const settingsCoordinator = getSettingsCoordinator();
         const configTelemetry = settingsCoordinator?.getValue && settingsCoordinator.getValue('enableTelemetry');
-        this._allocationTelemetryEnabled = process.env.NODE_ENV === 'development' || process.env.EXPLORER_DATES_TELEMETRY === '1' || configTelemetry === true;
-        this._telemetryReportInterval = Number(process.env.EXPLORER_DATES_TELEMETRY_INTERVAL_MS || 60000);
+        this._allocationTelemetryEnabled = env.NODE_ENV === 'development' || env.EXPLORER_DATES_TELEMETRY === '1' || configTelemetry === true;
+        this._telemetryReportInterval = Number(env.EXPLORER_DATES_TELEMETRY_INTERVAL_MS || 60000);
         this._telemetryReportTimer = null;
         this._cacheNamespace = null;
         this._cacheKeyStats = new Map();
@@ -307,7 +308,7 @@ class FileDateDecorationProviderImpl {
         this._watcherEventDebounce = new Map();
         this._workspaceFileCount = null;
         this._workspaceScale = 'unknown';
-        this._logWatcherEvents = process.env.EXPLORER_DATES_LOG_WATCHERS === '1';
+        this._logWatcherEvents = env.EXPLORER_DATES_LOG_WATCHERS === '1';
         this._securityEnvironment = detectSecurityEnvironment();
         this._securityEnforceWorkspaceBoundaries = true;
         this._securityAllowedExtraPaths = [];
@@ -315,7 +316,7 @@ class FileDateDecorationProviderImpl {
         this._securityRelaxedForTests = false;
         this._securityLoggedTestRelaxation = false;
         this._securityWarningLog = new Map();
-        this._securityLogThrottleMs = Number(process.env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
+        this._securityLogThrottleMs = Number(env.EXPLORER_DATES_SECURITY_WARNING_THROTTLE_MS || 5000);
         this._securityMaxWarningsPerFile = Number.isFinite(DEFAULT_SECURITY_MAX_WARNINGS) ? Math.max(0, DEFAULT_SECURITY_MAX_WARNINGS) : 1;
         this._workspaceFolderListener = typeof vscode.workspace.onDidChangeWorkspaceFolders === 'function' ? vscode.workspace.onDidChangeWorkspaceFolders((event) => this._handleWorkspaceFoldersChanged(event)) : null;
         this._workspaceFolderChangeTimer = null;
@@ -541,7 +542,7 @@ class FileDateDecorationProviderImpl {
         try {
             let v = Number(raw || 0);
             if (!Number.isFinite(v) || v <= 0) v = 20;
-            const envMax = Number(process.env.EXPLORER_DATES_MAX_SMART_WATCHER_PATTERNS || 200);
+            const envMax = Number(env.EXPLORER_DATES_MAX_SMART_WATCHER_PATTERNS || 200);
             const max = Math.max(1, Math.min(Math.floor(v), Math.max(1, envMax)));
             return max;
         } catch (e) { return 20; }
@@ -623,7 +624,7 @@ class FileDateDecorationProviderImpl {
     // Expose indexer limit so other chunks can query it (fallback for tests)
     _getIndexerMaxFiles() {
         try {
-            return Math.max(100, Number(process.env.EXPLORER_DATES_INDEXER_MAX_FILES || 2000));
+            return Math.max(100, Number(env.EXPLORER_DATES_INDEXER_MAX_FILES || 2000));
         } catch (e) { return 2000; }
     }
 
