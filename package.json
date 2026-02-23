@@ -41,6 +41,11 @@
         "category": "Explorer Dates"
       },
       {
+        "command": "explorerDates.runWebDiagnostics",
+        "title": "Run Web Diagnostics",
+        "category": "Explorer Dates"
+      },
+      {
         "command": "explorerDates.showCurrentConfig",
         "title": "Show Current Configuration",
         "category": "Explorer Dates"

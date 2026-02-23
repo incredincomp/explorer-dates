@@ -15,6 +15,18 @@ addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
 ]);
 
+const analysisCommandIds = new Set([
+    'explorerDates.showWorkspaceActivity',
+    'explorerDates.showPerformanceAnalytics',
+    'explorerDates.debugCache',
+    'explorerDates.runDiagnostics',
+    'explorerDates.testDecorations',
+    'explorerDates.monitorDecorations',
+    'explorerDates.testVSCodeRendering',
+    'explorerDates.quickFix',
+    'explorerDates.showKeyboardShortcuts'
+]);
+
 async function runWebSmokeTest() {
     const extensionRoot = path.join(__dirname, '..');
     const workspaceFolders = [
@@ -43,6 +55,34 @@ async function runWebSmokeTest() {
 
         const registeredCommands = await harness.vscode.commands.getCommands(true);
         assert.ok(Array.isArray(registeredCommands), 'Web bundle should expose command registry');
+        const contributed = (require('../package.json').contributes?.commands || [])
+            .map((c) => c.command);
+        const missing = contributed.filter((cmd) =>
+            !analysisCommandIds.has(cmd) && !registeredCommands.includes(cmd)
+        );
+        assert.strictEqual(
+            missing.length,
+            0,
+            `Web bundle missing registered commands: ${missing.join(', ')}`
+        );
+
+        const webSafeCommands = [
+            'explorerDates.applyPreset',
+            'explorerDates.configureRuntime',
+            'explorerDates.openLogs',
+            'explorerDates.runWebDiagnostics'
+        ];
+        for (const commandId of webSafeCommands) {
+            assert.ok(
+                registeredCommands.includes(commandId),
+                `Web bundle should register ${commandId}`
+            );
+            try {
+                await harness.vscode.commands.executeCommand(commandId);
+            } catch (error) {
+                throw new Error(`Web command failed: ${commandId} (${error?.message || error})`);
+            }
+        }
 
         const gitContextCall = harness.commandCalls.find(
             (call) =>

@@ -1,5 +1,11 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
+const {
+    recordCommandRegistration,
+    recordCommandInvocation,
+    recordCommandResult,
+    diagLog
+} = require('../utils/webDiagnostics');
 // Prefer shared utils chunk for path helpers
 let getFileName, getRelativePath;
 try { const shared = require('../chunks/utils-shared-chunk'); if (shared) { getFileName = shared.getFileName; getRelativePath = shared.getRelativePath; } } catch { /* ignore */ }
@@ -17,8 +23,22 @@ function loadChildProcess() {
 
 function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
     const subscriptions = [];
+    const registerCommand = (commandId, handler) => {
+        recordCommandRegistration(commandId);
+        return vscode.commands.registerCommand(commandId, async (...args) => {
+            recordCommandInvocation(commandId);
+            try {
+                const result = await handler(...args);
+                recordCommandResult(commandId, true);
+                return result;
+            } catch (error) {
+                recordCommandResult(commandId, false, error);
+                throw error;
+            }
+        });
+    };
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.refreshDateDecorations', () => {
+    subscriptions.push(registerCommand('explorerDates.refreshDateDecorations', () => {
         try {
             if (fileDateProvider) {
                 fileDateProvider.clearAllCaches();
@@ -33,7 +53,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.previewConfiguration', (settings) => {
+    subscriptions.push(registerCommand('explorerDates.previewConfiguration', (settings) => {
         try {
             if (fileDateProvider) {
                 fileDateProvider.applyPreviewSettings(settings);
@@ -44,7 +64,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.clearPreview', () => {
+    subscriptions.push(registerCommand('explorerDates.clearPreview', () => {
         try {
             if (fileDateProvider) {
                 fileDateProvider.applyPreviewSettings(null);
@@ -55,7 +75,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showMetrics', () => {
+    subscriptions.push(registerCommand('explorerDates.showMetrics', () => {
         try {
             if (fileDateProvider) {
                 const metrics = fileDateProvider.getMetrics();
@@ -92,16 +112,21 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.openLogs', () => {
+    subscriptions.push(registerCommand('explorerDates.openLogs', () => {
         try {
-            logger.show();
+            if (logger && typeof logger.show === 'function') {
+                logger.show();
+                return;
+            }
+            diagLog('info', 'Logger channel unavailable; showing fallback message');
+            vscode.window.showInformationMessage('Explorer Dates logs are unavailable in this environment.');
         } catch (error) {
             logger.error('Failed to open logs', error);
             vscode.window.showErrorMessage(`Failed to open logs: ${error.message}`);
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showCurrentConfig', () => {
+    subscriptions.push(registerCommand('explorerDates.showCurrentConfig', () => {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const settings = {
@@ -124,7 +149,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.resetToDefaults', async () => {
+    subscriptions.push(registerCommand('explorerDates.resetToDefaults', async () => {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
@@ -143,7 +168,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleDecorations', () => {
+    subscriptions.push(registerCommand('explorerDates.toggleDecorations', () => {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const currentValue = config.get('showDateDecorations', true);
@@ -159,7 +184,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.copyFileDate', async (uri) => {
+    subscriptions.push(registerCommand('explorerDates.copyFileDate', async (uri) => {
         try {
             let targetUri = uri;
             if (!targetUri && vscode.window.activeTextEditor) {
@@ -182,7 +207,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showFileDetails', async (uri) => {
+    subscriptions.push(registerCommand('explorerDates.showFileDetails', async (uri) => {
         try {
             let targetUri = uri;
             if (!targetUri && vscode.window.activeTextEditor) {
@@ -213,7 +238,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.toggleFadeOldFiles', () => {
+    subscriptions.push(registerCommand('explorerDates.toggleFadeOldFiles', () => {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const currentValue = config.get('fadeOldFiles', false);
@@ -227,7 +252,7 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         }
     }));
 
-    subscriptions.push(vscode.commands.registerCommand('explorerDates.showFileHistory', async (uri) => {
+    subscriptions.push(registerCommand('explorerDates.showFileHistory', async (uri) => {
         try {
             if (isWeb) {
                 vscode.window.showInformationMessage('Git history is unavailable on VS Code for Web.');

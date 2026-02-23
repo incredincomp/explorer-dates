@@ -3,6 +3,7 @@
 
 function createDecorationProviderHelpers(provider) {
     const vscode = require('vscode');
+    const { diagLogOnce } = require('../utils/webDiagnostics');
     // Prefer new shared utils chunk to reduce duplication across chunks
     let getFileName, getExtension, normalizePath, getUriPath, ensureDate;
     try {
@@ -61,6 +62,7 @@ function createDecorationProviderHelpers(provider) {
 
         // If provider does not implement internal helpers (partial impl in tests), use a lightweight fallback
         if (typeof provider._validateWorkspaceUri !== 'function') {
+            diagLogOnce('decorations-fallback-provider', 'warn', 'Decoration fallback active (missing provider helpers)');
             try {
                 const stat = await provider._fileSystem.stat(uri);
                 if (!stat) return undefined;
@@ -84,7 +86,10 @@ function createDecorationProviderHelpers(provider) {
                 ? provider._previewSettings[key]
                 : vscode.workspace.getConfiguration('explorerDates').get(key, def);
 
-            if (!_get('showDateDecorations', true)) return undefined;
+            if (!_get('showDateDecorations', true)) {
+                diagLogOnce('decorations-disabled', 'info', 'Decorations disabled via settings');
+                return undefined;
+            }
 
             const isViewportPriority = provider._isViewportPriority(uri);
             // Record viewport activity (the helper maintains viewport sets and
@@ -100,7 +105,10 @@ function createDecorationProviderHelpers(provider) {
             const queuedCount = provider._globalConcurrencyQueue.length;
             const isBacklogged = queuedCount >= provider._maxConcurrentOperations;
             const isAtCapacity = provider._activeOperations > provider._maxConcurrentOperations * 0.8;
-            if (isAtCapacity && isBacklogged) return provider._createMinimalDecoration(uri, Date.now());
+            if (isAtCapacity && isBacklogged) {
+                diagLogOnce('decorations-backpressure', 'warn', 'Decoration backpressure fallback active');
+                return provider._createMinimalDecoration(uri, Date.now());
+            }
 
             provider._checkMemoryPressure();
             provider._metrics.cacheMisses++;
@@ -136,11 +144,22 @@ function createDecorationProviderHelpers(provider) {
             if (provider._performanceMode && colorScheme !== 'custom') colorScheme = 'none';
             const fileSizeFormat = _get('fileSizeFormat', 'auto');
 
-            const badge = provider._formatDateBadge(modifiedAt, dateFormat, diffMs);
-            const color = provider._getColorByScheme(modifiedAt, colorScheme, filePath);
-            const tooltip = await provider._buildTooltipContent({ filePath, resourceUri: uri, stat: normalizedStat, badgeDetails: {}, gitBlame: null, shouldUseAccessibleTooltips: false, fileSizeFormat, isCodeFile: false });
+            const logic = provider._decorationLogic;
+            const formatBadge = logic && typeof logic._formatDateBadge === 'function'
+                ? logic._formatDateBadge
+                : provider._formatDateBadge;
+            const buildTooltip = logic && typeof logic._buildTooltipContent === 'function'
+                ? logic._buildTooltipContent
+                : provider._buildTooltipContent;
+            const acquireDecoration = logic && typeof logic.acquireDecorationFromPool === 'function'
+                ? logic.acquireDecorationFromPool
+                : provider._acquireDecorationFromPool;
 
-            const decoration = provider._acquireDecorationFromPool({ badge, tooltip, color });
+            const badge = formatBadge(modifiedAt, dateFormat, diffMs);
+            const color = provider._getColorByScheme(modifiedAt, colorScheme, filePath);
+            const tooltip = await buildTooltip({ filePath, resourceUri: uri, stat: normalizedStat, badgeDetails: {}, gitBlame: null, shouldUseAccessibleTooltips: false, fileSizeFormat, isCodeFile: false });
+
+            const decoration = acquireDecoration({ badge, tooltip, color });
             // Use coordinator's cache API: storeDecorationInCache accepts fileLabel and optional resourceUri
             provider._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
             return decoration;

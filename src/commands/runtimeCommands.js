@@ -1,5 +1,10 @@
 const vscode = require('vscode');
 const { getLogger } = require('../utils/logger');
+const {
+    recordCommandRegistration,
+    recordCommandInvocation,
+    recordCommandResult
+} = require('../utils/webDiagnostics');
 
 const logger = getLogger();
 
@@ -77,9 +82,24 @@ function registerRuntimeCommands(context) {
         return managersInitializing;
     }
 
+    const registerCommand = (commandId, handler) => {
+        recordCommandRegistration(commandId);
+        return vscode.commands.registerCommand(commandId, async (...args) => {
+            recordCommandInvocation(commandId);
+            try {
+                const result = await handler(...args);
+                recordCommandResult(commandId, true);
+                return result;
+            } catch (error) {
+                recordCommandResult(commandId, false, error);
+                throw error;
+            }
+        });
+    };
+
     const commands = [
         // Apply preset configuration
-        vscode.commands.registerCommand('explorerDates.applyPreset', async () => {
+        registerCommand('explorerDates.applyPreset', async () => {
             try {
                 await ensureManagers();
                 await runtimeManager.showAllPresets();
@@ -90,7 +110,7 @@ function registerRuntimeCommands(context) {
         }),
 
         // Restore previous preset from backup
-        vscode.commands.registerCommand('explorerDates.restorePreviousPreset', async () => {
+        registerCommand('explorerDates.restorePreviousPreset', async () => {
             try {
                 await ensureManagers();
                 const result = await runtimeManager.restorePreviousPreset();
@@ -104,7 +124,7 @@ function registerRuntimeCommands(context) {
         }),
         
         // Show runtime configuration optimizer
-        vscode.commands.registerCommand('explorerDates.configureRuntime', async () => {
+        registerCommand('explorerDates.configureRuntime', async () => {
             try {
                 await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
@@ -116,7 +136,7 @@ function registerRuntimeCommands(context) {
         }),
         
         // Suggest optimal preset for current workspace
-        vscode.commands.registerCommand('explorerDates.suggestOptimalPreset', async () => {
+        registerCommand('explorerDates.suggestOptimalPreset', async () => {
             try {
                 await ensureManagers();
                 await runtimeManager.checkAutoSuggestion();
@@ -127,7 +147,7 @@ function registerRuntimeCommands(context) {
         }),
         
         // Show current chunk status
-        vscode.commands.registerCommand('explorerDates.showChunkStatus', async () => {
+        registerCommand('explorerDates.showChunkStatus', async () => {
             try {
                 await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
@@ -152,7 +172,7 @@ function registerRuntimeCommands(context) {
         }),
         
         // Optimize bundle size
-        vscode.commands.registerCommand('explorerDates.optimizeBundle', async () => {
+        registerCommand('explorerDates.optimizeBundle', async () => {
             try {
                 await ensureManagers();
                 const state = await runtimeManager.getCurrentRuntimeState();
@@ -170,7 +190,7 @@ function registerRuntimeCommands(context) {
         }),
         
         // Team configuration validation
-        vscode.commands.registerCommand('explorerDates.validateTeamConfig', async () => {
+        registerCommand('explorerDates.validateTeamConfig', async () => {
             try {
                 await ensureManagers();
                 const validation = await teamPersistenceManager.validateTeamConfiguration();

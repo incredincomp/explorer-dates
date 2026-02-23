@@ -13,6 +13,13 @@ const {
     WORKSPACE_SCALE_EXTREME_THRESHOLD
 } = require('../constants');
 const { isWebEnvironment } = require('../utils/env');
+const {
+    isWebDiagnosticsEnabled,
+    diagLogOnce,
+    recordProviderEvent,
+    recordDecorationCall,
+    recordRefreshCall
+} = require('../utils/webDiagnostics');
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
 // Local defaults that are present in the main provider module —
@@ -210,6 +217,10 @@ class FileDateDecorationProviderImpl {
         this._forceCacheBypass = env.EXPLORER_DATES_FORCE_CACHE_BYPASS === '1';
         this._lightweightPurgeInterval = Number(env.EXPLORER_DATES_LIGHTWEIGHT_PURGE_INTERVAL || 400);
         this._isWeb = isWebBuild || isWebEnvironment();
+        if (isWebDiagnosticsEnabled()) {
+            diagLogOnce('provider-impl-constructed', 'info', 'Provider implementation constructed', { isWeb: this._isWeb });
+            recordProviderEvent('created', { source: 'impl', isWeb: this._isWeb });
+        }
         this._baselineDesktopCacheTimeout = DEFAULT_CACHE_TIMEOUT * 4;
         this._maxDesktopCacheTimeout = this._baselineDesktopCacheTimeout;
         this._lastCacheTimeoutBoostLookups = 0;
@@ -790,6 +801,7 @@ class FileDateDecorationProviderImpl {
         // Ensure security/configuration is up-to-date for each request so tests and
         // runtime callers observe the most recent configuration values.
         try { await this._ensureSecurityConfig && this._ensureSecurityConfig(); } catch (e) { /* ignore */ }
+        recordDecorationCall();
 
         try {
             if (this.U && typeof this.U.provideDecoration === 'function') {
@@ -1200,6 +1212,7 @@ class FileDateDecorationProviderImpl {
     refreshAll() {
         try {
             this._onDidChangeFileDecorations.fire(undefined);
+            recordRefreshCall();
         } catch (error) {
             this._logger?.debug && this._logger.debug('refreshAll failed', error);
         }

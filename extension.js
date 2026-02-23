@@ -19,6 +19,16 @@ const { registerMigrationCommands } = require('./src/commands/migrationCommands'
 const { initializeTemplateStore } = require('./src/utils/templateStore');
 const { SettingsMigrationManager } = require('./src/utils/settingsMigration');
 const { ExtensionError, ERROR_CODES, ChunkLoadError, handleChunkFailure } = require('./src/utils/errors');
+const {
+    isWebDiagnosticsEnabled,
+    diagLog,
+    recordCommandRegistration,
+    recordCommandInvocation,
+    recordCommandResult,
+    recordChunkEvent,
+    recordProviderEvent,
+    getWebDiagnosticsState
+} = require('./src/utils/webDiagnostics');
 // Prefer shared utils chunk when available (keeps core smaller)
 let ensureDate;
 try {
@@ -197,11 +207,17 @@ const chunkLoader = {
         }
 
         try {
+            if (isWebDiagnosticsEnabled()) {
+                recordChunkEvent(chunkName, 'load:start');
+            }
             if (isWebEnvironment) {
                 const chunk = await this._loadWebChunk(chunkName);
                 if (chunk) {
                     this.loadedChunks.set(chunkName, chunk);
                     getActiveLogger().info('Chunk loaded', { chunkName, target: 'web' });
+                    if (isWebDiagnosticsEnabled()) {
+                        recordChunkEvent(chunkName, 'load:success');
+                    }
                 }
                 return chunk;
             }
@@ -210,9 +226,15 @@ const chunkLoader = {
             if (chunk) {
                 this.loadedChunks.set(chunkName, chunk);
                 getActiveLogger().info('Chunk loaded', { chunkName, target: 'node' });
+                if (isWebDiagnosticsEnabled()) {
+                    recordChunkEvent(chunkName, 'load:success');
+                }
             }
             return chunk;
         } catch (error) {
+            if (isWebDiagnosticsEnabled()) {
+                recordChunkEvent(chunkName, 'load:failure', error);
+            }
             const chunkError = error instanceof ExtensionError
                 ? error
                 : new ExtensionError(
@@ -588,6 +610,12 @@ function initializeStatusBar(context) {
  */
 async function activate(context) {
     try {
+        if (isWebDiagnosticsEnabled()) {
+            diagLog('info', 'Activation start', {
+                uiKind: vscode?.env?.uiKind,
+                isWeb: isWebEnvironment
+            });
+        }
         // Initialize logger and localization
         logger = getLogger();
         l10n = await ensureLocalization();
@@ -625,13 +653,18 @@ async function activate(context) {
         } catch (error) {
             logger.warn('Settings migration encountered issues:', error);
         }
-        try {
-            await settingsMigrationManager.autoOrganizeSettingsIfNeeded(context, {
-                trigger: 'activation',
-                silent: true
-            });
-        } catch (error) {
-            logger.warn('Settings organization encountered issues:', error);
+        const isWebUi = vscode.env.uiKind === vscode.UIKind.Web;
+        if (!isWebUi) {
+            try {
+                await settingsMigrationManager.autoOrganizeSettingsIfNeeded(context, {
+                    trigger: 'activation',
+                    silent: true
+                });
+            } catch (error) {
+                logger.warn('Settings organization encountered issues:', error);
+            }
+        } else {
+            logger.info('Skipping settings auto-organization in web runtime');
         }
 
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
@@ -647,16 +680,39 @@ async function activate(context) {
 
         // Register file date decoration provider for overlay dates in Explorer
         // Try to load a runtime chunk that contains the heavy provider implementation
+        let providerChunk = null;
         try {
-            const providerChunk = await chunkLoader.loadChunk('providerInit');
+            providerChunk = await chunkLoader.loadChunk('providerInit');
             if (providerChunk && typeof providerChunk.createFileDateDecorationProvider === 'function') {
+                if (isWebDiagnosticsEnabled()) {
+                    diagLog('info', 'Provider factory located', { source: 'providerInit' });
+                }
+                if (isWeb) {
+                    try {
+                        await chunkLoader.loadChunk('fileDateProviderImplExport');
+                        if (isWebDiagnosticsEnabled()) {
+                            diagLog('info', 'Provider impl export chunk loaded', { chunkName: 'fileDateProviderImplExport' });
+                        }
+                    } catch (e) {
+                        logger.warn('Failed to load provider impl export chunk in web runtime', e?.message || e);
+                        if (isWebDiagnosticsEnabled()) {
+                            diagLog('warn', 'Provider impl export chunk load failed', { error: e?.message || String(e) });
+                        }
+                    }
+                }
                 const factory = providerChunk.createFileDateDecorationProvider(context);
                 if (factory && typeof factory.createFileDateDecorationProvider === 'function') {
                     fileDateProvider = factory.createFileDateDecorationProvider();
+                    if (isWebDiagnosticsEnabled()) {
+                        recordProviderEvent('created', { source: 'providerInit' });
+                    }
                 }
             }
         } catch (e) {
             logger.warn('Failed to load fileDateProvider chunk, falling back to local provider', e?.message || e);
+            if (isWebDiagnosticsEnabled()) {
+                diagLog('warn', 'Provider chunk load failed', { error: e?.message || String(e) });
+            }
         }
 
         // Fallback to local synchronous provider implementation if chunk loading failed
@@ -671,25 +727,50 @@ async function activate(context) {
                     const mod = dynamicRequire('./src/fileDateDecorationProvider');
                     const FileDateDecorationProvider = mod && (mod.FileDateDecorationProvider || mod.default || mod);
                     fileDateProvider = new FileDateDecorationProvider();
+                    if (isWebDiagnosticsEnabled()) {
+                        recordProviderEvent('created', { source: 'local' });
+                    }
                 } else if (!isWebEnvironment) {
                     // Environments where eval is unavailable (non-web): fall back to synchronous require
                     const { FileDateDecorationProvider } = require('./src/fileDateDecorationProvider');
                     fileDateProvider = new FileDateDecorationProvider();
+                    if (isWebDiagnosticsEnabled()) {
+                        recordProviderEvent('created', { source: 'local' });
+                    }
                 } else {
                     // Web runtime and no chunk available — leave fileDateProvider null to allow graceful degradation.
                     logger.warn('No FileDateDecorationProvider available for web runtime; some features may be disabled.');
+                    if (isWebDiagnosticsEnabled()) {
+                        diagLog('warn', 'Provider unavailable in web runtime');
+                    }
                 }
             } catch (e) {
                 logger.error('Failed to create FileDateDecorationProvider', e);
+                if (isWebDiagnosticsEnabled()) {
+                    diagLog('error', 'Provider creation failed', { error: e?.message, stack: e?.stack });
+                }
                 throw e;
             }
         }
 
         if (fileDateProvider) {
+            // Hydrate optional decoration helpers early so non-dev presets get full formatting/colors.
+            if (providerChunk && typeof providerChunk.hydrateProviderOptionalSystems === 'function') {
+                (async () => {
+                    try { await providerChunk.hydrateProviderOptionalSystems(fileDateProvider); }
+                    catch (err) { logger.debug('provider-init hydration failed', err); }
+                })();
+                if (isWebDiagnosticsEnabled()) {
+                    recordProviderEvent('hydrated', { source: 'providerInit' });
+                }
+            }
             const decorationDisposable = vscode.window.registerFileDecorationProvider(fileDateProvider);
             context.subscriptions.push(decorationDisposable);
             context.subscriptions.push(fileDateProvider); // For proper disposal
             context.subscriptions.push(logger); // Dispose logger on deactivation
+            if (isWebDiagnosticsEnabled()) {
+                recordProviderEvent('registered');
+            }
 
             // Initialize advanced performance systems (best-effort)
             try { await fileDateProvider.initializeAdvancedSystems(context); } catch (err) { logger.debug('FileDateDecorationProvider.initializeAdvancedSystems failed', err); }
@@ -699,6 +780,9 @@ async function activate(context) {
         } else {
             // Graceful degradation for web runtimes where the provider chunk may be absent
             logger.warn('FileDateDecorationProvider unavailable — continuing without file decorations.');
+            if (isWebDiagnosticsEnabled()) {
+                diagLog('warn', 'Provider unavailable for decorations');
+            }
         }
         
         // Initialize managers lazily to reduce startup time and bundle size
@@ -793,6 +877,47 @@ async function activate(context) {
         }
 
         registerCoreCommands({ context, fileDateProvider, logger, l10n });
+
+        // Web diagnostics command (safe for desktop too, but only logs in web/diag mode)
+        recordCommandRegistration('explorerDates.runWebDiagnostics');
+        const runWebDiagnosticsCommand = vscode.commands.registerCommand('explorerDates.runWebDiagnostics', async () => {
+            recordCommandInvocation('explorerDates.runWebDiagnostics');
+            try {
+                const state = getWebDiagnosticsState();
+                let registered = [];
+                try {
+                    registered = await vscode.commands.getCommands(true);
+                } catch (err) {
+                    diagLog('warn', 'Failed to query command registry', { error: err?.message });
+                }
+                const contributed = (context?.extension?.packageJSON?.contributes?.commands || [])
+                    .map((cmd) => cmd.command);
+                const missing = contributed.filter((cmd) => !registered.includes(cmd));
+                const summary = {
+                    uiKind: vscode?.env?.uiKind,
+                    isWeb: isWebEnvironment,
+                    registeredCount: registered.length,
+                    contributedCount: contributed.length,
+                    missingCommands: missing.slice(0, 20),
+                    provider: state.provider,
+                    chunkLoads: state.chunkLoads.slice(-10)
+                };
+                diagLog('info', 'Web diagnostics summary', summary);
+                try {
+                    const headline = missing.length
+                        ? `Web diagnostics: ${missing.length} missing commands`
+                        : 'Web diagnostics: commands registered';
+                    vscode.window.showInformationMessage(headline);
+                } catch {
+                    // ignore UI failures in web tests
+                }
+                recordCommandResult('explorerDates.runWebDiagnostics', true);
+            } catch (error) {
+                recordCommandResult('explorerDates.runWebDiagnostics', false, error);
+                throw error;
+            }
+        });
+        context.subscriptions.push(runWebDiagnosticsCommand);
 
         // Lazy load analysis commands only when needed
         const registerAnalysisCommandsLazy = async () => {
@@ -1113,6 +1238,20 @@ async function activate(context) {
             if (runtimeChunk?.registerRuntimeCommands) {
                 return runtimeChunk.registerRuntimeCommands;
             }
+
+            // Web runtime fallback: load the local runtime commands module directly
+            if (isWeb) {
+                try {
+                    const mod = await import('./src/commands/runtimeCommands.js');
+                    if (mod?.registerRuntimeCommands) {
+                        logger.warn('Runtime chunk missing in web; using bundled runtime commands fallback');
+                        return mod.registerRuntimeCommands;
+                    }
+                } catch (error) {
+                    logger.warn('Web runtime fallback for runtime commands failed', error);
+                }
+            }
+
             // Runtime commands are chunked; skip loading when the chunk is unavailable to keep the core bundle slim
             logger.warn('Runtime chunk missing; runtime commands not initialized');
             return null;
@@ -1121,6 +1260,9 @@ async function activate(context) {
         try {
             const registerRuntimeCommands = await loadRuntimeCommands();
             if (registerRuntimeCommands) {
+                if (isWebDiagnosticsEnabled()) {
+                    diagLog('info', 'Runtime commands registration starting');
+                }
                 const { runtimeManager, teamPersistenceManager } = registerRuntimeCommands(context);
 
                 if (activeRuntimeManager?.dispose) {
@@ -1153,8 +1295,19 @@ async function activate(context) {
             }
         } catch (error) {
             logger.error('Failed to initialize runtime chunk management:', error);
+            if (isWebDiagnosticsEnabled()) {
+                diagLog('error', 'Runtime command initialization failed', { error: error?.message, stack: error?.stack });
+            }
         }
-        
+
+        if (isWebDiagnosticsEnabled()) {
+            const state = getWebDiagnosticsState();
+            diagLog('info', 'Activation complete', {
+                commandsRegistered: state.commandsRegistered?.size || 0,
+                provider: state.provider
+            });
+        }
+
         // Return API factory if enabled so VS Code exposes it to dependent extensions
         if (apiEnabled) {
             return apiFactory;
@@ -1164,6 +1317,9 @@ async function activate(context) {
         const errorMessage = `${l10n ? l10n.getString('activationError') : 'Explorer Dates failed to activate'}: ${error.message}`;
         getActiveLogger().error('Extension activation failed', error);
         vscode.window.showErrorMessage(errorMessage);
+        if (isWebDiagnosticsEnabled()) {
+            diagLog('error', 'Activation failed', { error: error?.message, stack: error?.stack });
+        }
         throw error;
     }
 }

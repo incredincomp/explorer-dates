@@ -1,4 +1,39 @@
 try { require('vscode'); } catch { }
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+let diagLog = null;
+let isWebDiagnosticsEnabled = () => false;
+try {
+    const webDiag = require('../utils/webDiagnostics');
+    if (webDiag) {
+        diagLog = webDiag.diagLog;
+        isWebDiagnosticsEnabled = webDiag.isWebDiagnosticsEnabled || (() => false);
+    }
+} catch { /* ignore */ }
+
+function isWebRuntime() {
+    try {
+        const { isWebEnvironment } = require('../utils/env');
+        return isWebEnvironment();
+    } catch {
+        return env.VSCODE_WEB === 'true';
+    }
+}
+
+function getWebChunkRegistry() {
+    try {
+        const { WEB_CHUNK_GLOBAL_KEY, LEGACY_WEB_CHUNK_GLOBAL_KEY } = require('../constants');
+        if (typeof globalThis !== 'undefined') {
+            return globalThis[WEB_CHUNK_GLOBAL_KEY] || globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] || null;
+        }
+    } catch { /* ignore */ }
+    return null;
+}
+
+function resolveProviderModuleFromWebRegistry() {
+    const registry = getWebChunkRegistry();
+    if (!registry) return null;
+    return registry.fileDateProviderImplExport || registry.fileDateProviderImpl || null;
+}
 
 async function hydrateProviderOptionalSystems(provider) {
     // Defensive: don't throw; just attempt to hydrate optional heavy systems
@@ -69,22 +104,42 @@ function createFileDateDecorationProvider(context) {
     try {
         // Prefer chunked provider impl in production builds
         let ProviderClass = null;
+        const webRuntime = isWebRuntime();
+        if (webRuntime) {
+            const webModule = resolveProviderModuleFromWebRegistry();
+            ProviderClass = webModule && (webModule.FileDateDecorationProvider || webModule.FileDateDecorationProviderImpl || webModule.default);
+            if (!ProviderClass && isWebDiagnosticsEnabled()) {
+                diagLog?.('warn', 'Provider module missing from web registry', {
+                    hasRegistry: !!getWebChunkRegistry(),
+                    availableKeys: Object.keys(getWebChunkRegistry() || {})
+                });
+            }
+        }
         try {
-            const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
-            if (typeof dynamicRequire === 'function') {
+            if (!webRuntime) {
+                const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+                if (typeof dynamicRequire === 'function') {
                 let mod = null;
                 try { mod = dynamicRequire('./fileDateProviderImplExport'); } catch { /* ignore */ }
                 if (!mod) {
                     try { mod = dynamicRequire('./fileDateProviderImpl'); } catch { /* ignore */ }
                 }
                 ProviderClass = mod && (mod.FileDateDecorationProvider || mod.FileDateDecorationProviderImpl || mod.default);
+                }
             }
         } catch { /* ignore */ }
 
         // Dev fallback: use the local source provider
-        if (!ProviderClass) {
+        if (!ProviderClass && !webRuntime) {
             const { FileDateDecorationProvider } = require('../fileDateDecorationProvider');
             ProviderClass = FileDateDecorationProvider;
+        }
+
+        if (!ProviderClass) {
+            if (isWebDiagnosticsEnabled()) {
+                diagLog?.('warn', 'Provider class unavailable', { webRuntime });
+            }
+            return null;
         }
 
         const provider = new ProviderClass();
