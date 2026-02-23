@@ -4,6 +4,7 @@ const assert = require('assert');
 const { scheduleExit } = require('./helpers/forceExit');
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Feature loader failed/,
@@ -20,6 +21,16 @@ addWarningFilters([
     /Failed to open template manager .*ChunkLoadError: Failed to load workspaceTemplates/,
     /Failed to show API information .*ChunkLoadError: Failed to load extensionApi/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'chunk-loading tests intentionally exercise missing built chunks'
+});
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'loggerImpl',
+    reason: 'chunk-loading tests intentionally exercise missing built chunks'
+});
 
 /**
  * Critical Tests for Feature-Module Loading Failures

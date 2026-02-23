@@ -4,10 +4,16 @@ const assert = require('assert');
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'configuration watcher test tolerates missing built chunk'
+});
 
 function installConfigChangeHelper(mock) {
     let configChangeListener = null;

@@ -5,10 +5,16 @@ const path = require('path');
 const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'performance mode test tolerates missing built chunk'
+});
 
 const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
 const mockInstall = createTestMock({ sampleWorkspace: sampleWorkspaceRoot });

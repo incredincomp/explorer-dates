@@ -3,11 +3,21 @@
 const assert = require('assert');
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
     /Feature loader failed .*incrementalWorkers/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'incremental worker flag test tolerates missing built chunk'
+});
+expectMissingBuiltChunkWarning({
+    chunkName: 'loggerImpl',
+    reason: 'incremental worker flag test tolerates missing built chunk'
+});
 
 let mockInstall;
 let extension;

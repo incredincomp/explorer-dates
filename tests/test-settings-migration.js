@@ -16,13 +16,21 @@ const {
 } = require('./helpers/mockVscode');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /No FileDateDecorationProvider available for web runtime/,
     /FileDateDecorationProvider unavailable — continuing without file decorations/,
-    /Onboarding preload failed \(non-fatal\): .*OnboardingManager/,
+    /Onboarding logic unavailable, using minimal fallback/,
+    /Onboarding fallback loaded without a valid factory/,
+    /Onboarding preload failed \(non-fatal\):/,
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'settings migration test tolerates missing built chunk'
+});
 
 const sampleWorkspaceRoot = path.join(__dirname, 'fixtures', 'sample-workspace');
 
@@ -208,7 +216,8 @@ async function runNodeBundleMigration(options = {}) {
     const mockInstall = createTestMock({
         config: {
             'explorerDates.enableReporting': true,
-            'explorerDates.customColors': globalCustomColors
+            'explorerDates.customColors': globalCustomColors,
+            'explorerDates.migrateLegacyCustomColorsOnStartup': true
         },
         workspaceConfig: {
             enableReporting: false,
@@ -331,7 +340,8 @@ async function testWebBundleMigration() {
     const harness = createWebVscodeMock({
         configValues: {
             'explorerDates.enableReporting': false,
-            'explorerDates.customColors': globalCustomColors
+            'explorerDates.customColors': globalCustomColors,
+            'explorerDates.migrateLegacyCustomColorsOnStartup': true
         },
         workspaceConfigValues: {
             'explorerDates.enableReporting': true,
@@ -470,11 +480,10 @@ async function testKeepOldSettingsOptOut() {
         mockInstall.dispose();
     }
 
-    expectCleanupAcrossScopes(
+    expectNoCleanup(
         mockInstall.appliedUpdates,
         'explorerDates.customColors',
-        'Keep old settings (auto-clear)',
-        ['global', 'workspace', 'workspaceFolder']
+        'Keep old settings (opt-out)'
     );
     expectCleanupAcrossScopes(
         mockInstall.appliedUpdates,
@@ -537,11 +546,10 @@ async function testWebBundleOptOut() {
         harness.restore();
     }
 
-    expectCleanupAcrossScopes(
+    expectNoCleanup(
         harness.appliedUpdates,
         'explorerDates.customColors',
-        'Web keep old settings (auto-clear)',
-        ['global', 'workspace', 'workspaceFolder']
+        'Web keep old settings (opt-out)'
     );
     expectCleanupAcrossScopes(
         harness.appliedUpdates,
@@ -1272,6 +1280,9 @@ async function testNodeWorkspaceFolderPaletteMigration() {
         old: '#a78bfa'
     };
     const mockInstall = createTestMock({
+        config: {
+            'explorerDates.migrateLegacyCustomColorsOnStartup': true
+        },
         workspaceFolderConfig: {
             customColors: folderCustomColors
         },
@@ -1324,6 +1335,9 @@ async function testWebWorkspaceFolderPaletteMigration() {
         old: '#facc15'
     };
     const harness = createWebVscodeMock({
+        configValues: {
+            'explorerDates.migrateLegacyCustomColorsOnStartup': true
+        },
         workspaceFolderConfigValues: {
             'explorerDates.customColors': folderCustomColors
         },

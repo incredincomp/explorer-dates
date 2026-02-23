@@ -51,19 +51,21 @@ async function main() {
                 };
             };
 
-            // Start decoration operation
-            const uri = vscode.Uri.file('/active-workspace/test-file.js');
-            const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
+            try {
+                // Start decoration operation
+                const uri = vscode.Uri.file('/active-workspace/test-file.js');
+                const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
-            // Dispose provider while operation is active
-            provider.dispose();
-            operationInProgress = false;
+                // Dispose provider while operation is active
+                await provider.dispose();
+                operationInProgress = false;
 
-            // Cleanup
-            mockFs.stat = originalStat;
-
-            // Should dispose gracefully without errors
-            assert(provider._isDisposed, 'Provider not properly disposed during active operations');
+                // Should dispose gracefully without errors
+                assert(provider._isDisposed, 'Provider not properly disposed during active operations');
+            } finally {
+                // Cleanup
+                mockFs.stat = originalStat;
+            }
         });
 
         await runTest('Resource Disposal Under Stress', async () => {
@@ -77,7 +79,7 @@ async function main() {
             }
 
             // Dispose immediately while operations are running
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal metrics
             assert(provider._isDisposed, 'Provider not disposed under stress conditions');
@@ -106,7 +108,7 @@ async function main() {
             const cacheSize = provider._decorationCache?.size || 0; void cacheSize;
 
             // Dispose and verify cleanup
-            provider.dispose();
+            await provider.dispose();
 
             // Check all cache structures are cleared
             if (provider._decorationCache && provider._decorationCache.size > 0) {
@@ -139,7 +141,7 @@ async function main() {
             }
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify event listeners were cleaned up
             if (provider._onDidChangeFileDecorations && !listenersRemoved && provider._onDidChangeFileDecorations._listeners) {
@@ -174,7 +176,7 @@ async function main() {
             }
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal completed
             assert(provider._isDisposed, 'Provider should be disposed');
@@ -190,7 +192,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Check that key references are cleared
             const criticalReferences = [
@@ -228,7 +230,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Simulate configuration reset
-            provider.dispose();
+            await provider.dispose();
 
             // Verify clean disposal
             assert(provider._isDisposed, 'Provider not marked as disposed after configuration reset');
@@ -248,7 +250,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Simulate workspace closure
-            provider.dispose();
+            await provider.dispose();
 
             // Verify graceful disposal
             assert(provider._isDisposed, 'Provider not properly disposed on workspace close');
@@ -275,22 +277,24 @@ async function main() {
                 };
             };
 
-            // Start operation
-            const startTime = Date.now();
-            const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
+            try {
+                // Start operation
+                const startTime = Date.now();
+                const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
-            // Dispose quickly (should not wait for slow operation)
-            provider.dispose();
-            const disposeTime = Date.now() - startTime;
+                // Dispose quickly (should not wait for slow operation)
+                await provider.dispose();
+                const disposeTime = Date.now() - startTime;
 
-            // Cleanup
-            mockFs.stat = originalStat;
+                // Should dispose quickly
+                assert(provider._isDisposed, 'Provider not disposed during graceful shutdown');
 
-            // Should dispose quickly
-            assert(provider._isDisposed, 'Provider not disposed during graceful shutdown');
-
-            // Note: Disposal time check is lenient since it depends on implementation
-            console.log(`   Disposal completed in ${disposeTime}ms`);
+                // Note: Disposal time check is lenient since it depends on implementation
+                console.log(`   Disposal completed in ${disposeTime}ms`);
+            } finally {
+                // Cleanup
+                mockFs.stat = originalStat;
+            }
         });
 
         await runTest('Partial Disposal Recovery', async () => {
@@ -301,7 +305,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal completed
             assert(provider._isDisposed, 'Provider not marked as disposed during partial disposal');

@@ -5,10 +5,16 @@ const path = require('path');
 const { scheduleExit } = require('./helpers/forceExit');
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'telemetry command test tolerates missing built chunk'
+});
 
 const extensionEntryPath = path.join(__dirname, '..', 'extension.js');
 
