@@ -905,6 +905,7 @@
 		"test:chunk-exports": "node -r ./tests/helpers/strictConsole.js tests/verify-chunk-exports.js",
     "test:performance-baselines": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js",
     "test:extras": "node -r ./tests/helpers/strictConsole.js scripts/run-test-suite.js",
+    "test:contracts": "node -r ./tests/helpers/strictConsole.js tests/test-chunk-contracts.js && node -r ./tests/helpers/strictConsole.js tests/test-provider-contract.js",
     "test:fuzz-long": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-fuzz-long.js",
     "test:stress-crossplatform": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-crossplatform-stress.js",
     "test:performance": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-mode.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-under-load.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-regression.js",

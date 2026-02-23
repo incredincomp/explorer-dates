@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  contract-tests:
+    name: Contract Guardrail Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run contract guardrails
+        run: |
+          set -euo pipefail
+          if [ -f tests/test-chunk-contracts.js ] && [ -f tests/test-provider-contract.js ]; then
+            npm run test:contracts
+          else
+            echo "Skipping contract guardrails (tests missing)"
+          fi
+
   critical-tests:
     name: Critical Runtime Tests
     runs-on: ubuntu-latest
