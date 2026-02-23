@@ -2,7 +2,6 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const path = require('path');
 const { scheduleExit } = require('./helpers/forceExit');
 const {
     CHUNK_EXPORT_CONTRACTS,
