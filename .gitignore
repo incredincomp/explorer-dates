@@ -3,6 +3,8 @@ node_modules
 *.vsix
 .env
 .vscode-test-web/
+.local-web-cert/
+.vscode-dev-sideload/
 tests/artifacts/
 logs/
 DOCS/testing/

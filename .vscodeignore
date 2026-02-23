@@ -9,6 +9,8 @@ node_modules/**
 logs/**
 out/
 .venv/**
+.local-web-cert/**
+.vscode-dev-sideload/**
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -21,4 +23,3 @@ eslint.config.js
 package-lock.json
 *.vsix
 ci-artifacts/**
-

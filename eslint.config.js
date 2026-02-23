@@ -8,6 +8,8 @@ module.exports = [
             "*.vsix",
             ".env",
             "dist/**",
+            ".local-web-cert/**",
+            ".vscode-dev-sideload/**",
             "tests/artifacts/**"
         ]
     },

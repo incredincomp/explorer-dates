@@ -27,7 +27,16 @@ try {
 } catch { /* ignore */ }
 if (!ensureDate) { const dateHelpers = require('./src/utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 const { WEB_CHUNK_GLOBAL_KEY, LEGACY_WEB_CHUNK_GLOBAL_KEY } = require('./src/constants');
-const isWebEnvironment = typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
+const isWebEnvironment = (() => {
+    try {
+        if (typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true') return true;
+    } catch { /* ignore */ }
+    try {
+        return vscode?.env?.uiKind === vscode?.UIKind?.Web;
+    } catch {
+        return false;
+    }
+})();
 let nodeFs = null;
 let nodePath = null;
 const webTextDecoder = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
