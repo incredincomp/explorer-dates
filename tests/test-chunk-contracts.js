@@ -3,6 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const { scheduleExit } = require('./helpers/forceExit');
+const { createTestMock } = require('./helpers/mockVscode');
 const {
     CHUNK_EXPORT_CONTRACTS,
     normalizeModuleExports,
@@ -10,6 +11,9 @@ const {
     matchesExpectedKind,
     formatMissingExportsError
 } = require('./helpers/chunk-contracts');
+
+// Install VS Code mock before requiring chunks that import vscode.
+createTestMock({ testName: 'chunk-contracts' });
 
 function resolveAvailableDistPath(candidates = []) {
     for (const candidate of candidates) {
