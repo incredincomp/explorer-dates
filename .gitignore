@@ -25,3 +25,4 @@ old-builds/PERFORMANCE_BASELINE_SETUP.md
 ci-artifacts/**
 explorer-dates.code-workspace
 Copilot-Processing.md
+tests/fixtures/sample-workspace/.explorer-dates-profiles.json
