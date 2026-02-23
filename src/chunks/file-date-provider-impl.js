@@ -25,6 +25,77 @@ const FEATURE_LEVELS = ['full', 'enhanced', 'standard', 'minimal'];
 // Local fallback priority map for smart-watcher heuristics (keeps parity with main provider)
 const SMART_WATCHER_PRIORITY = new Map([[ 'src', 100 ], [ 'lib', 65 ], [ 'test', 30 ]]);
 
+function getAdaptiveColorsFallback() {
+    try {
+        const kind = vscode?.window?.activeColorTheme?.kind;
+        const isHighContrast = kind === vscode.ColorThemeKind.HighContrast;
+        const isLight = kind === vscode.ColorThemeKind.Light;
+
+        if (isHighContrast) {
+            return {
+                veryRecent: new vscode.ThemeColor('list.highlightForeground'),
+                recent: new vscode.ThemeColor('list.warningForeground'),
+                old: new vscode.ThemeColor('list.errorForeground'),
+                javascript: new vscode.ThemeColor('list.highlightForeground'),
+                css: new vscode.ThemeColor('list.warningForeground'),
+                html: new vscode.ThemeColor('list.errorForeground'),
+                json: new vscode.ThemeColor('list.highlightForeground'),
+                markdown: new vscode.ThemeColor('list.warningForeground'),
+                python: new vscode.ThemeColor('list.errorForeground'),
+                subtle: new vscode.ThemeColor('list.highlightForeground'),
+                muted: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+                emphasis: new vscode.ThemeColor('list.focusHighlightForeground')
+            };
+        }
+
+        if (isLight) {
+            return {
+                veryRecent: new vscode.ThemeColor('list.highlightForeground'),
+                recent: new vscode.ThemeColor('list.warningForeground'),
+                old: new vscode.ThemeColor('list.errorForeground'),
+                javascript: new vscode.ThemeColor('symbolIcon.functionForeground'),
+                css: new vscode.ThemeColor('symbolIcon.colorForeground'),
+                html: new vscode.ThemeColor('symbolIcon.snippetForeground'),
+                json: new vscode.ThemeColor('symbolIcon.stringForeground'),
+                markdown: new vscode.ThemeColor('symbolIcon.textForeground'),
+                python: new vscode.ThemeColor('symbolIcon.classForeground'),
+                subtle: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+                muted: new vscode.ThemeColor('list.deemphasizedForeground'),
+                emphasis: new vscode.ThemeColor('list.highlightForeground')
+            };
+        }
+
+        return {
+            veryRecent: new vscode.ThemeColor('list.highlightForeground'),
+            recent: new vscode.ThemeColor('charts.yellow'),
+            old: new vscode.ThemeColor('charts.red'),
+            javascript: new vscode.ThemeColor('symbolIcon.functionForeground'),
+            css: new vscode.ThemeColor('charts.purple'),
+            html: new vscode.ThemeColor('charts.orange'),
+            json: new vscode.ThemeColor('symbolIcon.stringForeground'),
+            markdown: new vscode.ThemeColor('charts.yellow'),
+            python: new vscode.ThemeColor('symbolIcon.classForeground'),
+            subtle: new vscode.ThemeColor('list.inactiveSelectionForeground'),
+            muted: new vscode.ThemeColor('list.deemphasizedForeground'),
+            emphasis: new vscode.ThemeColor('list.highlightForeground')
+        };
+    } catch {
+        return null;
+    }
+}
+
+function getFileTypeColorFallback(filePath, colors) {
+    if (!colors || !filePath) return null;
+    const ext = getExtension(filePath);
+    if (['.js', '.ts', '.jsx', '.tsx', '.mjs'].includes(ext)) return colors.javascript;
+    if (['.css', '.scss', '.sass', '.less', '.stylus'].includes(ext)) return colors.css;
+    if (['.html', '.htm', '.xml', '.svg'].includes(ext)) return colors.html;
+    if (['.json', '.yaml', '.yml', '.toml'].includes(ext)) return colors.json;
+    if (['.md', '.markdown', '.txt', '.rst'].includes(ext)) return colors.markdown;
+    if (['.py', '.pyx', '.pyi'].includes(ext)) return colors.python;
+    return null;
+}
+
 let getFileName = (p) => {
     try {
         const s = String(p || '');
@@ -1070,10 +1141,30 @@ class FileDateDecorationProviderImpl {
                 return new vscode.ThemeColor('explorerDates.customColor.old');
             }
             // recency/adaptive/vibrant/subtle fallback (minimal)
-            if (scheme === 'recency' || scheme === 'adaptive') {
+            if (scheme === 'recency') {
                 if (ageMs < 36e5) return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
                 if (ageMs < 864e5) return new vscode.ThemeColor('explorerDates.customColor.recent');
                 return new vscode.ThemeColor('explorerDates.customColor.old');
+            }
+            const colors = getAdaptiveColorsFallback();
+            if (scheme === 'file-type' || scheme === 'adaptive') {
+                const fileTypeColor = getFileTypeColorFallback(filePath, colors);
+                if (fileTypeColor) return fileTypeColor;
+                if (scheme === 'adaptive' && colors) {
+                    if (ageMs < 36e5) return colors.veryRecent;
+                    if (ageMs < 864e5) return colors.recent;
+                    return colors.old;
+                }
+            }
+            if (scheme === 'subtle' && colors) {
+                if (ageMs < 36e5) return colors.subtle;
+                if (ageMs < 6048e5) return colors.muted;
+                return colors.emphasis;
+            }
+            if (scheme === 'vibrant' && colors) {
+                if (ageMs < 36e5) return colors.veryRecent;
+                if (ageMs < 864e5) return colors.recent;
+                return colors.old;
             }
             return undefined;
         } catch (e) {
