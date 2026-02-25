@@ -28,3 +28,4 @@ ci-artifacts/**
 explorer-dates.code-workspace
 Copilot-Processing.md
 tests/fixtures/sample-workspace/.explorer-dates-profiles.json
+scripts/run-local-extension-server-host.sh
