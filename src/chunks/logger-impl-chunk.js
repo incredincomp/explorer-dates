@@ -1,9 +1,19 @@
-const vscode = require('vscode');
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
-const isWebRuntime = env.VSCODE_WEB === 'true';
+const vscode = (typeof require === 'function')
+    ? require('vscode')
+    : (typeof globalThis !== 'undefined' ? globalThis.vscode : null) || {};
+const isWebRuntime = (() => {
+    try {
+        return vscode?.env?.uiKind === vscode?.UIKind?.Web;
+    } catch {
+        return typeof process === 'undefined' || env.VSCODE_WEB === 'true';
+    }
+})();
 const inspectValue = (() => {
     if (!isWebRuntime) {
-        return eval('require')('util').inspect;
+        if (typeof require === 'function') {
+            return require('util').inspect;
+        }
     }
     return (value) => {
         if (typeof value === 'string') return value;

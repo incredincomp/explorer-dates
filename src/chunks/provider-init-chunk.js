@@ -26,13 +26,34 @@ function getWebChunkRegistry() {
             return globalThis[WEB_CHUNK_GLOBAL_KEY] || globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] || null;
         }
     } catch { /* ignore */ }
+    if (typeof globalThis !== 'undefined') {
+        return globalThis.explorerDatesChunks || globalThis.__explorerDatesChunks || null;
+    }
     return null;
 }
 
 function resolveProviderModuleFromWebRegistry() {
     const registry = getWebChunkRegistry();
     if (!registry) return null;
-    return registry.fileDateProviderImplExport || registry.fileDateProviderImpl || null;
+    const candidates = [
+        registry.fileDateProviderImplExport,
+        registry.fileDateProviderImpl,
+        registry['fileDateProviderImplExport'],
+        registry['fileDateProviderImpl'],
+        registry['file-date-provider-impl-export'],
+        registry['file-date-provider-impl']
+    ].filter(Boolean);
+    return candidates.length > 0 ? candidates[0] : null;
+}
+
+function normalizeModuleExports(mod) {
+    if (!mod) return null;
+    const direct = mod && typeof mod === 'object' ? mod : { default: mod };
+    const def = (direct && typeof direct === 'object' && direct.default) ? direct.default : null;
+    if (def && typeof def === 'object') {
+        return { ...direct, ...def };
+    }
+    return direct;
 }
 
 async function hydrateProviderOptionalSystems(provider) {
@@ -106,12 +127,44 @@ function createFileDateDecorationProvider(context) {
         let ProviderClass = null;
         const webRuntime = isWebRuntime();
         if (webRuntime) {
-            const webModule = resolveProviderModuleFromWebRegistry();
-            ProviderClass = webModule && (webModule.FileDateDecorationProvider || webModule.FileDateDecorationProviderImpl || webModule.default);
-            if (!ProviderClass && isWebDiagnosticsEnabled()) {
+            const registry = getWebChunkRegistry();
+            const moduleCandidates = [
+                registry?.fileDateProviderImplExport,
+                registry?.fileDateProviderImpl,
+                registry?.['fileDateProviderImplExport'],
+                registry?.['fileDateProviderImpl'],
+                registry?.['file-date-provider-impl-export'],
+                registry?.['file-date-provider-impl']
+            ].filter(Boolean);
+            const webModule = moduleCandidates[0] || resolveProviderModuleFromWebRegistry();
+            if (!registry && isWebDiagnosticsEnabled()) {
+                diagLog?.('warn', 'Provider registry missing in web runtime');
+            } else if (!webModule && isWebDiagnosticsEnabled()) {
                 diagLog?.('warn', 'Provider module missing from web registry', {
-                    hasRegistry: !!getWebChunkRegistry(),
-                    availableKeys: Object.keys(getWebChunkRegistry() || {})
+                    hasRegistry: !!registry,
+                    availableKeys: Object.keys(registry || {}),
+                    candidateCount: moduleCandidates.length
+                });
+            }
+            let resolved = null;
+            for (const candidate of moduleCandidates) {
+                const normalized = normalizeModuleExports(candidate);
+                const cls = normalized && (normalized.FileDateDecorationProvider || normalized.FileDateDecorationProviderImpl || normalized.default);
+                if (cls) {
+                    resolved = cls;
+                    break;
+                }
+                if (isWebDiagnosticsEnabled()) {
+                    diagLog?.('warn', 'Provider exports missing expected class', {
+                        availableExportKeys: Object.keys(normalized || {})
+                    });
+                }
+            }
+            ProviderClass = resolved;
+            if (!ProviderClass && isWebDiagnosticsEnabled() && moduleCandidates.length > 0) {
+                diagLog?.('warn', 'Provider class unresolved from registry entries', {
+                    candidateCount: moduleCandidates.length,
+                    availableRegistryKeys: Object.keys(registry || {})
                 });
             }
         }
@@ -137,12 +190,18 @@ function createFileDateDecorationProvider(context) {
 
         if (!ProviderClass) {
             if (isWebDiagnosticsEnabled()) {
-                diagLog?.('warn', 'Provider class unavailable', { webRuntime });
+                diagLog?.('warn', 'Provider class unavailable', {
+                    webRuntime,
+                    registryKeys: Object.keys(getWebChunkRegistry() || {})
+                });
             }
             return null;
         }
 
         const provider = new ProviderClass();
+        if (isWebDiagnosticsEnabled()) {
+            diagLog?.('info', 'Provider class resolved', { className: ProviderClass?.name || 'unknown' });
+        }
         // Initialize heavy subsystems in background via existing hydration logic
         (async () => {
             try { await provider.initializeAdvancedSystems(context); } catch (e) { provider._logger?.debug('provider-init: provider factory init failed', e); }

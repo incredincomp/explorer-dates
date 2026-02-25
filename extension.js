@@ -1,5 +1,6 @@
 // extension.js - Explorer Dates
 const vscode = require('vscode');
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 // FileDateDecorationProvider: loaded lazily from chunk at activation to keep core bundle small
 // If chunks are not available at runtime, we fall back to the source provider synchronously in activation.
 const { getLogger } = require('./src/utils/logger');
@@ -47,6 +48,13 @@ const isWebEnvironment = (() => {
         return false;
     }
 })();
+if (isWebEnvironment && typeof globalThis !== 'undefined' && !globalThis.__explorerDatesRuntimeCommands) {
+    try {
+        globalThis.__explorerDatesRuntimeCommands = require('./src/commands/runtimeCommands');
+    } catch {
+        // ignore: web runtime will fall back to chunk registry if available
+    }
+}
 let nodeFs = null;
 let nodePath = null;
 const webTextDecoder = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
@@ -150,11 +158,11 @@ const featureFlagsModule = require('./src/featureFlags');
 registerFeatureFlagsGlobal(featureFlagsModule);
 const featureFlags = featureFlagsModule;  // Get all exported methods including spread ones
 const { setFeatureChunkResolver } = featureFlagsModule;
-const { generateDevLoaderMap } = require('./src/shared/chunkMap');
+const { CHUNK_MAP, generateDevLoaderMap } = require('./src/shared/chunkMap');
 
 // Chunk loading system for module federation
 const sourceChunkLoader = (() => {
-    if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+    if (typeof process === 'undefined' || env.NODE_ENV === 'production') {
         return null;
     }
     try {
@@ -187,6 +195,7 @@ const chunkLoader = {
     webChunkPromises: new Map(),
     _webLoadedScripts: new Set(),
     _missingChunks: new Set(),
+    _webChunkAliases: null,
 
     initialize(context) {
         if (nodePath) {
@@ -198,6 +207,9 @@ const chunkLoader = {
         }
         if (context?.extensionUri) {
             this.extensionUri = context.extensionUri;
+        }
+        if (!this._webChunkAliases) {
+            this._webChunkAliases = this._buildWebChunkAliases();
         }
     },
 
@@ -350,8 +362,9 @@ const chunkLoader = {
         try {
             const raw = await vscode.workspace.fs.readFile(chunkUri);
             const source = webTextDecoder.decode(raw);
-            const evaluator = new Function(source);
-            evaluator.call(globalThis);
+            const webRequire = (moduleId) => this._webRequire(moduleId);
+            const evaluator = new Function('require', source);
+            evaluator.call(globalThis, webRequire);
             this._syncChunkRegistryKeys();
             this._webLoadedScripts.add(chunkName);
         } catch (error) {
@@ -382,6 +395,56 @@ const chunkLoader = {
         if (!globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY]) {
             globalThis[LEGACY_WEB_CHUNK_GLOBAL_KEY] = registry;
         }
+    },
+
+    _buildWebChunkAliases() {
+        const aliases = new Map();
+        const entries = Object.entries(CHUNK_MAP || {});
+        for (const [chunkName, chunkPath] of entries) {
+            const base = String(chunkPath || '').split('/').pop();
+            if (base) {
+                aliases.set(base, chunkName);
+            }
+        }
+        return aliases;
+    },
+
+    _resolveWebChunkAlias(moduleId) {
+        if (!moduleId) return null;
+        const cleaned = String(moduleId)
+            .replace(/^[.\\/]+/, '')
+            .replace(/\.js$/, '');
+        if (this._webChunkAliases && this._webChunkAliases.has(cleaned)) {
+            return this._webChunkAliases.get(cleaned);
+        }
+        const base = cleaned.split('/').pop();
+        if (this._webChunkAliases && this._webChunkAliases.has(base)) {
+            return this._webChunkAliases.get(base);
+        }
+        return null;
+    },
+
+    _webRequire(moduleId) {
+        if (moduleId === 'vscode') {
+            return vscode;
+        }
+        const registry = this._getWebChunkRegistry();
+        if (!registry) {
+            throw new Error(`Web require failed: registry unavailable for ${moduleId}`);
+        }
+        const alias = this._resolveWebChunkAlias(moduleId);
+        if (alias && registry[alias]) {
+            return registry[alias];
+        }
+        if (registry[moduleId]) {
+            return registry[moduleId];
+        }
+        if (moduleId === '../commands/runtimeCommands' || moduleId === './commands/runtimeCommands') {
+            if (typeof globalThis !== 'undefined' && globalThis.__explorerDatesRuntimeCommands) {
+                return globalThis.__explorerDatesRuntimeCommands;
+            }
+        }
+        throw new Error(`Web require unsupported: ${moduleId}`);
     },
 
     _markChunkMissing(chunkName) {
@@ -693,10 +756,14 @@ async function activate(context) {
                         if (isWebDiagnosticsEnabled()) {
                             diagLog('info', 'Provider impl export chunk loaded', { chunkName: 'fileDateProviderImplExport' });
                         }
-                    } catch (e) {
-                        logger.warn('Failed to load provider impl export chunk in web runtime', e?.message || e);
+                        await chunkLoader.loadChunk('fileDateProviderImpl');
                         if (isWebDiagnosticsEnabled()) {
-                            diagLog('warn', 'Provider impl export chunk load failed', { error: e?.message || String(e) });
+                            diagLog('info', 'Provider impl chunk loaded', { chunkName: 'fileDateProviderImpl' });
+                        }
+                    } catch (e) {
+                        logger.warn('Failed to load provider impl chunk in web runtime', e?.message || e);
+                        if (isWebDiagnosticsEnabled()) {
+                            diagLog('warn', 'Provider impl chunk load failed', { error: e?.message || String(e) });
                         }
                     }
                 }
@@ -811,7 +878,7 @@ async function activate(context) {
             if (!exportReportingRegistered) {
                 const config = vscode.workspace.getConfiguration('explorerDates');
                 const performanceMode = config.get('performanceMode', false);
-                const lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+                const lightweightMode = env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
                 if (performanceMode || lightweightMode) {
                     logger.warn('Initializing Export Reporting Manager while performance/lightweight mode is active; activity tracking will remain suppressed.');
                 }
@@ -968,7 +1035,7 @@ async function activate(context) {
                 console.log('DEBUG analysisWarningState', { alreadyWarned, map: context.globalState.get(ANALYSIS_WARNING_WORKSPACE_KEY, {}), warnedSet: Array.from(_warnedWorkspaces) });
                 if (!alreadyWarned) {
                     // In test mode, pre-mark the workspace as warned synchronously to avoid races
-                    if (process.env.EXPLORER_DATES_TEST_MODE === '1') {
+                    if (env.EXPLORER_DATES_TEST_MODE === '1') {
                         try {
                             await setAnalysisWarningShown(context, true);
                         } catch (err) {
@@ -981,7 +1048,7 @@ async function activate(context) {
                         'Enable Now',
                         'Dismiss'
                     ).then(async (selection) => {
-                        const effectiveSelection = process.env.EXPLORER_DATES_TEST_MODE === '1'
+                        const effectiveSelection = env.EXPLORER_DATES_TEST_MODE === '1'
                             ? 'Dismiss'
                             : selection;
                         if (effectiveSelection === l10n.getString('analysisEnableNow')) {
@@ -1275,7 +1342,7 @@ async function activate(context) {
                 activeTeamPersistenceManager = teamPersistenceManager;
 
                 // Schedule auto-suggestion check after activation (3-second delay)
-                const shouldScheduleAutoSuggestion = process.env.EXPLORER_DATES_TEST_MODE !== '1';
+                const shouldScheduleAutoSuggestion = env.EXPLORER_DATES_TEST_MODE !== '1';
                 if (shouldScheduleAutoSuggestion) {
                     runtimeAutoSuggestionTimer = setTimeout(async () => {
                         try {
@@ -1356,7 +1423,7 @@ async function deactivate() {
         // In test mode, wait briefly for any in-flight filesystem requests (fs.promises) to drain so
         // spawned test processes exit deterministically. This avoids flaky hangs caused by short-
         // lived libuv threadpool requests that may still be closing file handles.
-        if (process.env.EXPLORER_DATES_TEST_MODE === '1' && typeof process._getActiveRequests === 'function') {
+        if (env.EXPLORER_DATES_TEST_MODE === '1' && typeof process !== 'undefined' && typeof process._getActiveRequests === 'function') {
             const start = Date.now();
             while ((process._getActiveRequests() || []).length > 0 && Date.now() - start < 500) {
                 // yield to the event loop and allow pending FS requests to complete

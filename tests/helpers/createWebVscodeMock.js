@@ -508,6 +508,7 @@ function createWebVscodeMock(options = {}) {
     };
 
     const disposable = { dispose() {} };
+    let fileDecorationProvider = null;
     const vscode = {
         workspace: workspaceApi,
         ColorThemeKind: {
@@ -531,7 +532,10 @@ function createWebVscodeMock(options = {}) {
             showErrorMessage() {},
             onDidChangeActiveTextEditor: () => disposable,
             onDidChangeVisibleTextEditors: () => disposable,
-            registerFileDecorationProvider: () => disposable,
+            registerFileDecorationProvider(provider) {
+                fileDecorationProvider = provider;
+                return disposable;
+            },
             createWebviewPanel() {
                 return { webview: { html: '' }, reveal() {}, dispose() {} };
             },
@@ -662,6 +666,7 @@ function createWebVscodeMock(options = {}) {
         workspaceConfigStore,
         workspaceFolderConfigStore,
         chunkLoads,
+        fileDecorationProvider: () => fileDecorationProvider,
         get fileWatcherCount() {
             return fileWatcherCount;
         },

@@ -130,11 +130,15 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const settings = {
+                showDateDecorations: config.get('showDateDecorations', true),
+                performanceMode: config.get('performanceMode', false),
+                featureLevel: config.get('featureLevel', 'auto'),
                 highContrastMode: config.get('highContrastMode'),
                 badgePriority: config.get('badgePriority'),
                 colorScheme: config.get('colorScheme'),
                 accessibilityMode: config.get('accessibilityMode'),
                 dateDecorationFormat: config.get('dateDecorationFormat'),
+                fileSizeFormat: config.get('fileSizeFormat', 'auto'),
                 showGitInfo: config.get('showGitInfo'),
                 showFileSize: config.get('showFileSize')
             };

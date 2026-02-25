@@ -51,7 +51,6 @@ async function runWebSmokeTest() {
 
     try {
         await webBundle.activate(context);
-        await webBundle.deactivate();
 
         const registeredCommands = await harness.vscode.commands.getCommands(true);
         assert.ok(Array.isArray(registeredCommands), 'Web bundle should expose command registry');
@@ -114,6 +113,63 @@ async function runWebSmokeTest() {
             workspaceFolders.length,
             'Web harness should expose all workspace folders for chunk resolution'
         );
+
+        const diagState = globalThis.__explorerDatesWebDiagnostics;
+        if (diagState) {
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            await config.update('colorScheme', 'recency', harness.vscode.ConfigurationTarget.Global);
+            await config.update('performanceMode', false, harness.vscode.ConfigurationTarget.Global);
+
+            const provider = harness.fileDecorationProvider();
+            assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
+            const sampleFile = path.join(extensionRoot, 'tests', 'fixtures', 'sample-workspace', 'package.json');
+            const sampleUri = harness.vscode.Uri.file(sampleFile);
+            await provider.provideFileDecoration(sampleUri);
+
+            const logText = diagState.logs
+                .map((entry) => `${entry.level}:${entry.message} ${(entry.meta && entry.meta.error) || ''}`)
+                .join('\n');
+            assert.ok(
+                !logText.includes('require is not a function'),
+                'Web diagnostics should not report "require is not a function"'
+            );
+            assert.ok(
+                !logText.includes('process is not defined'),
+                'Web diagnostics should not report "process is not defined"'
+            );
+            assert.ok(
+                !logText.includes('Web require unsupported: ../teamConfigPersistence.proxy'),
+                'Web diagnostics should not report team config persistence require failures'
+            );
+            assert.ok(
+                !logText.includes('Provider unavailable in web runtime'),
+                'Web diagnostics should not report provider unavailable in web runtime'
+            );
+            assert.ok(
+                !logText.includes('Provider unavailable for decorations'),
+                'Web diagnostics should not report provider unavailable for decorations'
+            );
+            assert.ok(
+                diagState.provider?.created,
+                'Web diagnostics should report provider created'
+            );
+            assert.ok(
+                diagState.provider?.registered,
+                'Web diagnostics should report provider registered'
+            );
+            const decorationSamples = diagState.logs.filter((entry) => entry.message === 'Decoration sample');
+            assert.ok(
+                decorationSamples.length > 0,
+                'Web diagnostics should include decoration samples'
+            );
+            const hasColorSample = decorationSamples.some((entry) => entry.meta && entry.meta.hasColor);
+            assert.ok(
+                hasColorSample,
+                'Web diagnostics should include a decoration sample with color'
+            );
+        }
+
+        await webBundle.deactivate();
 
         console.log('✅ Web bundle smoke test passed');
     } catch (error) {

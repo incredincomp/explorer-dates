@@ -7,6 +7,13 @@ const {
 } = require('../utils/webDiagnostics');
 
 const logger = getLogger();
+const isWebRuntime = (() => {
+    try {
+        return vscode?.env?.uiKind === vscode?.UIKind?.Web;
+    } catch {
+        return (typeof process === 'undefined') || (process?.env?.VSCODE_WEB === 'true');
+    }
+})();
 
 /**
  * Registers runtime chunk management commands lazily to avoid pulling heavy
@@ -38,6 +45,9 @@ function registerRuntimeCommands(context) {
     };
 
     function loadTeamPersistenceModule() {
+        if (isWebRuntime) {
+            return null;
+        }
         const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
         if (typeof dynamicRequire !== 'function') {
             return null;
@@ -64,7 +74,7 @@ function registerRuntimeCommands(context) {
                 const heavy = await import('../chunks/runtime-management-heavy.js');
                 runtimeManager = new heavy.RuntimeConfigManager(context);
             }
-            if (!teamPersistenceManager) {
+            if (!teamPersistenceManager && !isWebRuntime) {
                 const persistence = loadTeamPersistenceModule();
                 if (persistence?.createTeamPersistenceManager) {
                     teamPersistenceManager = persistence.createTeamPersistenceManager(context);
@@ -192,7 +202,15 @@ function registerRuntimeCommands(context) {
         // Team configuration validation
         registerCommand('explorerDates.validateTeamConfig', async () => {
             try {
+                if (isWebRuntime) {
+                    vscode.window.showInformationMessage('Team configuration validation is unavailable in VS Code for Web.');
+                    return;
+                }
                 await ensureManagers();
+                if (!teamPersistenceManager) {
+                    vscode.window.showInformationMessage('Team configuration validation is unavailable.');
+                    return;
+                }
                 const validation = await teamPersistenceManager.validateTeamConfiguration();
                 
                 if (validation.hasTeamConfig) {

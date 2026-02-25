@@ -3,7 +3,9 @@
 
 function createDecorationProviderHelpers(provider) {
     const vscode = require('vscode');
-    const { diagLogOnce } = require('../utils/webDiagnostics');
+    const { diagLogOnce, diagLog, isWebDiagnosticsEnabled } = require('../utils/webDiagnostics');
+    let decorationDiagCount = 0;
+    const maxDecorationDiag = 10;
     // Prefer new shared utils chunk to reduce duplication across chunks
     let getFileName, getExtension, normalizePath, getUriPath, ensureDate;
     try {
@@ -70,6 +72,16 @@ function createDecorationProviderHelpers(provider) {
                 const diffMs = Date.now() - modifiedAt.getTime();
                 const badge = diffMs < 24 * 60 * 60 * 1000 ? '•' : diffMs < 7 * 24 * 60 * 60 * 1000 ? '◦' : '·';
                 const tooltip = `Modified: ${modifiedAt.toISOString()}`;
+                if (isWebDiagnosticsEnabled && isWebDiagnosticsEnabled() && decorationDiagCount < maxDecorationDiag) {
+                    decorationDiagCount += 1;
+                    diagLog('info', 'Decoration sample (fallback provider)', {
+                        file: fileLabel,
+                        badge,
+                        tooltip: !!tooltip,
+                        color: null,
+                        reason: 'fallback-provider'
+                    });
+                }
                 return new vscode.FileDecoration(badge, tooltip);
             } catch {
                 return undefined;
@@ -107,6 +119,16 @@ function createDecorationProviderHelpers(provider) {
             const isAtCapacity = provider._activeOperations > provider._maxConcurrentOperations * 0.8;
             if (isAtCapacity && isBacklogged) {
                 diagLogOnce('decorations-backpressure', 'warn', 'Decoration backpressure fallback active');
+                if (isWebDiagnosticsEnabled && isWebDiagnosticsEnabled() && decorationDiagCount < maxDecorationDiag) {
+                    decorationDiagCount += 1;
+                    diagLog('warn', 'Decoration sample (backpressure fallback)', {
+                        file: fileLabel,
+                        colorScheme: _get('colorScheme', 'none'),
+                        performanceMode: provider._performanceMode,
+                        queuedCount,
+                        maxConcurrent: provider._maxConcurrentOperations
+                    });
+                }
                 return provider._createMinimalDecoration(uri, Date.now());
             }
 
@@ -140,8 +162,10 @@ function createDecorationProviderHelpers(provider) {
             const diffMs = Date.now() - modifiedAt.getTime();
 
             const dateFormat = _get('dateDecorationFormat', 'smart');
-            let colorScheme = _get('colorScheme', 'none');
-            if (provider._performanceMode && colorScheme !== 'custom') colorScheme = 'none';
+            const requestedColorScheme = _get('colorScheme', 'none');
+            let colorScheme = requestedColorScheme;
+            const perfSuppressed = provider._performanceMode && colorScheme !== 'custom';
+            if (perfSuppressed) colorScheme = 'none';
             const fileSizeFormat = _get('fileSizeFormat', 'auto');
 
             const logic = provider._decorationLogic;
@@ -160,6 +184,37 @@ function createDecorationProviderHelpers(provider) {
             const tooltip = await buildTooltip({ filePath, resourceUri: uri, stat: normalizedStat, badgeDetails: {}, gitBlame: null, shouldUseAccessibleTooltips: false, fileSizeFormat, isCodeFile: false });
 
             const decoration = acquireDecoration({ badge, tooltip, color });
+            if (isWebDiagnosticsEnabled && isWebDiagnosticsEnabled() && decorationDiagCount < maxDecorationDiag) {
+                decorationDiagCount += 1;
+                const colorId = (color && typeof color === 'object' && 'id' in color) ? color.id : (color || null);
+                const hasColor = Boolean(color);
+                let colorReason = null;
+                if (!requestedColorScheme || requestedColorScheme === 'none') {
+                    colorReason = 'scheme:none';
+                } else if (perfSuppressed) {
+                    colorReason = 'performanceMode';
+                } else if (!hasColor) {
+                    colorReason = 'color:unresolved';
+                }
+                diagLog('info', 'Decoration sample', {
+                    file: fileLabel,
+                    ext: getExtension(fileLabel || filePath),
+                    scheme: scheme,
+                    dateFormat,
+                    colorScheme: requestedColorScheme,
+                    effectiveColorScheme: colorScheme,
+                    performanceMode: provider._performanceMode,
+                    featureLevel: provider._featureLevel,
+                    featureProfile: provider._featureProfile ? { level: provider._featureProfile.level, enableColors: provider._featureProfile.enableColors } : null,
+                    usingPreviewSettings: Boolean(provider._previewSettings),
+                    advancedActive: Boolean(provider._decorationLogic),
+                    badge: String(badge || ''),
+                    hasTooltip: Boolean(tooltip),
+                    hasColor,
+                    color: colorId,
+                    colorReason
+                });
+            }
             // Use coordinator's cache API: storeDecorationInCache accepts fileLabel and optional resourceUri
             provider._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
             return decoration;

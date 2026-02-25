@@ -13,6 +13,7 @@ const { generateWorkspaceKey, detectWorkspaceProfile, analyzeWorkspaceEnvironmen
 const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RESTART_REQUIRED_SETTINGS } = require('./presetDefinitions');
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { WORKSPACE_SCALE_LARGE_THRESHOLD, WORKSPACE_SCALE_EXTREME_THRESHOLD } = require('./constants');
+const { diagLog } = require('./utils/webDiagnostics');
 
 const logger = getLogger();
 
@@ -167,6 +168,17 @@ class RuntimeConfigManager {
         if (changedSettings.length > 0) {
             this._queueRestartPrompt(changedSettings);
             logger.info(`Applied ${preset.name} preset`, { changedSettings });
+            diagLog('info', 'Preset applied', {
+                presetId,
+                changedSettings,
+                webRuntime: vscode?.env?.uiKind === vscode?.UIKind?.Web
+            });
+            try {
+                await vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
+                diagLog('info', 'Preset refresh triggered', { presetId });
+            } catch (error) {
+                diagLog('warn', 'Preset refresh failed', { presetId, error: error?.message });
+            }
         }
         
         return {
