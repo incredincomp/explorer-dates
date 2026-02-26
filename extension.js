@@ -71,7 +71,7 @@ if (!isWebEnvironment) {
     }
 }
 const AUTO_SUGGESTION_DELAY_MS = 3000;
-const CRITICAL_CHUNKS = ['incrementalWorkers'];
+const CRITICAL_CHUNKS = isWebEnvironment ? [] : ['incrementalWorkers'];
 
 function resolveDefaultDistPath() {
     if (!nodePath || typeof nodePath.basename !== 'function' || typeof nodePath.join !== 'function') {
@@ -731,8 +731,6 @@ async function activate(context) {
         }
 
         const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
-        await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', !isWeb);
-
         const featureConfig = vscode.workspace.getConfiguration('explorerDates');
         // Use unified enableExportReporting setting (with fallback to legacy enableReporting)
         const reportingEnabled = featureConfig.get('enableExportReporting', 
@@ -740,6 +738,51 @@ async function activate(context) {
         const apiEnabled = featureConfig.get('enableExtensionApi', true);
         const onboardingEnabled = featureConfig.get('enableOnboardingSystem', true);
         const analysisEnabled = featureConfig.get('enableAnalysisCommands', true);
+
+        const updateCommandContexts = async () => {
+            const config = vscode.workspace.getConfiguration('explorerDates');
+            const reporting = config.get('enableExportReporting', config.get('enableReporting', true));
+            const templates = config.get('enableWorkspaceTemplates', true);
+            const workspaceIntelligence = config.get('enableWorkspaceIntelligence', true);
+            const analysis = config.get('enableAnalysisCommands', true);
+            const extensionApi = config.get('enableExtensionApi', true);
+            const gitInsights = config.get('enableGitInsights', true) && !isWeb;
+            const isTrusted = typeof vscode.workspace.isTrusted !== 'undefined' ? vscode.workspace.isTrusted : true;
+
+            await vscode.commands.executeCommand('setContext', 'explorerDates.isWeb', isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.isWorkspaceTrusted', isTrusted);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.gitFeaturesAvailable', !isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.gitCommandsAvailable', gitInsights);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.exportReportingAvailable', reporting && !isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.workspaceTemplatesAvailable', templates && !isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.workspaceIntelligenceAvailable', workspaceIntelligence && !isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.analysisCommandsAvailable', analysis && !isWeb);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.extensionApiAvailable', extensionApi);
+            await vscode.commands.executeCommand('setContext', 'explorerDates.runtimeCommandsAvailable', !isWeb);
+        };
+
+        await updateCommandContexts();
+        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('explorerDates')) {
+                updateCommandContexts().catch((error) => {
+                    logger.warn('Failed to update command contexts', error);
+                });
+            }
+        }));
+
+        // Update contexts when workspace trust changes
+        if (typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') {
+            context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(() => {
+                updateCommandContexts().catch((error) => {
+                    logger.warn('Failed to update command contexts after trust change', error);
+                });
+            }));
+        }
+
+        // Detect and set virtual workspace context (includes web + GitHub Repositories + other virtual FS)
+        const { isVirtualWorkspace } = require('./src/utils/virtualWorkspaceDetector');
+        const isVirtual = isVirtualWorkspace();
+        await vscode.commands.executeCommand('setContext', 'explorerDates.isVirtualWorkspace', isVirtual);
 
         // Register file date decoration provider for overlay dates in Explorer
         // Try to load a runtime chunk that contains the heavy provider implementation
@@ -1131,6 +1174,10 @@ async function activate(context) {
         // Register workspace templates commands with lazy loading
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
+                if (isWebEnvironment) {
+                    vscode.window.showInformationMessage('Workspace templates are unavailable in VS Code for Web.');
+                    return;
+                }
                 const currentFeatureConfig = vscode.workspace.getConfiguration('explorerDates');
                 console.log('DEBUG: currentFeatureConfig type:', typeof currentFeatureConfig);
                 console.log('DEBUG: currentFeatureConfig keys:', Object.keys(currentFeatureConfig));
@@ -1164,6 +1211,14 @@ async function activate(context) {
 
         const saveTemplate = vscode.commands.registerCommand('explorerDates.saveTemplate', async () => {
             try {
+                if (isWebEnvironment) {
+                    vscode.window.showInformationMessage('Workspace templates are unavailable in VS Code for Web.');
+                    return;
+                }
+                
+                // Workspace trust guard
+                const { requireWorkspaceTrust } = require('./src/utils/trustGuard');
+                requireWorkspaceTrust('save template');
                 const currentFeatureConfig = vscode.workspace.getConfiguration('explorerDates');
                 const workspaceTemplatesCurrentlyEnabled = currentFeatureConfig.get('enableWorkspaceTemplates', true);
                 if (!workspaceTemplatesCurrentlyEnabled) {
@@ -1201,6 +1256,14 @@ async function activate(context) {
         // Register export/reporting commands
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
             try {
+                if (isWebEnvironment) {
+                    vscode.window.showInformationMessage('Export reporting is unavailable in VS Code for Web.');
+                    return;
+                }
+                
+                // Workspace trust guard
+                const { requireWorkspaceTrust } = require('./src/utils/trustGuard');
+                requireWorkspaceTrust('generate report');
                 if (!reportingEnabled) {
                     vscode.window.showInformationMessage(l10n.getString('reportingDisabled'));
                     throw new Error('Reporting features disabled via settings.');

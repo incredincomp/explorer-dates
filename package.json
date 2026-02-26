@@ -23,6 +23,10 @@
   ],
   "main": "./dist/extension.js",
   "browser": "./dist/extension.web.js",
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
   "contributes": {
     "commands": [
       {
@@ -275,7 +279,7 @@
         "command": "explorerDates.showWorkspaceActivity",
         "key": "ctrl+shift+a",
         "mac": "cmd+shift+a",
-        "when": "workspaceFolderCount > 0"
+        "when": "workspaceFolderCount > 0 && explorerDates.analysisCommandsAvailable"
       },
       {
         "command": "explorerDates.toggleFadeOldFiles",
@@ -287,25 +291,25 @@
         "command": "explorerDates.openTemplateManager",
         "key": "ctrl+shift+t",
         "mac": "cmd+shift+t",
-        "when": "workspaceFolderCount > 0"
+        "when": "workspaceFolderCount > 0 && explorerDates.workspaceTemplatesAvailable"
       },
       {
         "command": "explorerDates.generateReport",
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
-        "when": "workspaceFolderCount > 0"
+        "when": "workspaceFolderCount > 0 && explorerDates.exportReportingAvailable"
       },
       {
         "command": "explorerDates.debugCache",
         "key": "ctrl+shift+b",
         "mac": "cmd+shift+b",
-        "when": "explorerViewletVisible"
+        "when": "explorerViewletVisible && explorerDates.analysisCommandsAvailable"
       },
       {
         "command": "explorerDates.runDiagnostics",
         "key": "ctrl+shift+h",
         "mac": "cmd+shift+h",
-        "when": "explorerViewletVisible"
+        "when": "explorerViewletVisible && explorerDates.analysisCommandsAvailable"
       }
     ],
     "menus": {
@@ -322,19 +326,115 @@
         },
         {
           "command": "explorerDates.showFileHistory",
-          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitFeaturesAvailable",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitCommandsAvailable && resourceScheme == 'file'",
           "group": "7_modification@3"
         },
         {
           "command": "explorerDates.compareWithPrevious",
-          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitFeaturesAvailable",
+          "when": "!explorerResourceIsFolder && config.explorerDates.enableContextMenu && explorerDates.gitCommandsAvailable && resourceScheme == 'file'",
           "group": "7_modification@4"
         }
       ],
       "commandPalette": [
         {
           "command": "explorerDates.showWorkspaceActivity",
-          "when": "workspaceFolderCount > 0"
+          "when": "workspaceFolderCount > 0 && explorerDates.analysisCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.showPerformanceAnalytics",
+          "when": "workspaceFolderCount > 0 && explorerDates.analysisCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.debugCache",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.runDiagnostics",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.testDecorations",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.monitorDecorations",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.testVSCodeRendering",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.quickFix",
+          "when": "explorerDates.analysisCommandsAvailable && !explorerDates.isWeb"
+        },
+        {
+          "command": "explorerDates.migrateSettings",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.organizeSettings",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.resetToDefaults",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.cleanLegacySettings",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.applyCustomColors",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.openTemplateManager",
+          "when": "workspaceFolderCount > 0 && explorerDates.workspaceTemplatesAvailable"
+        },
+        {
+          "command": "explorerDates.saveTemplate",
+          "when": "workspaceFolderCount > 0 && explorerDates.workspaceTemplatesAvailable && explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.generateReport",
+          "when": "workspaceFolderCount > 0 && explorerDates.exportReportingAvailable && explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.showApiInfo",
+          "when": "explorerDates.extensionApiAvailable"
+        },
+        {
+          "command": "explorerDates.applyPreset",
+          "when": "explorerDates.runtimeCommandsAvailable && explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.suggestOptimalPreset",
+          "when": "explorerDates.runtimeCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.configureRuntime",
+          "when": "explorerDates.runtimeCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.showChunkStatus",
+          "when": "explorerDates.runtimeCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.optimizeBundle",
+          "when": "explorerDates.runtimeCommandsAvailable"
+        },
+        {
+          "command": "explorerDates.validateTeamConfig",
+          "when": "explorerDates.runtimeCommandsAvailable && explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.exportConfiguration",
+          "when": "explorerDates.isWorkspaceTrusted"
+        },
+        {
+          "command": "explorerDates.clearTelemetryData",
+          "when": "explorerDates.isWorkspaceTrusted"
         },
         {
           "command": "explorerDates.copyFileDate",
@@ -342,11 +442,11 @@
         },
         {
           "command": "explorerDates.showFileHistory",
-          "when": "false"
+          "when": "explorerDates.gitCommandsAvailable && resourceScheme == 'file'"
         },
         {
           "command": "explorerDates.compareWithPrevious",
-          "when": "false"
+          "when": "explorerDates.gitCommandsAvailable && resourceScheme == 'file'"
         },
         {
           "command": "explorerDates.previewConfiguration",
@@ -700,6 +800,30 @@
           "description": "Show welcome message and feature discovery on first startup",
           "scope": "application"
         },
+        "explorerDates.enableOnboardingSystem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable onboarding system and welcome experience.",
+          "scope": "window"
+        },
+        "explorerDates.enableAnalysisCommands": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable analysis and diagnostic commands.",
+          "scope": "window"
+        },
+        "explorerDates.enableWorkspaceIntelligence": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable workspace intelligence features for large workspaces.",
+          "scope": "window"
+        },
+        "explorerDates.enableIncrementalWorkers": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable incremental workers for progressive analysis.",
+          "scope": "window"
+        },
         "explorerDates.autoThemeAdaptation": {
           "type": "boolean",
           "default": true,
@@ -728,6 +852,12 @@
           "type": "boolean",
           "default": true,
           "description": "Allow external plugins to register custom decoration providers",
+          "scope": "window"
+        },
+        "explorerDates.enableGitInsights": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Git-based file history and change comparison (unavailable on VS Code for Web)",
           "scope": "window"
         },
         "explorerDates.enableReporting": {
@@ -872,6 +1002,18 @@
           "description": "Console log level for internal diagnostic messages",
           "scope": "window"
         },
+        "explorerDates.webDiagnosticsCanary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Web-only: force a visible decoration canary (debug use only).",
+          "scope": "window"
+        },
+        "explorerDates.webDiagnosticsBuiltinColors": {
+          "type": "boolean",
+          "default": false,
+          "description": "Web-only: map custom decoration colors to built-in theme tokens for diagnostics.",
+          "scope": "window"
+        },
         "explorerDates.enableTelemetry": {
           "type": "boolean",
           "default": false,
@@ -883,6 +1025,10 @@
   },
   "capabilities": {
     "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Core file decoration features work fully in virtual workspaces and VS Code for the Web. Git history, export reports, and advanced caching are unavailable. Basic file information commands (copy date, show details) are fully supported."
+    },
+    "untrustedWorkspaces": {
       "supported": true
     }
   },
