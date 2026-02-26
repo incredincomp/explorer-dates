@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.3.1+patch.16 - Security & Web Runtime Stabilization (February 26, 2026)
+
+### Security Enhancements
+
+**Defense-in-Depth Workspace Trust Enforcement**
+- Added `trustGuard.js` utility with programmatic trust verification APIs
+- Added workspace trust checks to all write operations (settings, globalState, file system)
+- Commands requiring trust: `resetToDefaults`, `clearTelemetryData`, `exportConfiguration`, `migrateSettings`, `organizeSettings`, `cleanLegacySettings`, `applyCustomColors`, `applyPreset`, `validateTeamConfig`, `saveTemplate`, `generateReport`
+- Implements two-layer protection: UI-level command palette gating + runtime programmatic enforcement
+- Prevents bypassing trust requirements via keybindings, extension APIs, or programmatic invocations
+
+**Web Environment Command Gating**
+- Added comprehensive web environment detection and context keys
+- Diagnostic commands now hidden in VS Code for Web (debugCache, runDiagnostics, testDecorations, monitorDecorations, testVSCodeRendering, quickFix)
+- Prevents showing file-system-intensive commands in browser environments
+- 8 dynamic context keys for granular command visibility control
+
+**Virtual Workspace Detection**
+- Added `virtualWorkspaceDetector.js` for detecting virtual file systems
+- Supports detection of GitHub Repositories, remote SSH, and other virtual workspaces
+- Enables appropriate feature restrictions in virtual environments
+
+### Web Runtime Improvements
+
+- Web file decorations now support non-`file` URI schemes (e.g., `vscode-vfs`) by resolving dates from URI-backed metadata instead of hard-gating on `file` schemes
+- Web command palette actions that rely on QuickPick now degrade gracefully when the UI API is unavailable, with clear diagnostics instead of throwing
+- Added web diagnostics canary and built-in color fallback toggles to isolate theme token rendering issues
+- Virtual workspaces now prefer git-derived timestamps for recency when the VS Code Git API is available, with safe fallback to `workspace.fs.stat` and detailed diagnostics
+- Web runtime manager stubs provide user-friendly messages for unavailable features
+- Improved chunk loading with fallbacks for web environments
+
+### Configuration & Context System
+
+- Dynamic command context updates on configuration changes
+- Workspace trust change listener (`onDidGrantWorkspaceTrust`)
+- Context keys: `explorerDates.isWeb`, `explorerDates.isWorkspaceTrusted`, `explorerDates.isVirtualWorkspace`, and 5 feature-specific gates
+- CRITICAL_CHUNKS disabled in web environment for safety
+
+### Build & Testing
+
+- Production bundles rebuilt with trust enforcement (extension.js: 193KB, extension.web.js: 189KB)
+- Web bundles properly exclude Node.js-only chunks (gitInsights, incrementalWorkers, reporting, templates)
+- Enhanced web environment testing with improved mock system
+- Total chunks: 1186KB with optimized tree-shaking
+
+### Known Limitations
+
+Known limitations in web hosts:
+- If the Git API is unavailable or does not support per-file log lookups, recency falls back to `workspace.fs.stat` timestamps; diagnostics will report `timestampSource` and `gitRecencyError` accordingly
+- Some features unavailable in VS Code for Web (templates, reporting, heavy diagnostics) - commands appropriately hidden
+
 ## 1.3.1 - Bug Fixes (February 4, 2026)
 
 - Fixed negative time badge display for future-dated files (fixes #29).
