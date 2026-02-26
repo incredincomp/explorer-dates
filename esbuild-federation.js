@@ -107,6 +107,31 @@ async function buildChunks() {
   await fs.promises.mkdir('dist/web-chunks', { recursive: true }).catch(() => {});
 
   const builds = [];
+  const webExcluded = [];
+
+  for (const [chunkName, chunkConfig] of Object.entries(federationConfig.chunks)) {
+    if (chunkConfig.webExclude) {
+      webExcluded.push(chunkName);
+    }
+  }
+
+  if (webExcluded.length > 0) {
+    await Promise.all(webExcluded.flatMap((chunkName) => {
+      const candidates = [
+        `dist/web-chunks/${chunkName}.js`,
+        `dist/web-chunks/${chunkName}.js.map`
+      ];
+      return candidates.map(async (target) => {
+        try {
+          await fs.promises.unlink(target);
+        } catch (error) {
+          if (error && error.code !== 'ENOENT') {
+            console.warn(`⚠️ Failed to remove ${target}: ${error.message}`);
+          }
+        }
+      });
+    }));
+  }
   
   for (const [chunkName, chunkConfig] of Object.entries(federationConfig.chunks)) {
     // Build for Node.js platform to dist/chunks/ for consistent chunk location
@@ -120,22 +145,24 @@ async function buildChunks() {
     
     builds.push(esbuild.build(nodeBuildConfig));
 
-    const webBuildConfig = {
-      ...sharedOptions,
-      entryPoints: [chunkConfig.entry],
-      outfile: `dist/web-chunks/${chunkName}.js`,
-      platform: 'browser',
-      format: 'cjs',
-      banner: {
-        js: `var module = { exports: {} }; var exports = module.exports; (function() {`
-      },
-      footer: {
-        js: `})(); (function(){const primaryKey="${WEB_CHUNK_GLOBAL_KEY}";const legacyKey="${LEGACY_WEB_CHUNK_GLOBAL_KEY}";const registry=(globalThis[primaryKey]=globalThis[primaryKey]||globalThis[legacyKey]||(globalThis[legacyKey]={}));registry["${chunkName}"]=module.exports;})();`
-      },
-      external: [...sharedOptions.external, ...chunkConfig.external]
-    };
+    if (!chunkConfig.webExclude) {
+      const webBuildConfig = {
+        ...sharedOptions,
+        entryPoints: [chunkConfig.entry],
+        outfile: `dist/web-chunks/${chunkName}.js`,
+        platform: 'browser',
+        format: 'cjs',
+        banner: {
+          js: `var module = { exports: {} }; var exports = module.exports; (function() {`
+        },
+        footer: {
+          js: `})(); (function(){const primaryKey="${WEB_CHUNK_GLOBAL_KEY}";const legacyKey="${LEGACY_WEB_CHUNK_GLOBAL_KEY}";const registry=(globalThis[primaryKey]=globalThis[primaryKey]||globalThis[legacyKey]||(globalThis[legacyKey]={}));registry["${chunkName}"]=module.exports;})();`
+        },
+        external: [...sharedOptions.external, ...chunkConfig.external]
+      };
 
-    builds.push(esbuild.build(webBuildConfig));
+      builds.push(esbuild.build(webBuildConfig));
+    }
   }
   
   await Promise.all(builds);

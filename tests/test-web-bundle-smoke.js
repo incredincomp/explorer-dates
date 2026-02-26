@@ -3,6 +3,7 @@
 // Simulate a minimal vscode.dev-like environment to ensure the web bundle
 // doesn't touch Node-only APIs at load/activation time.
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 const { createWebVscodeMock } = require('./helpers/createWebVscodeMock');
 const { createExtensionContext } = require('./helpers/mockVscode');
@@ -64,6 +65,19 @@ async function runWebSmokeTest() {
             0,
             `Web bundle missing registered commands: ${missing.join(', ')}`
         );
+        const tokenSourcePath = path.join(extensionRoot, 'src', 'chunks', 'file-date-provider-impl.js');
+        const tokenSource = fs.readFileSync(tokenSourcePath, 'utf8');
+        const tokenMatches = tokenSource.match(/explorerDates\\.customColor\\.[A-Za-z0-9._-]+/g) || [];
+        const emittedTokens = Array.from(new Set(tokenMatches));
+        const contributedTokens = new Set(
+            (require('../package.json').contributes?.colors || []).map((c) => c.id)
+        );
+        const missingTokens = emittedTokens.filter((token) => !contributedTokens.has(token));
+        assert.strictEqual(
+            missingTokens.length,
+            0,
+            `Missing contributes.colors entries for tokens: ${missingTokens.join(', ')}`
+        );
 
         const webSafeCommands = [
             'explorerDates.applyPreset',
@@ -123,7 +137,7 @@ async function runWebSmokeTest() {
             const provider = harness.fileDecorationProvider();
             assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
             const sampleFile = path.join(extensionRoot, 'tests', 'fixtures', 'sample-workspace', 'package.json');
-            const sampleUri = harness.vscode.Uri.file(sampleFile);
+            const sampleUri = harness.vscode.Uri.file(sampleFile).with({ scheme: 'vscode-vfs' });
             await provider.provideFileDecoration(sampleUri);
 
             const logText = diagState.logs
@@ -138,8 +152,16 @@ async function runWebSmokeTest() {
                 'Web diagnostics should not report "process is not defined"'
             );
             assert.ok(
+                !logText.includes('non-file-scheme'),
+                'Web diagnostics should not short-circuit non-file schemes'
+            );
+            assert.ok(
                 !logText.includes('Web require unsupported: ../teamConfigPersistence.proxy'),
                 'Web diagnostics should not report team config persistence require failures'
+            );
+            assert.ok(
+                !logText.includes('showQuickPick is not a function'),
+                'Web diagnostics should not report showQuickPick is not a function'
             );
             assert.ok(
                 !logText.includes('Provider unavailable in web runtime'),
@@ -157,15 +179,45 @@ async function runWebSmokeTest() {
                 diagState.provider?.registered,
                 'Web diagnostics should report provider registered'
             );
-            const decorationSamples = diagState.logs.filter((entry) => entry.message === 'Decoration sample');
+            const decorationSamples = diagState.logs.filter((entry) => entry.message === 'Decoration return sample');
             assert.ok(
                 decorationSamples.length > 0,
-                'Web diagnostics should include decoration samples'
+                'Web diagnostics should include decoration return samples'
+            );
+            const vfsSamples = decorationSamples.filter((entry) => entry.meta && entry.meta.scheme === 'vscode-vfs');
+            assert.ok(
+                vfsSamples.length > 0,
+                'Web diagnostics should include a decoration sample for vscode-vfs scheme'
+            );
+            const hasTimestampSource = decorationSamples.some((entry) => entry.meta && entry.meta.timestampSource);
+            assert.ok(
+                hasTimestampSource,
+                'Web diagnostics should include timestampSource for decoration samples'
+            );
+            const hasReturnOrNull = decorationSamples.some((entry) =>
+                entry.meta && (entry.meta.decorationKeys || entry.meta.nullReason)
+            );
+            assert.ok(
+                hasReturnOrNull,
+                'Web diagnostics should include decorationKeys or nullReason in samples'
             );
             const hasColorSample = decorationSamples.some((entry) => entry.meta && entry.meta.hasColor);
             assert.ok(
                 hasColorSample,
                 'Web diagnostics should include a decoration sample with color'
+            );
+            const webFlagSample = decorationSamples.some((entry) => entry.meta && entry.meta.isWeb === true);
+            assert.ok(
+                webFlagSample,
+                'Web diagnostics should flag samples as web runtime'
+            );
+            assert.ok(
+                !logText.includes('Failed to apply preset'),
+                'Web diagnostics should not report applyPreset failures'
+            );
+            assert.ok(
+                logText.includes('QuickPick unavailable'),
+                'Web diagnostics should log quick pick unavailable fallback'
             );
         }
 

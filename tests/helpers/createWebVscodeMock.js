@@ -278,6 +278,7 @@ function createWebVscodeMock(options = {}) {
         workspaceFolderConfigValues = {},
         workspaceFolders = [],
         blockedModules = DEFAULT_BLOCKED_MODULES,
+        extensions: extensionStubs = {},
         extensionPath = workspaceRoot,
         extensionUri: providedExtensionUri
     } = options;
@@ -509,6 +510,7 @@ function createWebVscodeMock(options = {}) {
 
     const disposable = { dispose() {} };
     let fileDecorationProvider = null;
+    const extensionRegistry = new Map(Object.entries(extensionStubs || {}));
     const vscode = {
         workspace: workspaceApi,
         ColorThemeKind: {
@@ -541,6 +543,11 @@ function createWebVscodeMock(options = {}) {
             },
             createInputBox() {
                 return { show() {}, hide() {}, dispose() {} };
+            }
+        },
+        extensions: {
+            getExtension(id) {
+                return extensionRegistry.get(id);
             }
         },
         commands: {

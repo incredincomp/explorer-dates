@@ -913,11 +913,54 @@ async function testPresetRestartPromptBatching() {
     }
 }
 
+async function testPresetSkipUnknownSettings() {
+    console.log('Testing preset application skips unknown settings...');
+
+    const mockInstall = createTestMock({
+        config: {
+            'explorerDates.colorScheme': 'none'
+        }
+    });
+
+    try {
+        const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
+        const context = createExtensionContext();
+        const runtimeManager = new RuntimeConfigManager(context);
+        const { configValues } = mockInstall;
+
+        const preset = {
+            id: 'test-skip',
+            name: 'Test Skip',
+            settings: {
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.enableOnboardingSystem': true
+            }
+        };
+
+        await runtimeManager._applyPreset('test-skip', preset);
+
+        assert.strictEqual(
+            configValues['explorerDates.colorScheme'],
+            'recency',
+            'Registered setting should be applied'
+        );
+        assert.ok(
+            !Object.prototype.hasOwnProperty.call(configValues, 'explorerDates.enableOnboardingSystem'),
+            'Unregistered setting should be skipped'
+        );
+
+        console.log('✅ Preset apply skips unknown settings');
+    } finally {
+        mockInstall.dispose();
+    }
+}
+
 async function main() {
     console.log('🧪 Starting comprehensive preset application path tests...\n');
     
     try {
         await testPresetApplicationWorkflow();
+        await testPresetSkipUnknownSettings();
         await testPresetApplicationFailures();
         await testPresetRollback();
         await testPresetSettingsInterdependencies();
@@ -930,6 +973,7 @@ async function main() {
         scheduleExit(0, 0);
         console.log('\n📊 Test Coverage Summary:');
         console.log('   ✅ End-to-end preset application workflow');
+        console.log('   ✅ Preset apply skips unknown settings');
         console.log('   ✅ Configuration write failure handling');
         console.log('   ✅ Preset backup and rollback scenarios');
         console.log('   ✅ Settings interdependency validation');
@@ -968,6 +1012,7 @@ if (require.main === module) {
 
 module.exports = {
     testPresetApplicationWorkflow,
+    testPresetSkipUnknownSettings,
     testPresetApplicationFailures,
     testPresetRollback,
     testPresetSettingsInterdependencies,
