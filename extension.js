@@ -292,7 +292,15 @@ const chunkLoader = {
         }
         const nodeChunkPath = nodePath.join(this.distPath, 'chunks', `${chunkName}.js`);
         const webChunkPath = nodePath.join(this.distPath, 'web-chunks', `${chunkName}.js`);
-        return nodeFs.existsSync(nodeChunkPath) && nodeFs.existsSync(webChunkPath);
+        
+        // In web environment, only web chunks are required
+        // In Node environment, only node chunks are required  
+        // This allows for platform-specific chunk exclusions
+        if (isWebEnvironment) {
+            return nodeFs.existsSync(webChunkPath);
+        } else {
+            return nodeFs.existsSync(nodeChunkPath);
+        }
     },
 
     _loadNodeChunk(chunkName) {

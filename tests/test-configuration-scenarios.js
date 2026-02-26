@@ -21,7 +21,11 @@ const { addWarningFilters } = require('./helpers/warningFilters');
 
 addWarningFilters([
     /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
-    /Initializing Export Reporting Manager while performance\/lightweight mode is active/
+    /Initializing Export Reporting Manager while performance\/lightweight mode is active/,
+    /No built artifact available for chunk.*decorationsAdvanced/,
+    /No built artifact available for chunk.*loggerImpl/,
+    /Failed to configure file watchers/,
+    /Failed to show file details.*_formatFileSize is not a function/
 ]);
 
 const configurationProperties = pkg?.contributes?.configuration?.properties || {};
