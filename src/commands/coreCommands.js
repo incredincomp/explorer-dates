@@ -155,6 +155,9 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
 
     subscriptions.push(registerCommand('explorerDates.resetToDefaults', async () => {
         try {
+            const { requireWorkspaceTrust } = require('../utils/trustGuard');
+            requireWorkspaceTrust('reset settings to defaults');
+            
             const config = vscode.workspace.getConfiguration('explorerDates');
             await config.update('highContrastMode', false, vscode.ConfigurationTarget.Global);
             await config.update('badgePriority', 'time', vscode.ConfigurationTarget.Global);
