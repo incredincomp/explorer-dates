@@ -15,6 +15,7 @@ let getLogger = () => {
 const { CHUNK_SIZES } = require('./presetDefinitions');
 const { getChunkSourcePath, getAllChunkNames } = require('./shared/chunkMap');
 const { registerFeatureFlagsGlobal } = require('./utils/featureFlagsBridge');
+const { isWebEnvironment } = require('./utils/env');
 let featureLogger = null;
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
@@ -72,6 +73,9 @@ let nativeFs = null;
 
 function isWebRuntime() {
     try {
+        if (isWebEnvironment()) {
+            return true;
+        }
         if (typeof navigator !== 'undefined' && navigator?.userAgent) {
             return navigator.userAgent.includes('vscode-web') || navigator.userAgent.includes('Code - Web');
         }
@@ -295,26 +299,32 @@ const getFeatureConfig = () => {
     try {
         const vscode = require('vscode');
         const config = vscode.workspace.getConfiguration('explorerDates');
+        const isWeb = isWebRuntime();
+        const disableInWeb = (value) => (isWeb ? false : value);
         return {
             enableOnboarding: config.get('enableOnboardingSystem', true),
-            enableExportReporting: config.get('enableExportReporting', true), 
-            enableWorkspaceTemplates: config.get('enableWorkspaceTemplates', true),
+            enableExportReporting: disableInWeb(config.get('enableExportReporting', true)), 
+            enableWorkspaceTemplates: disableInWeb(config.get('enableWorkspaceTemplates', true)),
             enableAnalysisCommands: config.get('enableAnalysisCommands', true),
-            enableAdvancedCache: config.get('enableAdvancedCache', true),
-            enableWorkspaceIntelligence: config.get('enableWorkspaceIntelligence', true),
-            enableIncrementalWorkers: config.get('enableIncrementalWorkers', false),
+            enableAdvancedCache: disableInWeb(config.get('enableAdvancedCache', true)),
+            enableWorkspaceIntelligence: disableInWeb(config.get('enableWorkspaceIntelligence', true)),
+            enableIncrementalWorkers: disableInWeb(config.get('enableIncrementalWorkers', false)),
+            enableGitInsights: disableInWeb(config.get('enableGitInsights', true)),
             enableExtensionApi: config.get('enableExtensionApi', true)
         };
     } catch {
         // Default to all features enabled if VS Code API not available
+        const isWeb = isWebRuntime();
+        const disableInWeb = (value) => (isWeb ? false : value);
         return {
             enableOnboarding: true,
-            enableExportReporting: true,
-            enableWorkspaceTemplates: true, 
+            enableExportReporting: disableInWeb(true),
+            enableWorkspaceTemplates: disableInWeb(true), 
             enableAnalysisCommands: true,
-            enableAdvancedCache: true,
-            enableWorkspaceIntelligence: true,
-            enableIncrementalWorkers: false,
+            enableAdvancedCache: disableInWeb(true),
+            enableWorkspaceIntelligence: disableInWeb(true),
+            enableIncrementalWorkers: disableInWeb(false),
+            enableGitInsights: disableInWeb(true),
             enableExtensionApi: true
         };
     }
@@ -520,8 +530,11 @@ const featureFlags = {
     },
 
     async gitInsights() {
-        // Git insights are loaded conditionally when git features are needed
-        // No feature flag check - this is a performance optimization
+        const config = getFeatureConfig();
+        if (!config.enableGitInsights) {
+            logFeatureDisabled('gitInsights', 'gitInsights');
+            return null;
+        }
         return loadFeatureModule('gitInsights');
     },
 

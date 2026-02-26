@@ -235,6 +235,9 @@ class FileDateDecorationProviderImpl {
         this._gitWarningShown = false;
         this._gitInsightsManager = null;
         this._gitInsightsLoading = null;
+        this._gitRecencyCache = new Map();
+        this._gitRecencyCacheTtlMs = 60000;
+        this._gitRecencyCacheMax = 1000;
 
         try { this._instanceId = Math.random().toString(36).slice(2, 8); this._logger.debug(`FileDateDecorationProvider created (id=${this._instanceId})`); } catch {}
         this._exportReportingManager = null;
@@ -856,8 +859,9 @@ class FileDateDecorationProviderImpl {
     // Lightweight internal helpers required by chunks/tests (minimal, behavior-preserving fallbacks)
     _validateWorkspaceUri(uri, reason = '') {
         try {
-            if (!uri || typeof uri.fsPath !== 'string') return { isValid: false };
+            if (!uri) return { isValid: false };
             const p = String(uri.fsPath || uri.path || '');
+            if (!p) return { isValid: false };
             if (p.indexOf('\x00') !== -1) return { isValid: false };
             return { isValid: true };
         } catch (e) {
@@ -1146,7 +1150,29 @@ class FileDateDecorationProviderImpl {
     _getColorByScheme(date, scheme, filePath) {
         try {
             if (!scheme || scheme === 'none') return undefined;
+            const builtinDebugColors = (() => {
+                if (!this._isWeb) return false;
+                try {
+                    const cfg = vscode.workspace.getConfiguration('explorerDates');
+                    return !!cfg.get('webDiagnosticsBuiltinColors', false);
+                } catch {
+                    return false;
+                }
+            })();
             const ageMs = Date.now() - (date instanceof Date ? date.getTime() : new Date(date).getTime());
+            if (builtinDebugColors) {
+                const recent = new vscode.ThemeColor('list.warningForeground');
+                const mid = new vscode.ThemeColor('list.deemphasizedForeground');
+                const old = new vscode.ThemeColor('list.errorForeground');
+                if (isWebDiagnosticsEnabled()) {
+                    diagLogOnce('web-builtin-color-fallback', 'info', 'Web builtin color fallback enabled');
+                }
+                if (scheme === 'file-type') return recent;
+                if (scheme === 'subtle') return mid;
+                if (ageMs < 36e5) return recent;
+                if (ageMs < 864e5) return mid;
+                return old;
+            }
             // custom scheme -> expose theme color ids so tests and UI can map to workbench colors
             if (scheme === 'custom') {
                 if (ageMs < 36e5) return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
@@ -1185,6 +1211,178 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    _shouldUseGitRecency(uri) {
+        try {
+            const scheme = uri?.scheme || 'file';
+            return this._isWeb || scheme !== 'file';
+        } catch {
+            return this._isWeb;
+        }
+    }
+
+    _getGitCacheKey(uri) {
+        try {
+            if (uri?.toString) return uri.toString(true);
+        } catch { /* ignore */ }
+        try {
+            const scheme = uri?.scheme || 'file';
+            const p = uri?.path || uri?.fsPath || '';
+            return `${scheme}://${p}`;
+        } catch {
+            return String(uri || '');
+        }
+    }
+
+    _normalizeGitPath(value = '') {
+        try {
+            let raw = String(value || '');
+            raw = raw.replace(/\\/g, '/');
+            raw = raw.replace(/\/{2,}/g, '/');
+            raw = raw.replace(/^\/+/, '');
+            try { raw = decodeURIComponent(raw); } catch { /* ignore */ }
+            return raw;
+        } catch {
+            return '';
+        }
+    }
+
+    _rememberGitRecency(cacheKey, entry) {
+        try {
+            if (this._gitRecencyCache.size >= this._gitRecencyCacheMax) {
+                const oldestKey = this._gitRecencyCache.keys().next().value;
+                if (oldestKey) this._gitRecencyCache.delete(oldestKey);
+            }
+            this._gitRecencyCache.set(cacheKey, entry);
+        } catch { /* ignore */ }
+    }
+
+    async _getGitRecencyTimestamp(uri) {
+        const cacheKey = this._getGitCacheKey(uri);
+        const now = Date.now();
+        const cached = this._gitRecencyCache.get(cacheKey);
+        if (cached && cached.expiresAt && cached.expiresAt > now) {
+            return cached;
+        }
+
+        const result = {
+            timestampMs: null,
+            available: false,
+            error: null,
+            expiresAt: now + this._gitRecencyCacheTtlMs,
+            repoMatched: null,
+            pathAttempted: null
+        };
+
+        try {
+            const extension = vscode?.extensions?.getExtension ? vscode.extensions.getExtension('vscode.git') : null;
+            if (!extension) {
+                result.error = 'git-extension-missing';
+                this._rememberGitRecency(cacheKey, result);
+                return result;
+            }
+            if (!extension.isActive && typeof extension.activate === 'function') {
+                try { await extension.activate(); } catch { /* ignore activation errors */ }
+            }
+            const api = extension.exports?.getAPI?.(1);
+            if (!api) {
+                result.error = 'git-api-unavailable';
+                this._rememberGitRecency(cacheKey, result);
+                return result;
+            }
+            result.available = true;
+            let repo = typeof api.getRepository === 'function' ? api.getRepository(uri) : null;
+            const uriPathRaw = uri?.path || uri?.fsPath || '';
+            const uriPath = this._normalizeGitPath(uriPathRaw);
+            if (!repo && Array.isArray(api.repositories)) {
+                repo = api.repositories.find((r) => {
+                    const rootPathRaw = r?.rootUri?.path || r?.rootUri?.fsPath || '';
+                    const rootPath = this._normalizeGitPath(rootPathRaw);
+                    return rootPath && uriPath && uriPath.startsWith(rootPath);
+                }) || null;
+            }
+            if (!repo || typeof repo.log !== 'function') {
+                result.error = 'git-repo-unavailable';
+                result.repoMatched = false;
+                result.expiresAt = now + Math.min(this._gitRecencyCacheTtlMs, 5000);
+                this._rememberGitRecency(cacheKey, result);
+                return result;
+            }
+            result.repoMatched = true;
+            const rootPath = this._normalizeGitPath(repo?.rootUri?.path || repo?.rootUri?.fsPath || '');
+            const relativePath = rootPath && uriPath.startsWith(rootPath)
+                ? uriPath.slice(rootPath.length).replace(/^\/+/, '')
+                : uriPath;
+            result.pathAttempted = relativePath || uriPath || '';
+            const logEntries = await repo.log({ maxEntries: 1, path: result.pathAttempted });
+            const entry = Array.isArray(logEntries) ? logEntries[0] : null;
+            const commitDate = entry?.commitDate || entry?.authorDate || entry?.date || entry?.committerDate;
+            const ts = commitDate ? new Date(commitDate).getTime() : null;
+            if (Number.isFinite(ts)) {
+                result.timestampMs = ts;
+            } else {
+                result.error = 'git-log-empty';
+                result.expiresAt = now + Math.min(this._gitRecencyCacheTtlMs, 5000);
+            }
+        } catch (error) {
+            result.error = error?.message ? `git-error:${error.message}` : 'git-error';
+            result.expiresAt = now + Math.min(this._gitRecencyCacheTtlMs, 5000);
+        }
+
+        this._rememberGitRecency(cacheKey, result);
+        return result;
+    }
+
+    async _resolveTimestampForUri(uri, stat) {
+        const fallback = stat?.mtime ? (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)) : null;
+        if (!this._shouldUseGitRecency(uri)) {
+            return {
+                timestamp: fallback,
+                source: fallback ? 'fs-stat' : 'none',
+                gitAvailable: false,
+                gitError: null,
+                repoMatched: null,
+                pathAttempted: null
+            };
+        }
+        let gitResult;
+        try {
+            gitResult = await this._getGitRecencyTimestamp(uri);
+        } catch (error) {
+            gitResult = {
+                timestampMs: null,
+                available: false,
+                error: error?.message ? `git-error:${error.message}` : 'git-error',
+                repoMatched: null,
+                pathAttempted: null
+            };
+        }
+        if (gitResult?.timestampMs) {
+            return {
+                timestamp: new Date(gitResult.timestampMs),
+                source: 'git',
+                gitAvailable: gitResult.available,
+                gitError: gitResult.error,
+                repoMatched: gitResult.repoMatched,
+                pathAttempted: gitResult.pathAttempted
+            };
+        }
+        let source = fallback ? 'fs-stat' : 'none';
+        if (fallback && (uri?.scheme || 'file') !== 'file') {
+            const ageMs = Date.now() - fallback.getTime();
+            if (ageMs >= 0 && ageMs <= 60000) {
+                source = 'fs-stat-suspect';
+            }
+        }
+        return {
+            timestamp: fallback,
+            source,
+            gitAvailable: gitResult?.available || false,
+            gitError: gitResult?.error || null,
+            repoMatched: gitResult?.repoMatched ?? null,
+            pathAttempted: gitResult?.pathAttempted || null
+        };
+    }
+
     async _buildTooltipContent(opts = {}) {
         try {
             const d = opts.stat?.mtime || opts.stat?.birthtime || new Date();
@@ -1204,6 +1402,7 @@ class FileDateDecorationProviderImpl {
             try { if (this._readableDateFlyweightCache && typeof this._readableDateFlyweightCache.clear === 'function') this._readableDateFlyweightCache.clear(); } catch {}
             try { if (this._readableDateFlyweightOrder) this._readableDateFlyweightOrder.length = 0; } catch {}
             try { if (this._advancedCache && typeof this._advancedCache.clear === 'function') this._advancedCache.clear(); } catch {}
+            try { if (this._gitRecencyCache && typeof this._gitRecencyCache.clear === 'function') this._gitRecencyCache.clear(); } catch {}
         } catch (error) {
             this._logger?.debug && this._logger.debug('clearAllCaches failed', error);
         }

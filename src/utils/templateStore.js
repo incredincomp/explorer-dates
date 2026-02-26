@@ -1,9 +1,11 @@
 const vscode = require('vscode');
+const { isWebEnvironment } = require('./env');
 
 let fs = null;
 let path = null;
 try {
-    if (typeof process !== 'undefined' && process.versions?.node && process.env.VSCODE_WEB !== 'true') {
+    const isWeb = isWebEnvironment() || (typeof process !== 'undefined' && process.env?.VSCODE_WEB === 'true');
+    if (!isWeb && typeof process !== 'undefined' && process.versions?.node) {
         fs = eval('require')('fs');
         path = eval('require')('path');
     }

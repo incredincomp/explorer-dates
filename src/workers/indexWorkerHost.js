@@ -1,14 +1,15 @@
 const { getLogger } = require('../utils/logger');
+const { isWebEnvironment } = require('../utils/env');
 
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
-const isWebBuild = env.VSCODE_WEB === 'true';
+const isWebBuild = env.VSCODE_WEB === 'true' || isWebEnvironment();
 const WebWorkerCtor = typeof globalThis !== 'undefined' && typeof globalThis.Worker === 'function'
     ? globalThis.Worker
     : null;
 let WorkerThreads = null;
 let NodeFs = null;
 let NodePath = null;
-if (!isWebBuild) {
+if (!isWebBuild && typeof process !== 'undefined' && process.versions?.node) {
     try {
         WorkerThreads = eval('require')('worker_threads');
     } catch {

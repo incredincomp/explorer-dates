@@ -14,8 +14,34 @@ const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RES
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { WORKSPACE_SCALE_LARGE_THRESHOLD, WORKSPACE_SCALE_EXTREME_THRESHOLD } = require('./constants');
 const { diagLog } = require('./utils/webDiagnostics');
+const isWebRuntime = (() => {
+    try {
+        return vscode?.env?.uiKind === vscode?.UIKind?.Web;
+    } catch {
+        return false;
+    }
+})();
 
 const logger = getLogger();
+const quickPickUnavailableMessage = 'Explorer Dates: This action is unavailable in this environment.';
+
+function ensureQuickPickAvailable(contextLabel) {
+    if (typeof vscode?.window?.showQuickPick === 'function') {
+        return true;
+    }
+    diagLog('warn', 'QuickPick unavailable', {
+        context: contextLabel,
+        isWeb: isWebRuntime
+    });
+    try {
+        if (typeof vscode?.window?.showInformationMessage === 'function') {
+            vscode.window.showInformationMessage(quickPickUnavailableMessage);
+        }
+    } catch {
+        // Ignore message failures in headless/web harnesses
+    }
+    return false;
+}
 
 /**
  * Manages runtime chunk configuration with auto-suggestions and restart coordination
@@ -149,33 +175,71 @@ class RuntimeConfigManager {
         
         const currentSettings = this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         await this._savePresetBackup(presetId, currentSettings);
-        
-        let applied;
-        try {
-            applied = await this._settings.applySettings(preset.settings, {
-                scope: 'workspace',
-                reason: `apply-preset:${presetId}`
-            });
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to apply "${preset.name}" preset: ${error.message}`);
-            logger.error(`Preset application failed for ${presetId}:`, error);
-            throw error;
+
+        const entries = Object.entries(preset.settings || {});
+        const applied = [];
+        const skipped = [];
+        const failed = [];
+        const scope = isWebRuntime ? 'user' : 'workspace';
+        const reason = `apply-preset:${presetId}`;
+        const isRegisteredSetting = (fullKey) => {
+            try {
+                if (!fullKey || typeof fullKey !== 'string') return false;
+                const prefix = 'explorerDates.';
+                if (fullKey.startsWith(prefix)) {
+                    const key = fullKey.slice(prefix.length);
+                    const inspect = vscode.workspace.getConfiguration('explorerDates').inspect(key);
+                    if (!inspect) return false;
+                    return [inspect.defaultValue, inspect.globalValue, inspect.workspaceValue, inspect.workspaceFolderValue]
+                        .some((value) => value !== undefined);
+                }
+                const inspect = vscode.workspace.getConfiguration().inspect(fullKey);
+                if (!inspect) return false;
+                return [inspect.defaultValue, inspect.globalValue, inspect.workspaceValue, inspect.workspaceFolderValue]
+                    .some((value) => value !== undefined);
+            } catch {
+                return false;
+            }
+        };
+
+        for (const [key, value] of entries) {
+            if (!isRegisteredSetting(key)) {
+                skipped.push(key);
+                diagLog('warn', 'Preset skipped unregistered setting', { key, presetId });
+                continue;
+            }
+            try {
+                applied.push(await this._settings.updateSetting(key, value, { scope, reason }));
+            } catch (error) {
+                failed.push({ key, error });
+                logger.warn(`Preset application failed for ${key}: ${error && error.message ? error.message : String(error)}`);
+            }
         }
+
         const changedSettings = applied
             .filter(result => result.updated)
             .map(result => result.key.replace('explorerDates.', ''));
-        
+
+        const summary = `Applied "${preset.name}" preset. Applied: ${changedSettings.length}. Skipped: ${skipped.length}. Failed: ${failed.length}.`;
+        try { vscode.window.showInformationMessage(summary); } catch { /* ignore */ }
+        logger.info(`Applied ${preset.name} preset`, { changedSettings, skipped, failed: failed.length });
+        diagLog('info', 'Preset applied summary', {
+            presetId,
+            applied: changedSettings.length,
+            skipped,
+            failed: failed.map(entry => entry.key),
+            webRuntime: isWebRuntime
+        });
+
         if (changedSettings.length > 0) {
             this._queueRestartPrompt(changedSettings);
-            logger.info(`Applied ${preset.name} preset`, { changedSettings });
-            diagLog('info', 'Preset applied', {
-                presetId,
-                changedSettings,
-                webRuntime: vscode?.env?.uiKind === vscode?.UIKind?.Web
-            });
             try {
                 await vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
-                diagLog('info', 'Preset refresh triggered', { presetId });
+                diagLog('info', 'Preset refresh triggered', {
+                    presetId,
+                    applied: changedSettings.length,
+                    skipped: skipped.length
+                });
             } catch (error) {
                 diagLog('warn', 'Preset refresh failed', { presetId, error: error?.message });
             }
@@ -238,6 +302,9 @@ class RuntimeConfigManager {
      * Shows preset comparison with QuickPick interface
      */
     async showPresetComparison(currentSettings, recommendedPreset) {
+        if (!ensureQuickPickAvailable('runtimeConfig.showPresetComparison')) {
+            return;
+        }
         const baseSettings = currentSettings || this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         const currentSize = this._calculateCurrentBundleSize(null, baseSettings);
         const recommendedSize = recommendedPreset
@@ -292,6 +359,9 @@ class RuntimeConfigManager {
      * Shows all available presets
      */
     async showAllPresets() {
+        if (!ensureQuickPickAvailable('runtimeConfig.showAllPresets')) {
+            return;
+        }
         const baseSettings = this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         const currentSize = this._calculateCurrentBundleSize(null, baseSettings);
         

@@ -5,6 +5,7 @@ const {
     recordCommandInvocation,
     recordCommandResult
 } = require('../utils/webDiagnostics');
+const { diagLog } = require('../utils/webDiagnostics');
 
 const logger = getLogger();
 const isWebRuntime = (() => {
@@ -14,6 +15,37 @@ const isWebRuntime = (() => {
         return (typeof process === 'undefined') || (process?.env?.VSCODE_WEB === 'true');
     }
 })();
+
+function createWebRuntimeManagerStub() {
+    const notifyUnavailable = async (message) => {
+        diagLog('warn', 'QuickPick unavailable', {
+            context: 'runtimeCommands.webStub',
+            isWeb: isWebRuntime
+        });
+        if (typeof vscode?.window?.showInformationMessage === 'function') {
+            await vscode.window.showInformationMessage(message);
+        }
+    };
+
+    return {
+        async showAllPresets() {
+            await notifyUnavailable('Runtime presets are unavailable in VS Code for Web.');
+        },
+        async restorePreviousPreset() {
+            await notifyUnavailable('Runtime presets are unavailable in VS Code for Web.');
+            return { restored: false };
+        },
+        async showPresetComparison() {
+            await notifyUnavailable('Runtime preset comparisons are unavailable in VS Code for Web.');
+        },
+        async checkAutoSuggestion() {
+            await notifyUnavailable('Runtime preset suggestions are unavailable in VS Code for Web.');
+        },
+        async getCurrentRuntimeState() {
+            return { currentSettings: {}, analysis: null };
+        }
+    };
+}
 
 /**
  * Registers runtime chunk management commands lazily to avoid pulling heavy
@@ -71,6 +103,10 @@ function registerRuntimeCommands(context) {
         if (managersInitializing) return managersInitializing;
         managersInitializing = (async () => {
             if (!runtimeManager) {
+                if (isWebRuntime) {
+                    runtimeManager = createWebRuntimeManagerStub();
+                    return;
+                }
                 const heavy = await import('../chunks/runtime-management-heavy.js');
                 runtimeManager = new heavy.RuntimeConfigManager(context);
             }
@@ -111,6 +147,10 @@ function registerRuntimeCommands(context) {
         // Apply preset configuration
         registerCommand('explorerDates.applyPreset', async () => {
             try {
+                // Workspace trust guard (preset application writes settings)
+                const { requireWorkspaceTrust } = require('../utils/trustGuard');
+                requireWorkspaceTrust('apply preset');
+            
                 await ensureManagers();
                 await runtimeManager.showAllPresets();
             } catch (error) {
@@ -243,6 +283,20 @@ function registerRuntimeCommands(context) {
  * Shows chunk status in QuickPick format
  */
 async function showChunkStatusQuickPick(state) {
+    if (typeof vscode?.window?.showQuickPick !== 'function') {
+        diagLog('warn', 'QuickPick unavailable', {
+            context: 'runtimeCommands.showChunkStatus',
+            isWeb: isWebRuntime
+        });
+        try {
+            if (typeof vscode?.window?.showInformationMessage === 'function') {
+                vscode.window.showInformationMessage('Explorer Dates: This action is unavailable in this environment.');
+            }
+        } catch {
+            // ignore
+        }
+        return;
+    }
     const config = vscode.workspace.getConfiguration('explorerDates');
     
     const chunkInfo = [

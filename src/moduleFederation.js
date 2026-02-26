@@ -5,6 +5,15 @@
 
 const { CHUNK_MAP } = require('./shared/chunkMap');
 
+const WEB_EXCLUDED_CHUNKS = new Set([
+    'gitInsights',
+    'reporting',
+    'templates',
+    'advancedCache',
+    'runtimeManagementHeavy',
+    'incrementalWorkers'
+]);
+
 // Configuration for module federation
 const federationConfig = {
     chunks: {
@@ -17,6 +26,7 @@ const federationConfig = {
                     runtimeEntry: `./chunks/${chunkName}.js`,
                     includes: getChunkIncludes(chunkName),
                     external: getChunkExternal(chunkName),
+                    webExclude: WEB_EXCLUDED_CHUNKS.has(chunkName),
                     ...getChunkMetadata(chunkName)
                 }
             ])

@@ -14,7 +14,7 @@ if (!ensureDate) {
 }
 
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
-const isWebBuild = env.VSCODE_WEB === 'true';
+const isWebBuild = env.VSCODE_WEB === 'true' || isWebEnvironment();
 const forceWorkspaceFs = env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
 let nodeFs = null;
 if (!isWebBuild && !forceWorkspaceFs) {
@@ -69,6 +69,15 @@ class FileSystemAdapter {
         }
 
         if (typeof target === 'string') {
+            const trimmed = target.trim();
+            const looksLikeWindowsDrive = /^[a-zA-Z]:[\\/]/.test(trimmed);
+            const looksLikeUri = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed);
+            if (looksLikeUri && !looksLikeWindowsDrive) {
+                const parsed = vscode.Uri.parse(trimmed);
+                if (parsed.scheme && parsed.scheme !== 'file') {
+                    return parsed;
+                }
+            }
             return vscode.Uri.file(target);
         }
 
@@ -81,11 +90,30 @@ class FileSystemAdapter {
                 }
             }
 
+            if (this.isWeb && typeof target.scheme === 'string' && typeof target.path === 'string') {
+                return vscode.Uri.from({
+                    scheme: target.scheme,
+                    authority: target.authority || '',
+                    path: target.path || '',
+                    query: target.query || '',
+                    fragment: target.fragment || ''
+                });
+            }
+
             if (typeof target.fsPath === 'string' && target.fsPath.length > 0) {
                 return vscode.Uri.file(target.fsPath);
             }
 
             if (typeof target.path === 'string' && target.path.length > 0) {
+                if (this.isWeb && typeof target.scheme === 'string' && target.scheme !== 'file') {
+                    return vscode.Uri.from({
+                        scheme: target.scheme,
+                        authority: target.authority || '',
+                        path: target.path,
+                        query: target.query || '',
+                        fragment: target.fragment || ''
+                    });
+                }
                 return vscode.Uri.file(target.path);
             }
 

@@ -37,11 +37,12 @@ const { isWebEnvironment } = require('./utils/env');
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { SecurityValidator, SecureFileOperations, detectSecurityEnvironment } = require('./utils/securityUtils');
 const DISABLE_GIT_FEATURES = env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
+const IS_WEB_ENV = isWebEnvironment() || env.VSCODE_WEB === 'true';
 
 // Conditional path import for Node.js environments
 let nodePath = null;
 try {
-    if (!isWebEnvironment()) {
+    if (!IS_WEB_ENV) {
         nodePath = require('path');
     }
 } catch {
@@ -53,8 +54,10 @@ const pathCompat = {
     basename: (filePath) => {
         if (!filePath) return '';
         try {
-            const path = require('path');
-            return path.basename(filePath);
+            if (!IS_WEB_ENV) {
+                const path = require('path');
+                return path.basename(filePath);
+            }
         } catch {
             const normalized = filePath.replace(/\\/g, '/');
             const lastSlash = normalized.lastIndexOf('/');
@@ -64,8 +67,10 @@ const pathCompat = {
     dirname: (filePath) => {
         if (!filePath) return '.';
         try {
-            const path = require('path');
-            return path.dirname(filePath);
+            if (!IS_WEB_ENV) {
+                const path = require('path');
+                return path.dirname(filePath);
+            }
         } catch {
             const normalized = filePath.replace(/\\/g, '/');
             const lastSlash = normalized.lastIndexOf('/');
