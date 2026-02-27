@@ -684,7 +684,7 @@ async function activate(context) {
         if (isWebDiagnosticsEnabled()) {
             diagLog('info', 'Activation start', {
                 uiKind: vscode?.env?.uiKind,
-                isWeb: isWebEnvironment()
+                isWeb: isWebEnvironment
             });
         }
         // Initialize logger and localization
