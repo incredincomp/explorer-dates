@@ -38,7 +38,7 @@ try {
 } catch { /* ignore */ }
 if (!ensureDate) { const dateHelpers = require('./src/utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 const { WEB_CHUNK_GLOBAL_KEY, LEGACY_WEB_CHUNK_GLOBAL_KEY } = require('./src/constants');
-const isWebEnvironment = (() => {
+const isWebEnvironment = () => {
     try {
         if (typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true') return true;
     } catch { /* ignore */ }
@@ -47,8 +47,8 @@ const isWebEnvironment = (() => {
     } catch {
         return false;
     }
-})();
-if (isWebEnvironment && typeof globalThis !== 'undefined' && !globalThis.__explorerDatesRuntimeCommands) {
+};
+if (isWebEnvironment() && typeof globalThis !== 'undefined' && !globalThis.__explorerDatesRuntimeCommands) {
     try {
         globalThis.__explorerDatesRuntimeCommands = require('./src/commands/runtimeCommands');
     } catch {
@@ -58,7 +58,7 @@ if (isWebEnvironment && typeof globalThis !== 'undefined' && !globalThis.__explo
 let nodeFs = null;
 let nodePath = null;
 const webTextDecoder = typeof TextDecoder === 'function' ? new TextDecoder('utf-8') : null;
-if (!isWebEnvironment) {
+if (!isWebEnvironment()) {
     try {
         nodeFs = require('fs');
     } catch {
@@ -71,7 +71,7 @@ if (!isWebEnvironment) {
     }
 }
 const AUTO_SUGGESTION_DELAY_MS = 3000;
-const CRITICAL_CHUNKS = isWebEnvironment ? [] : ['incrementalWorkers'];
+const CRITICAL_CHUNKS = isWebEnvironment() ? [] : ['incrementalWorkers'];
 
 function resolveDefaultDistPath() {
     if (!nodePath || typeof nodePath.basename !== 'function' || typeof nodePath.join !== 'function') {
@@ -222,8 +222,7 @@ const chunkLoader = {
             if (isWebDiagnosticsEnabled()) {
                 recordChunkEvent(chunkName, 'load:start');
             }
-            if (isWebEnvironment) {
-                const chunk = await this._loadWebChunk(chunkName);
+            if (isWebEnvironment()) {
                 if (chunk) {
                     this.loadedChunks.set(chunkName, chunk);
                     getActiveLogger().info('Chunk loaded', { chunkName, target: 'web' });
@@ -254,7 +253,7 @@ const chunkLoader = {
                     `Failed to load chunk ${chunkName}`,
                     {
                         chunkName,
-                        target: isWebEnvironment ? 'web' : 'node',
+                        target: isWebEnvironment() ? 'web' : 'node',
                         error: error?.message
                     }
                 );
@@ -296,7 +295,7 @@ const chunkLoader = {
         // In web environment, only web chunks are required
         // In Node environment, only node chunks are required  
         // This allows for platform-specific chunk exclusions
-        if (isWebEnvironment) {
+        if (isWebEnvironment()) {
             return nodeFs.existsSync(webChunkPath);
         } else {
             return nodeFs.existsSync(nodeChunkPath);
@@ -684,10 +683,9 @@ async function activate(context) {
         if (isWebDiagnosticsEnabled()) {
             diagLog('info', 'Activation start', {
                 uiKind: vscode?.env?.uiKind,
-                isWeb: isWebEnvironment
+                isWeb: isWebEnvironment()
             });
         }
-        // Initialize logger and localization
         logger = getLogger();
         l10n = await ensureLocalization();
         context.subscriptions.push(l10n);
@@ -853,15 +851,14 @@ async function activate(context) {
                 // its own runtime chunk (`providerInit`) and should be lazily loaded.
                 const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
                 // Avoid attempting to require source files in a web runtime — rely on web chunks instead.
-                if (!isWebEnvironment && typeof dynamicRequire === 'function') {
+                if (!isWebEnvironment() && typeof dynamicRequire === 'function') {
                     const mod = dynamicRequire('./src/fileDateDecorationProvider');
                     const FileDateDecorationProvider = mod && (mod.FileDateDecorationProvider || mod.default || mod);
                     fileDateProvider = new FileDateDecorationProvider();
                     if (isWebDiagnosticsEnabled()) {
                         recordProviderEvent('created', { source: 'local' });
                     }
-                } else if (!isWebEnvironment) {
-                    // Environments where eval is unavailable (non-web): fall back to synchronous require
+                } else if (!isWebEnvironment()) {
                     const { FileDateDecorationProvider } = require('./src/fileDateDecorationProvider');
                     fileDateProvider = new FileDateDecorationProvider();
                     if (isWebDiagnosticsEnabled()) {
@@ -1033,7 +1030,7 @@ async function activate(context) {
                 const missing = contributed.filter((cmd) => !registered.includes(cmd));
                 const summary = {
                     uiKind: vscode?.env?.uiKind,
-                    isWeb: isWebEnvironment,
+                    isWeb: isWebEnvironment(),
                     registeredCount: registered.length,
                     contributedCount: contributed.length,
                     missingCommands: missing.slice(0, 20),
@@ -1202,7 +1199,7 @@ async function activate(context) {
         // Register workspace templates commands with lazy loading
         const openTemplateManager = vscode.commands.registerCommand('explorerDates.openTemplateManager', async () => {
             try {
-                if (isWebEnvironment) {
+                if (isWebEnvironment()) {
                     vscode.window.showInformationMessage('Workspace templates are unavailable in VS Code for Web.');
                     return;
                 }
@@ -1239,7 +1236,7 @@ async function activate(context) {
 
         const saveTemplate = vscode.commands.registerCommand('explorerDates.saveTemplate', async () => {
             try {
-                if (isWebEnvironment) {
+                if (isWebEnvironment()) {
                     vscode.window.showInformationMessage('Workspace templates are unavailable in VS Code for Web.');
                     return;
                 }
@@ -1284,7 +1281,7 @@ async function activate(context) {
         // Register export/reporting commands
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
             try {
-                if (isWebEnvironment) {
+                if (isWebEnvironment()) {
                     vscode.window.showInformationMessage('Export reporting is unavailable in VS Code for Web.');
                     return;
                 }
