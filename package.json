@@ -620,6 +620,80 @@
           ],
           "scope": "window"
         },
+        "explorerDates.freshnessSourcePolicy": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fs",
+            "git",
+            "github",
+            "unknown"
+          ],
+          "default": "auto",
+          "description": "Preferred freshness source policy (auto follows source ladder)",
+          "enumDescriptions": [
+            "Use the source ladder (FS -> Git -> GitHub -> Unknown)",
+            "Use filesystem timestamps only",
+            "Use Git-derived timestamps when available",
+            "Use GitHub commit timestamps when available",
+            "Always treat freshness as unknown"
+          ],
+          "scope": "window"
+        },
+        "explorerDates.freshnessShowUnknown": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show unknown freshness badges when no trustworthy source is available",
+          "scope": "window"
+        },
+        "explorerDates.freshnessAllowVirtualFs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow filesystem timestamps for non-file (virtual) URI schemes when trusted",
+          "scope": "window"
+        },
+        "explorerDates.freshnessTooltipVerbosity": {
+          "type": "string",
+          "enum": [
+            "full",
+            "compact"
+          ],
+          "default": "full",
+          "description": "Verbosity of freshness tooltip details",
+          "scope": "window"
+        },
+        "explorerDates.freshnessBucketMinutesNow": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Minutes threshold for the 'now' freshness bucket",
+          "scope": "window"
+        },
+        "explorerDates.freshnessBucketHoursToday": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "maximum": 72,
+          "description": "Hours threshold for the 'today' freshness bucket",
+          "scope": "window"
+        },
+        "explorerDates.freshnessBucketDaysTwo": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 14,
+          "description": "Days threshold for the '2d' freshness bucket",
+          "scope": "window"
+        },
+        "explorerDates.freshnessBucketDaysWeek": {
+          "type": "number",
+          "default": 7,
+          "minimum": 2,
+          "maximum": 60,
+          "description": "Days threshold for the '1w' freshness bucket",
+          "scope": "window"
+        },
         "explorerDates.customColors": {
           "type": "object",
           "default": {
@@ -1026,7 +1100,7 @@
   "capabilities": {
     "virtualWorkspaces": {
       "supported": "limited",
-      "description": "Core file decoration features work fully in virtual workspaces and VS Code for the Web. Git history, export reports, and advanced caching are unavailable. Basic file information commands (copy date, show details) are fully supported."
+      "description": "File decorations are supported in virtual workspaces, but freshness sources may be limited when filesystem timestamps or Git/GitHub metadata are unavailable. Git history, export reports, and advanced caching are unavailable. Basic file information commands (copy date, show details) are supported when a trustworthy source exists."
     },
     "untrustedWorkspaces": {
       "supported": true

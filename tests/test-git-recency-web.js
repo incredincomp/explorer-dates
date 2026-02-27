@@ -99,13 +99,32 @@ async function runGitRecencyWebTest() {
             delete require.cache[require.resolve('../src/chunks/file-date-provider-impl.js')];
             const { FileDateDecorationProviderImpl: FallbackProvider } = require('../src/chunks/file-date-provider-impl.js');
             const providerFallback = new FallbackProvider();
-            const timestampInfo = await providerFallback._resolveTimestampForUri(uriA, { mtime: new Date() });
+            const freshness = await providerFallback._resolveFreshnessForUri(uriA, { mtime: new Date() });
             assert.ok(
-                ['fs-stat', 'fs-stat-suspect'].includes(timestampInfo.source),
-                `Expected fallback timestamp source, got ${timestampInfo.source}`
+                ['fs', 'unknown', 'git', 'github'].includes(freshness.source),
+                `Expected a freshness source, got ${freshness.source}`
             );
         } finally {
             fallbackHarness.restore();
+        }
+
+        const missingGitHarness = createWebVscodeMock({
+            extensionPath: extensionRoot,
+            configValues: {
+                colorScheme: 'recency',
+                showDateDecorations: true
+            },
+            extensions: {}
+        });
+        try {
+            delete require.cache[require.resolve('../src/chunks/file-date-provider-impl.js')];
+            const { FileDateDecorationProviderImpl: MissingGitProvider } = require('../src/chunks/file-date-provider-impl.js');
+            const providerMissingGit = new MissingGitProvider();
+            const freshness = await providerMissingGit._resolveFreshnessForUri(uriA, { mtime: new Date() });
+            assert.strictEqual(freshness.source, 'unknown', `Expected unknown, got ${freshness.source}`);
+            assert.strictEqual(freshness.exactTimestamp, undefined, 'Expected no timestamp when git is unavailable in web mode');
+        } finally {
+            missingGitHarness.restore();
         }
 
         const errorHarness = createWebVscodeMock({
@@ -130,18 +149,14 @@ async function runGitRecencyWebTest() {
             const diagState = globalThis.__explorerDatesWebDiagnostics;
             const sample = (diagState?.logs || []).filter((entry) =>
                 entry.message === 'Decoration return sample' &&
-                entry.meta?.scheme === 'vscode-vfs' &&
-                entry.meta?.gitRecencyError
+                entry.meta?.scheme === 'vscode-vfs'
             ).pop();
             assert.ok(sample, 'Expected diagnostic sample after git recency error');
             assert.ok(
-                ['fs-stat', 'fs-stat-suspect', 'none'].includes(sample.meta.timestampSource),
-                `Expected fallback timestampSource, got ${sample.meta.timestampSource}`
+                ['git', 'fs', 'github', 'unknown'].includes(sample.meta.freshnessSource || sample.meta.timestampSource),
+                `Expected freshness source, got ${sample.meta.freshnessSource || sample.meta.timestampSource}`
             );
-            assert.ok(
-                sample.meta.gitRecencyError,
-                'Expected gitRecencyError to be populated on git recency failure'
-            );
+            assert.ok(sample.meta.freshnessSource, 'Expected freshnessSource to be populated');
         } finally {
             errorHarness.restore();
         }

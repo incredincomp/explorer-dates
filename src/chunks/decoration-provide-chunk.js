@@ -4,6 +4,7 @@
 function createDecorationProviderHelpers(provider) {
     const vscode = require('vscode');
     const { diagLogOnce, diagLog, isWebDiagnosticsEnabled } = require('../utils/webDiagnostics');
+    const { formatBadge, formatTooltip } = require('../utils/freshnessResolver');
     let decorationDiagCount = 0;
     const maxDecorationDiag = 20;
     // Keep in sync with package.json contributes.colors and file-date-provider-impl custom tokens.
@@ -207,7 +208,12 @@ function createDecorationProviderHelpers(provider) {
                         nullReason = 'no-stat';
                         return undefined;
                     }
-                    const modifiedAt = ensureDate(stat.mtime);
+                    const modifiedAt = stat.mtime instanceof Date ? stat.mtime : (stat.mtime ? new Date(stat.mtime) : null);
+                    const modifiedMs = modifiedAt && typeof modifiedAt.getTime === 'function' ? modifiedAt.getTime() : NaN;
+                    if (!Number.isFinite(modifiedMs)) {
+                        nullReason = 'invalid-stat';
+                        return undefined;
+                    }
                     const diffMs = Date.now() - modifiedAt.getTime();
                     const badge = diffMs < 24 * 60 * 60 * 1000 ? '•' : diffMs < 7 * 24 * 60 * 60 * 1000 ? '◦' : '·';
                     const tooltip = `Modified: ${modifiedAt.toISOString()}`;
@@ -327,27 +333,29 @@ function createDecorationProviderHelpers(provider) {
                 }
 
                 timestampAttempted = true;
+                let freshness = null;
                 try {
-                    if (typeof provider._resolveTimestampForUri === 'function') {
-                        timestampInfo = await provider._resolveTimestampForUri(uri, stat);
+                    if (typeof provider._resolveFreshnessForUri === 'function') {
+                        freshness = await provider._resolveFreshnessForUri(uri, stat, { filePath, fileLabel });
                     }
                 } catch (err) {
                     timestampInfo = {
-                        source: stat?.mtime ? 'fs-stat' : 'none',
+                        source: 'unknown',
                         gitAvailable: false,
                         gitError: err?.message ? `resolver-error:${err.message}` : 'resolver-error',
                         repoMatched: null,
                         pathAttempted: null
                     };
                 }
-                const resolvedTimestamp = timestampInfo?.timestamp || stat.mtime;
-                const modifiedAt = ensureDate(resolvedTimestamp);
-                resolvedTimestampMs = modifiedAt?.getTime ? modifiedAt.getTime() : null;
-                const createdAt = ensureDate(stat.birthtime || stat.ctime || stat.mtime);
-                const normalizedStat = { mtime: modifiedAt, birthtime: createdAt, size: stat.size };
-                const diffMs = Date.now() - modifiedAt.getTime();
 
-                const dateFormat = _get('dateDecorationFormat', 'smart');
+                if (!freshness || freshness.bucket === 'unknown' || freshness.source === 'unknown') {
+                    const showUnknown = _get('freshnessShowUnknown', true);
+                    if (!showUnknown) {
+                        nullReason = 'freshness-unknown';
+                        return undefined;
+                    }
+                }
+
                 const requestedColorScheme = _get('colorScheme', 'none');
                 let colorScheme = requestedColorScheme;
                 const perfSuppressed = provider._performanceMode && colorScheme !== 'custom';
@@ -355,9 +363,6 @@ function createDecorationProviderHelpers(provider) {
                 const fileSizeFormat = _get('fileSizeFormat', 'auto');
 
                 const logic = provider._decorationLogic;
-                const formatBadge = logic && typeof logic._formatDateBadge === 'function'
-                    ? logic._formatDateBadge
-                    : provider._formatDateBadge;
                 const buildTooltip = logic && typeof logic._buildTooltipContent === 'function'
                     ? logic._buildTooltipContent
                     : provider._buildTooltipContent;
@@ -365,9 +370,16 @@ function createDecorationProviderHelpers(provider) {
                     ? logic.acquireDecorationFromPool
                     : provider._acquireDecorationFromPool;
 
-                const badge = formatBadge(modifiedAt, dateFormat, diffMs);
-                const color = provider._getColorByScheme(modifiedAt, colorScheme, filePath);
-                const tooltip = await buildTooltip({ filePath, resourceUri: uri, stat: normalizedStat, badgeDetails: {}, gitBlame: null, shouldUseAccessibleTooltips: false, fileSizeFormat, isCodeFile: false });
+                const badge = formatBadge(freshness?.bucket || 'unknown', freshness?.source || 'unknown', config);
+                if (!badge) {
+                    nullReason = 'badge-suppressed';
+                    return undefined;
+                }
+                const color = freshness?.exactTimestamp
+                    ? provider._getColorByScheme(new Date(freshness.exactTimestamp), colorScheme, filePath)
+                    : undefined;
+                const tooltip = formatTooltip(freshness, config)
+                    || await buildTooltip({ filePath, resourceUri: uri, stat: stat, badgeDetails: {}, gitBlame: null, shouldUseAccessibleTooltips: false, fileSizeFormat, isCodeFile: false });
 
                 const decoration = acquireDecoration({ badge, tooltip, color });
                 colorId = (color && typeof color === 'object' && 'id' in color) ? color.id : (color || null);
@@ -380,8 +392,20 @@ function createDecorationProviderHelpers(provider) {
                         knownTokens: Array.from(CONTRIBUTED_CUSTOM_COLOR_TOKENS)
                     });
                 }
+                resolvedTimestampMs = freshness?.exactTimestamp || null;
+                timestampInfo = timestampInfo || {
+                    source: freshness?.source || 'unknown',
+                    bucket: freshness?.bucket || 'unknown',
+                    confidence: freshness?.confidence || 'low',
+                    reason: freshness?.reason || null,
+                    attempts: freshness?.attempts || null,
+                    gitAvailable: freshness?.source === 'git',
+                    gitError: null,
+                    repoMatched: null,
+                    pathAttempted: null
+                };
                 // Use coordinator's cache API: storeDecorationInCache accepts fileLabel and optional resourceUri
-                provider._storeDecorationInCache(cacheKey, decoration, fileLabel, uri);
+                provider._storeDecorationInCache(cacheKey, decoration, fileLabel, uri, freshness);
                 return decoration;
             });
 
@@ -429,6 +453,11 @@ function createDecorationProviderHelpers(provider) {
                 resolvedTimestampMs,
                 gitRepoMatched: timestampInfo?.repoMatched ?? null,
                 gitPathAttempted: timestampInfo?.pathAttempted || null,
+                freshnessBucket: timestampInfo?.bucket || null,
+                freshnessSource: timestampInfo?.source || null,
+                freshnessConfidence: timestampInfo?.confidence || null,
+                freshnessReason: timestampInfo?.reason || null,
+                freshnessAttempts: timestampInfo?.attempts || null,
                 exceptionName,
                 exceptionMessage
             };

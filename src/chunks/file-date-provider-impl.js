@@ -20,6 +20,10 @@ const {
     recordDecorationCall,
     recordRefreshCall
 } = require('../utils/webDiagnostics');
+const {
+    resolveFreshness,
+    compareFreshness
+} = require('../utils/freshnessResolver');
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
 // Local defaults that are present in the main provider module —
@@ -238,6 +242,9 @@ class FileDateDecorationProviderImpl {
         this._gitRecencyCache = new Map();
         this._gitRecencyCacheTtlMs = 60000;
         this._gitRecencyCacheMax = 1000;
+        this._freshnessCache = new Map();
+        this._freshnessCacheTtlMs = Number(env.EXPLORER_DATES_FRESHNESS_CACHE_TTL_MS || 60000);
+        this._freshnessCacheMax = Number(env.EXPLORER_DATES_FRESHNESS_CACHE_MAX || 2000);
 
         try { this._instanceId = Math.random().toString(36).slice(2, 8); this._logger.debug(`FileDateDecorationProvider created (id=${this._instanceId})`); } catch {}
         this._exportReportingManager = null;
@@ -320,6 +327,8 @@ class FileDateDecorationProviderImpl {
         this._smartWatcherSetupPromise = null;
         this._activeWatcherStrategy = 'none';
         this._watcherEventDebounce = new Map();
+        this._gitHeadWatcherInitialized = false;
+        this._gitHeadWatchDisposables = [];
         this._workspaceFileCount = null;
         this._workspaceScale = 'unknown';
         this._logWatcherEvents = env.EXPLORER_DATES_LOG_WATCHERS === '1';
@@ -481,6 +490,9 @@ class FileDateDecorationProviderImpl {
         } catch (e) {
             this._logger?.debug?.('initial watcher/refresh setup failed', e);
         }
+
+        // Register Git HEAD watchers for cache invalidation (best-effort)
+        try { this._registerGitHeadWatcher?.(); } catch (e) { /* ignore */ }
     }
 
     // Ensure a watcher manager exists (synchronous-friendly)
@@ -523,6 +535,8 @@ class FileDateDecorationProviderImpl {
                     try {
                         this._logger?.info && this._logger.info('Workspace folders changed (provider fallback)', { added: addedUris.length, removed: removedUris.length });
                         await this.checkWorkspaceSize();
+                        try { this.clearAllCaches(); } catch { /* ignore */ }
+                        try { this.refreshAll(); } catch { /* ignore */ }
                         if (this._performanceMode) return;
                         this._setupFileWatcher?.('workspace-change');
                         // best-effort progressive loading reconfiguration
@@ -972,9 +986,9 @@ class FileDateDecorationProviderImpl {
     _createMinimalDecoration(uri, now = Date.now()) {
         try {
             const vscode = require('vscode');
-            return new vscode.FileDecoration('.', `Updated ${new Date(now).toISOString()}`);
+            return new vscode.FileDecoration('??', 'Freshness: unknown (backpressure)');
         } catch (e) {
-            return { badge: '.', tooltip: `Updated ${new Date(now).toISOString()}` };
+            return { badge: '??', tooltip: 'Freshness: unknown (backpressure)' };
         }
     }
 
@@ -1181,9 +1195,11 @@ class FileDateDecorationProviderImpl {
             }
             // recency/adaptive/vibrant/subtle fallback (minimal)
             if (scheme === 'recency') {
-                if (ageMs < 36e5) return new vscode.ThemeColor('explorerDates.customColor.veryRecent');
-                if (ageMs < 864e5) return new vscode.ThemeColor('explorerDates.customColor.recent');
-                return new vscode.ThemeColor('explorerDates.customColor.old');
+                // Use built-in VS Code theme colors for recency in web mode
+                // These have better default rendering than custom color tokens
+                if (ageMs < 36e5) return new vscode.ThemeColor('list.highlightForeground');  // Very recent: highlight
+                if (ageMs < 864e5) return new vscode.ThemeColor('charts.yellow');            // Recent: yellow
+                return new vscode.ThemeColor('charts.red');                                   // Old: red
             }
             const colors = getAdaptiveColorsFallback();
             if (scheme === 'file-type' || scheme === 'adaptive') {
@@ -1233,6 +1249,52 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    _getFreshnessCacheKey(uri, sourceHint) {
+        try {
+            const scheme = uri?.scheme || 'file';
+            const pathValue = getUriPath(uri) || '';
+            const normalized = normalizePath(pathValue);
+            return `${scheme}::${normalized}::${sourceHint || 'auto'}`;
+        } catch {
+            return String(uri || 'unknown');
+        }
+    }
+
+    _getCachedFreshness(cacheKey) {
+        try {
+            const entry = this._freshnessCache.get(cacheKey);
+            if (!entry) return null;
+            if (entry.expiresAt && entry.expiresAt < Date.now()) {
+                this._freshnessCache.delete(cacheKey);
+                return null;
+            }
+            return entry.freshness || null;
+        } catch {
+            return null;
+        }
+    }
+
+    _storeFreshnessCache(cacheKey, freshness) {
+        try {
+            if (!freshness) return;
+            if (this._freshnessCache.size >= this._freshnessCacheMax) {
+                const oldest = this._freshnessCache.keys().next().value;
+                if (oldest) this._freshnessCache.delete(oldest);
+            }
+            const existing = this._freshnessCache.get(cacheKey);
+            if (existing && existing.freshness) {
+                const cmp = compareFreshness(existing.freshness, freshness);
+                if (cmp > 0) return;
+            }
+            this._freshnessCache.set(cacheKey, {
+                freshness,
+                expiresAt: Date.now() + this._freshnessCacheTtlMs
+            });
+        } catch {
+            // ignore cache errors
+        }
+    }
+
     _normalizeGitPath(value = '') {
         try {
             let raw = String(value || '');
@@ -1274,8 +1336,13 @@ class FileDateDecorationProviderImpl {
         };
 
         try {
+            // Check for Git extension - it may be available in web mode (vscode.dev)
             const extension = vscode?.extensions?.getExtension ? vscode.extensions.getExtension('vscode.git') : null;
             if (!extension) {
+                // Log once in web mode to help debugging
+                if (this._isWeb) {
+                    diagLogOnce('git-extension-unavailable-web', 'info', 'Git extension not available in web mode - timestamps will use fs.stat fallback');
+                }
                 result.error = 'git-extension-missing';
                 this._rememberGitRecency(cacheKey, result);
                 return result;
@@ -1317,6 +1384,8 @@ class FileDateDecorationProviderImpl {
             const entry = Array.isArray(logEntries) ? logEntries[0] : null;
             const commitDate = entry?.commitDate || entry?.authorDate || entry?.date || entry?.committerDate;
             const ts = commitDate ? new Date(commitDate).getTime() : null;
+            result.author = entry?.authorName || entry?.author?.name || entry?.author || null;
+            result.message = entry?.message || entry?.subject || null;
             if (Number.isFinite(ts)) {
                 result.timestampMs = ts;
             } else {
@@ -1333,7 +1402,10 @@ class FileDateDecorationProviderImpl {
     }
 
     async _resolveTimestampForUri(uri, stat) {
-        const fallback = stat?.mtime ? (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)) : null;
+        const rawFallback = stat?.mtime ? (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)) : null;
+        const fallbackMs = rawFallback && typeof rawFallback.getTime === 'function' ? rawFallback.getTime() : NaN;
+        const fallback = Number.isFinite(fallbackMs) ? rawFallback : null;
+        const scheme = uri?.scheme || 'file';
         if (!this._shouldUseGitRecency(uri)) {
             return {
                 timestamp: fallback,
@@ -1367,11 +1439,27 @@ class FileDateDecorationProviderImpl {
             };
         }
         let source = fallback ? 'fs-stat' : 'none';
-        if (fallback && (uri?.scheme || 'file') !== 'file') {
+        if (fallback && scheme !== 'file') {
             const ageMs = Date.now() - fallback.getTime();
+            // Detect suspect timestamps in web mode (vscode-vfs may return workspace open time)
             if (ageMs >= 0 && ageMs <= 60000) {
                 source = 'fs-stat-suspect';
+            } else if (this._isWeb && ageMs > 60000) {
+                // In web mode, fs.stat timestamps may all be identical (workspace clone time)
+                // Log once to help users understand why times might be inaccurate
+                diagLogOnce('web-fs-stat-limitation', 'info', 'Web mode timestamps may reflect workspace open time, not actual file modification time. Git extension would provide accurate timestamps if available.');
             }
+        }
+        if (this._isWeb && scheme !== 'file' && (gitResult?.error || !(gitResult?.available))) {
+            // Web/virtual scheme with no git support: avoid using potentially synthetic timestamps.
+            return {
+                timestamp: null,
+                source: 'web-unknown',
+                gitAvailable: false,
+                gitError: gitResult?.error || null,
+                repoMatched: gitResult?.repoMatched ?? null,
+                pathAttempted: gitResult?.pathAttempted || null
+            };
         }
         return {
             timestamp: fallback,
@@ -1381,6 +1469,24 @@ class FileDateDecorationProviderImpl {
             repoMatched: gitResult?.repoMatched ?? null,
             pathAttempted: gitResult?.pathAttempted || null
         };
+    }
+
+    async _resolveFreshnessForUri(uri, stat, options = {}) {
+        const config = vscode.workspace.getConfiguration('explorerDates');
+        const workspaceKind = options.workspaceKind || (this._isWeb ? 'web' : 'desktop');
+        const sourcePolicy = config.get('freshnessSourcePolicy', 'auto');
+        const cacheKey = this._getFreshnessCacheKey(uri, sourcePolicy);
+        const cached = this._getCachedFreshness(cacheKey);
+        if (cached) return cached;
+        const freshness = await resolveFreshness({
+            uri,
+            stat,
+            provider: this,
+            config,
+            workspaceKind
+        });
+        this._storeFreshnessCache(cacheKey, freshness);
+        return freshness;
     }
 
     async _buildTooltipContent(opts = {}) {
@@ -1403,9 +1509,78 @@ class FileDateDecorationProviderImpl {
             try { if (this._readableDateFlyweightOrder) this._readableDateFlyweightOrder.length = 0; } catch {}
             try { if (this._advancedCache && typeof this._advancedCache.clear === 'function') this._advancedCache.clear(); } catch {}
             try { if (this._gitRecencyCache && typeof this._gitRecencyCache.clear === 'function') this._gitRecencyCache.clear(); } catch {}
+            try { if (this._freshnessCache && typeof this._freshnessCache.clear === 'function') this._freshnessCache.clear(); } catch {}
         } catch (error) {
             this._logger?.debug && this._logger.debug('clearAllCaches failed', error);
         }
+    }
+
+    _clearFreshnessCacheForUri(uri) {
+        try {
+            if (!this._freshnessCache || this._freshnessCache.size === 0) return;
+            const scheme = uri?.scheme || 'file';
+            const pathValue = getUriPath(uri) || '';
+            const normalized = normalizePath(pathValue);
+            const prefix = `${scheme}::${normalized}::`;
+            for (const key of this._freshnessCache.keys()) {
+                if (typeof key === 'string' && key.startsWith(prefix)) {
+                    this._freshnessCache.delete(key);
+                }
+            }
+        } catch {
+            // ignore cache errors
+        }
+    }
+
+    _handleGitHeadChange(meta = {}) {
+        try { this.clearAllCaches(); } catch { /* ignore */ }
+        try { this.refreshAll(); } catch { /* ignore */ }
+        try {
+            if (meta?.head && this._logger?.info) {
+                this._logger.info('Git HEAD change detected; caches refreshed', { head: meta.head });
+            }
+        } catch { /* ignore */ }
+    }
+
+    _registerGitHeadWatcher() {
+        if (this._gitHeadWatcherInitialized) return;
+        this._gitHeadWatcherInitialized = true;
+        (async () => {
+            try {
+                const extension = vscode?.extensions?.getExtension ? vscode.extensions.getExtension('vscode.git') : null;
+                if (!extension) return;
+                if (!extension.isActive && typeof extension.activate === 'function') {
+                    try { await extension.activate(); } catch { /* ignore */ }
+                }
+                const api = extension.exports?.getAPI?.(1);
+                if (!api) return;
+
+                const registerRepo = (repo) => {
+                    try {
+                        if (!repo || !repo.state || typeof repo.state.onDidChange !== 'function') return;
+                        let lastHead = repo.state.HEAD?.commit || repo.state.HEAD?.name || null;
+                        const disposable = repo.state.onDidChange(() => {
+                            const nextHead = repo.state.HEAD?.commit || repo.state.HEAD?.name || null;
+                            if (nextHead !== lastHead) {
+                                lastHead = nextHead;
+                                this._handleGitHeadChange({ repo, head: nextHead });
+                            }
+                        });
+                        if (disposable) this._gitHeadWatchDisposables.push(disposable);
+                    } catch { /* ignore */ }
+                };
+
+                if (Array.isArray(api.repositories)) {
+                    api.repositories.forEach((repo) => registerRepo(repo));
+                }
+                if (typeof api.onDidOpenRepository === 'function') {
+                    const disposable = api.onDidOpenRepository((repo) => registerRepo(repo));
+                    if (disposable) this._gitHeadWatchDisposables.push(disposable);
+                }
+            } catch (err) {
+                this._logger?.debug?.('Failed to register git HEAD watcher', err);
+            }
+        })();
     }
 
     refreshAll() {
@@ -1435,6 +1610,7 @@ class FileDateDecorationProviderImpl {
 
     refreshDecoration(uri) {
         try {
+            try { this._clearFreshnessCacheForUri(uri); } catch { /* ignore */ }
             this._onDidChangeFileDecorations.fire(uri);
         } catch (error) {
             this._logger?.debug && this._logger.debug('refreshDecoration failed', error);
@@ -1443,6 +1619,7 @@ class FileDateDecorationProviderImpl {
 
     clearDecoration(uri) {
         try {
+            try { this._clearFreshnessCacheForUri(uri); } catch { /* ignore */ }
             const target = uri ? (typeof uri === 'string' ? uri : getUriPath(uri)) : '';
             const cacheKey = this._getCacheKey ? this._getCacheKey(uri) : buildCacheKey(target);
             try { if (this._decorationCache && typeof this._decorationCache.delete === 'function') this._decorationCache.delete(cacheKey); } catch { /* ignore */ }
@@ -1465,7 +1642,7 @@ class FileDateDecorationProviderImpl {
         }
     }
 
-    _storeDecorationInCache(cacheKey, decoration, fileLabel, uri) {
+    _storeDecorationInCache(cacheKey, decoration, fileLabel, uri, freshness) {
         try {
             if (this._forceCacheBypass) return;
 
@@ -1479,6 +1656,7 @@ class FileDateDecorationProviderImpl {
             }
 
             const cacheEntry = { decoration, timestamp: Date.now() };
+            if (freshness) cacheEntry.freshness = freshness;
             if (uri) cacheEntry.uri = uri;
             try { this._decorationCache.set(cacheKey, cacheEntry); } catch { /* ignore */ }
 
@@ -1627,6 +1805,7 @@ class FileDateDecorationProviderImpl {
         // Dispose event emitters and disposables
         try { if (this._onDidChangeFileDecorations && typeof this._onDidChangeFileDecorations.dispose === 'function') this._onDidChangeFileDecorations.dispose(); } catch (e) { /* ignore */ }
         try { if (Array.isArray(this._watcherDisposables)) { for (const d of this._watcherDisposables) { try { d.dispose && d.dispose(); } catch {} } this._watcherDisposables.length = 0; } } catch {}
+        try { if (Array.isArray(this._gitHeadWatchDisposables)) { for (const d of this._gitHeadWatchDisposables) { try { d.dispose && d.dispose(); } catch {} } this._gitHeadWatchDisposables.length = 0; } } catch {}
         try { if (Array.isArray(this._viewportDisposables)) { for (const d of this._viewportDisposables) { try { d.dispose && d.dispose(); } catch {} } this._viewportDisposables.length = 0; } } catch {}
 
         // Dispose known managers if present

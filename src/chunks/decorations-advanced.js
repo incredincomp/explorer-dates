@@ -443,6 +443,7 @@ function dispatchWatcherEvent(provider, uri, eventType, source) {
     }
 
     try {
+        try { provider._clearFreshnessCacheForUri?.(uri); } catch { /* ignore */ }
         if (eventType === 'delete') provider.clearDecoration(uri); else provider.refreshDecoration(uri);
         if (provider._workspaceIntelligence?.incrementalIndexer) provider._workspaceIntelligence.incrementalIndexer.queueDelta(uri, eventType);
         if (provider._logWatcherEvents) provider._logger?.debug?.(`Watcher event processed (${eventType}) for ${provider.describeFile(uri)} via ${source}`);

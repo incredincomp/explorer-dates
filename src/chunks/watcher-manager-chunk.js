@@ -298,6 +298,7 @@ class WatcherManager {
     }
 
     _dispatchWatcherEvent(uri, eventType, source) {
+        try { this._provider._clearFreshnessCacheForUri?.(uri); } catch { /* ignore */ }
         if (eventType === 'delete') {
             this._provider.clearDecoration(uri);
         } else {
@@ -330,6 +331,8 @@ class WatcherManager {
         const run = async () => {
             this._logger.info('Workspace folders changed', { added: addedUris.length, removed: removedUris.length });
             await this._provider.checkWorkspaceSize();
+            try { this._provider.clearAllCaches(); } catch { /* ignore */ }
+            try { this._provider.refreshAll(); } catch { /* ignore */ }
             if (this._provider._performanceMode) return;
             this.setupFileWatcher('workspace-change');
             await this._provider._applyProgressiveLoadingSetting().catch((error) => this._logger.debug('Failed to reconfigure progressive loading after workspace change', error));
