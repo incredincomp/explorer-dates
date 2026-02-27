@@ -24,8 +24,8 @@
   "main": "./dist/extension.js",
   "browser": "./dist/extension.web.js",
   "extensionKind": [
-    "ui",
-    "workspace"
+    "workspace",
+    "ui"
   ],
   "contributes": {
     "commands": [
@@ -660,6 +660,22 @@
           ],
           "default": "full",
           "description": "Verbosity of freshness tooltip details",
+          "scope": "window"
+        },
+        "explorerDates.badge.sourceLabelMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "description": "When to append the freshness source label to the badge (auto shows labels for non-normal sources or confidence)",
+          "enumDescriptions": [
+            "Show source label only for non-normal cases",
+            "Always show source label when source is known",
+            "Never show source label in badges"
+          ],
           "scope": "window"
         },
         "explorerDates.freshnessBucketMinutesNow": {

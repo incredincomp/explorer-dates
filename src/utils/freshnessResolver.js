@@ -66,24 +66,42 @@ function formatSourceLabel(source) {
     }
 }
 
-function formatBadge(bucket, source, config) {
+function formatSourceBadgeLabel(source) {
+    switch (source) {
+        case 'fs': return 'FS';
+        case 'git': return 'Git';
+        case 'github': return 'GH';
+        default: return '?';
+    }
+}
+
+function formatBadge(bucket, source, config, confidence = 'low') {
     const showUnknown = Boolean(getConfigValue(config, 'freshnessShowUnknown', true));
     if (bucket === 'unknown' || source === 'unknown') {
-        return showUnknown ? '??' : null;
+        return showUnknown ? '?' : null;
     }
-    const bucketCode = {
-        now: 'N',
-        today: 'T',
-        '2d': '2',
-        '1w': '1',
-        stale: 'S'
-    }[bucket] || '?';
-    const sourceCode = {
-        fs: 'F',
-        git: 'G',
-        github: 'H'
-    }[source] || '?';
-    return `${bucketCode}${sourceCode}`;
+    const ageLabel = formatBucketLabel(bucket);
+    if (!ageLabel || ageLabel === 'unknown') {
+        return showUnknown ? '?' : null;
+    }
+
+    const mode = getConfigValue(config, 'badge.sourceLabelMode', 'auto');
+    const isNormal = source === 'fs' && confidence === 'high';
+    let showLabel = false;
+    if (mode === 'always') {
+        showLabel = true;
+    } else if (mode === 'never') {
+        showLabel = false;
+    } else {
+        showLabel = !isNormal;
+    }
+
+    if (!showLabel) {
+        return ageLabel;
+    }
+
+    const sourceLabel = formatSourceBadgeLabel(source);
+    return sourceLabel ? `${ageLabel} • ${sourceLabel}` : ageLabel;
 }
 
 function formatExactTimestamp(ts) {
@@ -347,6 +365,7 @@ module.exports = {
     bucketFromAge,
     formatBucketLabel,
     formatSourceLabel,
+    formatSourceBadgeLabel,
     compareFreshness,
     SOURCE_RANK,
     CONFIDENCE_RANK

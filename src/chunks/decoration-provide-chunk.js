@@ -370,7 +370,12 @@ function createDecorationProviderHelpers(provider) {
                     ? logic.acquireDecorationFromPool
                     : provider._acquireDecorationFromPool;
 
-                const badge = formatBadge(freshness?.bucket || 'unknown', freshness?.source || 'unknown', config);
+                const badge = formatBadge(
+                    freshness?.bucket || 'unknown',
+                    freshness?.source || 'unknown',
+                    config,
+                    freshness?.confidence || 'low'
+                );
                 if (!badge) {
                     nullReason = 'badge-suppressed';
                     return undefined;
