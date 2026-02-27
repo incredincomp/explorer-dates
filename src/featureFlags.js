@@ -76,9 +76,6 @@ function isWebRuntime() {
         if (isWebEnvironment()) {
             return true;
         }
-        if (typeof navigator !== 'undefined' && navigator?.userAgent) {
-            return navigator.userAgent.includes('vscode-web') || navigator.userAgent.includes('Code - Web');
-        }
         return typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
     } catch {
         return false;

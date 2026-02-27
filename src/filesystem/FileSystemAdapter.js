@@ -30,6 +30,15 @@ class FileSystemAdapter {
         this.isWeb = isWebBuild || isWebEnvironment();
     }
 
+    _shouldUseWorkspaceFs(target) {
+        try {
+            const uri = this._toUri(target);
+            return !!(uri?.scheme && uri.scheme !== 'file');
+        } catch {
+            return false;
+        }
+    }
+
     _toPath(target) {
         if (!target) {
             return '';
@@ -150,7 +159,8 @@ class FileSystemAdapter {
     }
 
     async stat(target) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.stat(this._toPath(target));
         }
 
@@ -167,7 +177,8 @@ class FileSystemAdapter {
     }
 
     async readFile(target, encoding = 'utf8') {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.readFile(this._toPath(target), encoding);
         }
 
@@ -184,7 +195,8 @@ class FileSystemAdapter {
     async writeFile(target, data, encoding = 'utf8') {
         const targetPath = this._toPath(target);
         try {
-            if (!this.isWeb && nodeFs) {
+            const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+            if (!this.isWeb && nodeFs && !useWorkspaceFs) {
                 return nodeFs.writeFile(targetPath, data, encoding);
             }
 
@@ -199,7 +211,8 @@ class FileSystemAdapter {
     async mkdir(target, options = { recursive: true }) {
         const targetPath = this._toPath(target);
         try {
-            if (!this.isWeb && nodeFs) {
+            const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+            if (!this.isWeb && nodeFs && !useWorkspaceFs) {
                 return nodeFs.mkdir(targetPath, options);
             }
 
@@ -211,7 +224,8 @@ class FileSystemAdapter {
     }
 
     async readdir(target, options = { withFileTypes: false }) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.readdir(this._toPath(target), options);
         }
 
@@ -230,7 +244,8 @@ class FileSystemAdapter {
     }
 
     async delete(target, options = { recursive: false }) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             const fsPath = this._toPath(target);
             if (options.recursive) {
                 return nodeFs.rm ? nodeFs.rm(fsPath, options) : nodeFs.rmdir(fsPath, options);

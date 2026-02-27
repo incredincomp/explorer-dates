@@ -245,6 +245,7 @@ class FileDateDecorationProviderImpl {
         this._freshnessCache = new Map();
         this._freshnessCacheTtlMs = Number(env.EXPLORER_DATES_FRESHNESS_CACHE_TTL_MS || 60000);
         this._freshnessCacheMax = Number(env.EXPLORER_DATES_FRESHNESS_CACHE_MAX || 2000);
+        this._freshnessWarningReasons = new Set();
 
         try { this._instanceId = Math.random().toString(36).slice(2, 8); this._logger.debug(`FileDateDecorationProvider created (id=${this._instanceId})`); } catch {}
         this._exportReportingManager = null;
@@ -1295,6 +1296,20 @@ class FileDateDecorationProviderImpl {
         }
     }
 
+    _logFreshnessWarningOnce(reason, uri) {
+        try {
+            const key = reason || 'unknown';
+            if (this._freshnessWarningReasons.has(key)) return;
+            this._freshnessWarningReasons.add(key);
+            this._logger?.warn?.('Freshness source unavailable, falling back to unknown', {
+                reason: key,
+                uri: uri ? getUriPath(uri) : null
+            });
+        } catch {
+            // ignore logging failures
+        }
+    }
+
     _normalizeGitPath(value = '') {
         try {
             let raw = String(value || '');
@@ -1486,6 +1501,9 @@ class FileDateDecorationProviderImpl {
             workspaceKind
         });
         this._storeFreshnessCache(cacheKey, freshness);
+        if (freshness?.source === 'unknown') {
+            this._logFreshnessWarningOnce(freshness?.reason || 'unknown', uri);
+        }
         return freshness;
     }
 

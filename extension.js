@@ -684,7 +684,7 @@ async function activate(context) {
         if (isWebDiagnosticsEnabled()) {
             diagLog('info', 'Activation start', {
                 uiKind: vscode?.env?.uiKind,
-                isWeb: isWebEnvironment
+                isWeb: isWebEnvironment()
             });
         }
         // Initialize logger and localization
@@ -696,7 +696,19 @@ async function activate(context) {
         chunkLoader.assertChunkArtifacts(CRITICAL_CHUNKS);
         setFeatureChunkResolver((chunkName) => chunkLoader.loadChunk(chunkName));
         
+        const remoteName = vscode?.env?.remoteName || null;
+        const uiKind = vscode?.env?.uiKind || null;
+        const isWebRuntime = uiKind === vscode.UIKind.Web;
+        const workspaceSchemes = (vscode.workspace.workspaceFolders || [])
+            .map((folder) => folder?.uri?.scheme)
+            .filter(Boolean);
         logger.info('Explorer Dates: Extension activated');
+        logger.info('Explorer Dates: Activation context', {
+            uiKind,
+            remoteName,
+            isWeb: isWebRuntime,
+            workspaceSchemes
+        });
 
         // Hydrate the heavy logger implementation in background (does not block activation)
         (async () => {
@@ -882,8 +894,16 @@ async function activate(context) {
                     recordProviderEvent('hydrated', { source: 'providerInit' });
                 }
             }
-            const decorationDisposable = vscode.window.registerFileDecorationProvider(fileDateProvider);
-            context.subscriptions.push(decorationDisposable);
+            try {
+                const decorationDisposable = vscode.window.registerFileDecorationProvider(fileDateProvider);
+                context.subscriptions.push(decorationDisposable);
+                logger.info('Explorer Dates: File decoration provider registered', {
+                    isWeb: isWebRuntime,
+                    remoteName
+                });
+            } catch (error) {
+                logger.error('Explorer Dates: Failed to register FileDecorationProvider', error);
+            }
             context.subscriptions.push(fileDateProvider); // For proper disposal
             context.subscriptions.push(logger); // Dispose logger on deactivation
             if (isWebDiagnosticsEnabled()) {
