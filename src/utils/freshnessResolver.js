@@ -66,12 +66,16 @@ function formatSourceLabel(source) {
     }
 }
 
-function formatSourceBadgeLabel(source) {
-    switch (source) {
-        case 'fs': return 'FS';
-        case 'git': return 'Git';
-        case 'github': return 'GH';
-        default: return '?';
+// VS Code FileDecoration.badge is limited to 2 Unicode code points.
+// All values returned here must be ≤ 2 characters.
+function formatBadgeAge(bucket) {
+    switch (bucket) {
+        case 'now':   return '!!';
+        case 'today': return 'T';
+        case '2d':    return '2d';
+        case '1w':    return '1w';
+        case 'stale': return '~~';
+        default:      return '?';
     }
 }
 
@@ -80,28 +84,12 @@ function formatBadge(bucket, source, config, confidence = 'low') {
     if (bucket === 'unknown' || source === 'unknown') {
         return showUnknown ? '?' : null;
     }
-    const ageLabel = formatBucketLabel(bucket);
+    const ageLabel = formatBadgeAge(bucket);
     if (!ageLabel || ageLabel === 'unknown') {
         return showUnknown ? '?' : null;
     }
-
-    const mode = getConfigValue(config, 'badge.sourceLabelMode', 'auto');
-    const isNormal = source === 'fs' && confidence === 'high';
-    let showLabel = false;
-    if (mode === 'always') {
-        showLabel = true;
-    } else if (mode === 'never') {
-        showLabel = false;
-    } else {
-        showLabel = !isNormal;
-    }
-
-    if (!showLabel) {
-        return ageLabel;
-    }
-
-    const sourceLabel = formatSourceBadgeLabel(source);
-    return sourceLabel ? `${ageLabel} • ${sourceLabel}` : ageLabel;
+    // Badge is limited to 2 chars — source labels go in the tooltip, not badge text.
+    return ageLabel;
 }
 
 function formatExactTimestamp(ts) {
@@ -118,6 +106,7 @@ function formatExactTimestamp(ts) {
 function formatTooltip(freshness, config) {
     if (!freshness) return undefined;
     const verbosity = getConfigValue(config, 'freshnessTooltipVerbosity', 'full');
+    const sourceLabelMode = getConfigValue(config, 'badge.sourceLabelMode', 'auto');
     const lines = [];
     const bucketLabel = formatBucketLabel(freshness.bucket);
     const sourceLabel = formatSourceLabel(freshness.source);
@@ -126,7 +115,12 @@ function formatTooltip(freshness, config) {
         const exact = formatExactTimestamp(freshness.exactTimestamp);
         if (exact) lines.push(`Exact time: ${exact}`);
     }
-    lines.push(`Source: ${sourceLabel}`);
+    // sourceLabelMode='never' suppresses source line in tooltip too
+    const isNormal = freshness.source === 'fs' && freshness.confidence === 'high';
+    const showSource = sourceLabelMode === 'always' ||
+        (sourceLabelMode !== 'never' && !isNormal) ||
+        (sourceLabelMode !== 'never' && verbosity === 'full');
+    if (showSource) lines.push(`Source: ${sourceLabel}`);
     if (freshness.author) lines.push(`Author: ${freshness.author}`);
     if (freshness.message) lines.push(`Message: ${freshness.message}`);
     lines.push(`Confidence: ${freshness.confidence}`);
@@ -364,8 +358,8 @@ module.exports = {
     formatTooltip,
     bucketFromAge,
     formatBucketLabel,
+    formatBadgeAge,
     formatSourceLabel,
-    formatSourceBadgeLabel,
     compareFreshness,
     SOURCE_RANK,
     CONFIDENCE_RANK

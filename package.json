@@ -670,11 +670,11 @@
             "never"
           ],
           "default": "auto",
-          "description": "When to append the freshness source label to the badge (auto shows labels for non-normal sources or confidence)",
+          "description": "Controls when the freshness source is shown in the tooltip (badges are age-only due to VS Code's 2-character badge limit)",
           "enumDescriptions": [
-            "Show source label only for non-normal cases",
-            "Always show source label when source is known",
-            "Never show source label in badges"
+            "Show source in tooltip only for non-normal cases (non-filesystem or low confidence)",
+            "Always show source in tooltip when source is known",
+            "Never show source in tooltip"
           ],
           "scope": "window"
         },
