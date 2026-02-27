@@ -76,6 +76,58 @@ Examples (visual badge only — actual tooltip contains full info):
 - `author`: `JD` (for "Jane Doe")
 - `size`: `5K` (compact kilobytes)
 
+### Freshness Badges
+
+Explorer Dates can display age-based freshness symbols in the badge when the freshness resolver is active.  All symbols are ≤ 2 characters — VS Code's `FileDecoration.badge` enforces a hard codepoint limit and silently discards anything longer (words like `now`, `today`, and `stale` are dropped before they reach the Explorer UI).
+
+| Badge | Meaning | Default age range |
+|-------|---------|-------------------|
+| `!!`  | Just now — modified very recently | Within the last ~60 minutes |
+| `T`   | Today — modified today but not recently | Today, more than ~1 hour ago |
+| `2d`  | A couple of days ago | Within 2 days |
+| `1w`  | About a week ago | Within 7 days |
+| `~~`  | Stale — older than a week | More than 7 days ago |
+| `?`   | Age unknown | Cannot be determined |
+
+The tooltip always shows the full human-readable freshness label (`now`, `today`, `2 days`, `1 week`, `stale`) regardless of the badge symbol used.
+
+#### Freshness Age Thresholds
+
+The boundaries that map a file age to a badge symbol are configurable:
+
+- `explorerDates.freshnessBucketMinutesNow` — Minutes threshold for `!!` (default: `60`)
+- `explorerDates.freshnessBucketHoursToday` — Hours threshold for `T` (default: `24`)
+- `explorerDates.freshnessBucketDaysTwo` — Days threshold for `2d` (default: `2`)
+- `explorerDates.freshnessBucketDaysWeek` — Days threshold for `1w` (default: `7`)
+
+#### Tooltip Source Line (`explorerDates.badge.sourceLabelMode`)
+
+Because source information cannot fit in a 2-character badge, it is included in the hover tooltip instead. This setting controls when the `Source:` line appears:
+
+- Setting: `explorerDates.badge.sourceLabelMode`
+- Default: `"auto"`
+
+| Value | Behaviour |
+|-------|----------|
+| `"auto"`   | Shows `Source:` only when it is not the expected normal case (source is not Filesystem, or confidence is not high). Keeps tooltips clean for everyday local files while surfacing the source when it matters. |
+| `"always"` | Always includes `Source:` in the tooltip. |
+| `"never"`  | Omits `Source:` from all tooltips. |
+
+Tooltip example — source is Git (`auto` mode, source line shown):
+```
+Freshness: 2d
+Exact time: 2026-02-24 14:32:00
+Source: Git
+Confidence: high
+```
+
+Tooltip example — source is Filesystem with high confidence (`auto` mode, source line hidden):
+```
+Freshness: today
+Exact time: 2026-02-26 09:15:00
+Confidence: high
+```
+
 Compact size formatting examples:
 - `512` bytes → `512` (fits in 2 chars? fallback to `51` or `512` depending on format; extension uses a 2-char compact fallback)
 - `1,200` bytes → `1K` or `12` (display chooses the clearest 2-char representation)

@@ -38,7 +38,20 @@ The extension uses VS Code's `FileDecorationProvider` API to add date badges nex
 - Author initials (when selected via `badgePriority: "author"`): `JD`, `AL`
 - Compact sizes (when `badgePriority: "size"` and `showFileSize` enabled): `5K`, `2M`, `12`
 
-**Note**: VS Code enforces a practical 2‑character limit for Explorer badges across platforms and fonts. Explorer Dates truncates visual badges to 2 characters to avoid rejection or layout issues. Full date, full size, and full Git info are always available in the decoration tooltip and in accessibility text.
+**Freshness age symbols** (shown when the freshness resolver is active):
+
+| Badge | Meaning |
+|-------|---------|
+| `!!`  | Modified just now (within ~1 hour) |
+| `T`   | Modified today |
+| `2d`  | Modified ~2 days ago |
+| `1w`  | Modified ~1 week ago |
+| `~~`  | Stale — older than a week |
+| `?`   | Age unknown |
+
+The hover tooltip always shows the full freshness label, exact timestamp, data source (Filesystem, Git, or GitHub), and confidence level. The `explorerDates.badge.sourceLabelMode` setting controls when the source line appears in tooltips (`auto`, `always`, or `never`).
+
+**Note**: VS Code enforces a hard 2-codepoint limit for Explorer badges. Strings longer than 2 characters are silently rejected before reaching the Explorer UI. Explorer Dates uses short symbols to stay within this limit. Full date, source, and Git info are always available in the decoration tooltip and accessibility text.
 
 ## Getting Started
 

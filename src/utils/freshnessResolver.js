@@ -59,7 +59,7 @@ function formatBucketLabel(bucket) {
 
 function formatSourceLabel(source) {
     switch (source) {
-        case 'fs': return 'FS';
+        case 'fs': return 'Filesystem';
         case 'git': return 'Git';
         case 'github': return 'GitHub';
         default: return 'Unknown';
