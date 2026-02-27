@@ -137,10 +137,26 @@ class ExtensionApiManager extends BaseEventEmitter {
         try {
             const stat = await vscode.workspace.fs.stat(uri);
             const lastModified = new Date(stat.mtime);
-            
+
+            // Compute a ≤2-char badge (VS Code hard limit) using freshnessResolver
+            let badgeText = '?';
+            try {
+                const { formatBadge } = require('./utils/freshnessResolver');
+                const diffMs = Date.now() - lastModified.getTime();
+                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                let bucket;
+                if (diffDays < 0.07) bucket = 'now';        // ~1 hour
+                else if (diffDays < 1) bucket = 'today';
+                else if (diffDays < 3) bucket = '2d';
+                else if (diffDays < 8) bucket = '1w';
+                else bucket = 'stale';
+                const config = vscode.workspace.getConfiguration('explorerDates');
+                badgeText = formatBadge(bucket, 'fs', config) || '?';
+            } catch { /* ignore */ }
+
             // Basic decoration without relying on external dependencies
             let decoration = {
-                badge: this.formatDate(lastModified, 'smart'),
+                badge: badgeText,
                 color: undefined, // Let the main decoration provider handle colors
                 tooltip: `Modified: ${lastModified.toLocaleString()}`
             };
@@ -509,7 +525,8 @@ class ExtensionApiManager extends BaseEventEmitter {
                     provideDecoration: async (uri, stat, currentDecoration) => {
                         const size = this.formatFileSize(stat.size);
                         return {
-                            badge: `${currentDecoration.badge} • ${size}`,
+                            // badge must be ≤2 chars; keep existing badge, don't append size here
+                            badge: currentDecoration.badge,
                             tooltip: `${currentDecoration.tooltip}\nSize: ${size}`
                         };
                     }
