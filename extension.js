@@ -222,18 +222,20 @@ const chunkLoader = {
             if (isWebDiagnosticsEnabled()) {
                 recordChunkEvent(chunkName, 'load:start');
             }
+
+            const chunk = isWebEnvironment() ? null : this._loadNodeChunk(chunkName);
+
             if (isWebEnvironment()) {
-                if (chunk) {
-                    this.loadedChunks.set(chunkName, chunk);
+                const webChunk = this._getWebChunkRegistry()?.[chunkName] ?? null;
+                if (webChunk) {
+                    this.loadedChunks.set(chunkName, webChunk);
                     getActiveLogger().info('Chunk loaded', { chunkName, target: 'web' });
                     if (isWebDiagnosticsEnabled()) {
                         recordChunkEvent(chunkName, 'load:success');
                     }
                 }
-                return chunk;
+                return webChunk;
             }
-
-            const chunk = this._loadNodeChunk(chunkName);
             if (chunk) {
                 this.loadedChunks.set(chunkName, chunk);
                 getActiveLogger().info('Chunk loaded', { chunkName, target: 'node' });
@@ -692,7 +694,11 @@ async function activate(context) {
         initializeTemplateStore(context);
         chunkLoader.initialize(context);
         chunkLoader.assertChunkArtifacts(CRITICAL_CHUNKS);
-        setFeatureChunkResolver((chunkName) => chunkLoader.loadChunk(chunkName));
+        setFeatureChunkResolver((chunkName) =>
+            isWebEnvironment()
+                ? chunkLoader._loadWebChunk(chunkName)
+                : chunkLoader.loadChunk(chunkName)
+        );
         
         const remoteName = vscode?.env?.remoteName || null;
         const uiKind = vscode?.env?.uiKind || null;
@@ -806,18 +812,20 @@ async function activate(context) {
         // Try to load a runtime chunk that contains the heavy provider implementation
         let providerChunk = null;
         try {
-            providerChunk = await chunkLoader.loadChunk('providerInit');
+            providerChunk = await (isWebEnvironment()
+                ? chunkLoader._loadWebChunk('providerInit')
+                : chunkLoader.loadChunk('providerInit'));
             if (providerChunk && typeof providerChunk.createFileDateDecorationProvider === 'function') {
                 if (isWebDiagnosticsEnabled()) {
                     diagLog('info', 'Provider factory located', { source: 'providerInit' });
                 }
                 if (isWeb) {
                     try {
-                        await chunkLoader.loadChunk('fileDateProviderImplExport');
+                        await chunkLoader._loadWebChunk('fileDateProviderImplExport');
                         if (isWebDiagnosticsEnabled()) {
                             diagLog('info', 'Provider impl export chunk loaded', { chunkName: 'fileDateProviderImplExport' });
                         }
-                        await chunkLoader.loadChunk('fileDateProviderImpl');
+                        await chunkLoader._loadWebChunk('fileDateProviderImpl');
                         if (isWebDiagnosticsEnabled()) {
                             diagLog('info', 'Provider impl chunk loaded', { chunkName: 'fileDateProviderImpl' });
                         }

@@ -133,6 +133,7 @@ async function runWebSmokeTest() {
             const config = harness.vscode.workspace.getConfiguration('explorerDates');
             await config.update('colorScheme', 'recency', harness.vscode.ConfigurationTarget.Global);
             await config.update('performanceMode', false, harness.vscode.ConfigurationTarget.Global);
+            await config.update('freshnessAllowVirtualFs', true, harness.vscode.ConfigurationTarget.Global);
 
             const provider = harness.fileDecorationProvider();
             assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
