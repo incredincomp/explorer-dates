@@ -1,26 +1,26 @@
-var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyNames;var __name=(target,value)=>__defProp(target,"name",{value,configurable:!0});var __commonJS=(cb,mod)=>function(){return mod||(0,cb[__getOwnPropNames(cb)[0]])((mod={exports:{}}).exports,mod),mod.exports};var require_logger=__commonJS({"src/utils/logger.js"(exports2,module2){var GLOBAL_LOGGER_KEY="__explorerDatesLogger",LoggerFacade=class{static{__name(this,"LoggerFacade")}constructor(){this._impl=null}_call(method,args){if(this._impl&&typeof this._impl[method]=="function")try{return this._impl[method](...args)}catch{}switch(method){case"debug":typeof console.debug=="function"?console.debug(...args):console.log(...args);break;case"info":console.log(...args);break;case"warn":console.warn(...args);break;case"error":console.error(...args);break;default:console.log(...args);break}}debug(...args){return this._call("debug",args)}info(...args){return this._call("info",args)}warn(...args){return this._call("warn",args)}error(...args){return this._call("error",args)}_setImpl(impl){this._impl=impl}};function getLogger2(){return typeof global<"u"?(global[GLOBAL_LOGGER_KEY]||(global[GLOBAL_LOGGER_KEY]=new LoggerFacade),global[GLOBAL_LOGGER_KEY]):typeof globalThis<"u"?(globalThis[GLOBAL_LOGGER_KEY]||(globalThis[GLOBAL_LOGGER_KEY]=new LoggerFacade),globalThis[GLOBAL_LOGGER_KEY]):(loggerInstance||(loggerInstance=new LoggerFacade),loggerInstance)}__name(getLogger2,"getLogger");var Logger=class extends LoggerFacade{static{__name(this,"Logger")}},loggerInstance=null;module2.exports={Logger,getLogger:getLogger2}}});var{getLogger}=require_logger(),OnboardingAssets=class{static{__name(this,"OnboardingAssets")}constructor(){this._logger=getLogger(),this._templates=null,this._initialized=!1}async initialize(){if(!this._initialized)try{this._templates={setupWizardTemplate:this._generateSetupWizardTemplate(),featureTourTemplate:this._generateFeatureTourTemplate(),whatsNewTemplate:this._generateWhatsNewTemplate(),sharedStyles:this._generateSharedStyles(),sharedScripts:this._generateSharedScripts()},this._initialized=!0,this._logger.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(error){throw this._logger.error("Failed to initialize onboarding assets",error),error}}async getSetupWizardHTML(presets){return await this.initialize(),this._fillSetupTemplate(this._templates.setupWizardTemplate,presets)}async getFeatureTourHTML(){return await this.initialize(),this._templates.featureTourTemplate}async getWhatsNewHTML(version){return await this.initialize(),this._fillWhatsNewTemplate(this._templates.whatsNewTemplate,version)}_fillSetupTemplate(template,presets){let presetOptions=Object.entries(presets).filter(([,preset])=>!preset.hidden).map(([key,preset])=>`
-            <div class="preset-option" data-preset="${key}" 
-                 onmouseenter="previewConfiguration({preset: '${key}'})" 
+var f=(t,e)=>()=>(e||t((e={exports:{}}).exports,e),e.exports);var u=f((m,l)=>{var s="__explorerDatesLogger",a=class{constructor(){this.o=null}i(e,i){if(this.o&&typeof this.o[e]=="function")try{return this.o[e](...i)}catch{}switch(e){case"debug":break;case"info":break;case"warn":break;case"error":break;default:break}}debug(...e){return this.i("debug",e)}info(...e){return this.i("info",e)}warn(...e){return this.i("warn",e)}error(...e){return this.i("error",e)}u(e){this.o=e}};function g(){return typeof global<"u"?(global[s]||(global[s]=new a),global[s]):typeof globalThis<"u"?(globalThis[s]||(globalThis[s]=new a),globalThis[s]):(c||(c=new a),c)}var d=class extends a{},c=null;l.exports={Logger:d,getLogger:g}});var{getLogger:v}=u(),o=class{constructor(){this._logger=v(),this.e=null,this.t=!1}async initialize(){if(!this.t)try{this.e={setupWizardTemplate:this.a(),featureTourTemplate:this.n(),whatsNewTemplate:this.c(),sharedStyles:this.r(),sharedScripts:this.s()},this.t=!0,this._logger.debug("Onboarding assets initialized (~23KB lazy loaded)")}catch(e){throw this._logger.error("Failed to initialize onboarding assets",e),e}}async getSetupWizardHTML(e){return await this.initialize(),this.d(this.e.setupWizardTemplate,e)}async getFeatureTourHTML(){return await this.initialize(),this.e.featureTourTemplate}async getWhatsNewHTML(e){return await this.initialize(),this.l(this.e.whatsNewTemplate,e)}d(e,i){let p=Object.entries(i).filter(([,r])=>!r.hidden).map(([r,n])=>`
+            <div class="preset-option" data-preset="${r}" 
+                 onmouseenter="previewConfiguration({preset: '${r}'})" 
                  onmouseleave="clearPreview()">
-                <h3>${preset.name}</h3>
-                <p>${preset.description}</p>
+                <h3>${n.name}</h3>
+                <p>${n.description}</p>
                 <div class="preset-actions">
-                    <button onclick="previewConfiguration({preset: '${key}'})">\u{1F441}\uFE0F Preview</button>
-                    <button onclick="applyConfiguration({preset: '${key}'})">\u2705 Select ${preset.name}</button>
+                    <button onclick="previewConfiguration({preset: '${r}'})">\u{1F441}\uFE0F Preview</button>
+                    <button onclick="applyConfiguration({preset: '${r}'})">\u2705 Select ${n.name}</button>
                 </div>
             </div>
-        `).join("");return template.replace("{{PRESET_OPTIONS}}",presetOptions).replace("{{MORE_OPTIONS_LINK}}",`
+        `).join("");return e.replace("{{PRESET_OPTIONS}}",p).replace("{{MORE_OPTIONS_LINK}}",`
             <div class="more-options">
                 <p><strong>Need more options?</strong> Try the <a href="#" onmouseenter="previewConfiguration({preset: 'powerUser'})" onmouseleave="clearPreview()" onclick="showAllPresets()">Power User</a> or <a href="#" onmouseenter="previewConfiguration({preset: 'gitFocused'})" onmouseleave="clearPreview()" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
             </div>
-        `).replace("{{PRESETS_JSON}}",JSON.stringify(presets))}_fillWhatsNewTemplate(template,version){return template.replace(/{{VERSION}}/g,version)}_generateSetupWizardTemplate(){return`
+        `).replace("{{PRESETS_JSON}}",JSON.stringify(i))}l(e,i){return e.replace(/{{VERSION}}/g,i)}a(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Quick Setup</title>
                 <style>
-                    ${this._generateSharedStyles()}
+                    ${this.r()}
                     .preset-option {
                         border: 2px solid var(--vscode-widget-border);
                         border-radius: 8px;
@@ -95,7 +95,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </div>
 
                 <script>
-                    ${this._generateSharedScripts()}
+                    ${this.s()}
                     
                     // Specific setup wizard functionality
                     let selectedPreset = null;
@@ -159,14 +159,14 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </script>
             </body>
             </html>
-        `}_generateFeatureTourTemplate(){return`
+        `}n(){return`
             <!DOCTYPE html>
             <html>
             <head>
                 <meta charset="UTF-8">
                 <title>Explorer Dates Feature Tour</title>
                 <style>
-                    ${this._generateSharedStyles()}
+                    ${this.r()}
                     .feature-grid {
                         display: grid;
                         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -307,7 +307,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </div>
 
                 <script>
-                    ${this._generateSharedScripts()}
+                    ${this.s()}
 
                     function openSetting(setting) {
                         vscode.postMessage({
@@ -325,7 +325,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </script>
             </body>
             </html>
-        `}_generateWhatsNewTemplate(){return`
+        `}c(){return`
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -333,7 +333,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Explorer Dates - What's New</title>
                 <style>
-                    ${this._generateSharedStyles()}
+                    ${this.r()}
                     
                     .feature {
                         margin-bottom: 25px;
@@ -445,7 +445,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </div>
 
                 <script>
-                    ${this._generateSharedScripts()}
+                    ${this.s()}
 
                     function tryFeature(feature) {
                         vscode.postMessage({
@@ -468,7 +468,7 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
                 </script>
             </body>
             </html>
-        `}_generateSharedStyles(){return`
+        `}r(){return`
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 padding: 20px;
@@ -526,7 +526,6 @@ var __defProp=Object.defineProperty;var __getOwnPropNames=Object.getOwnPropertyN
             .btn.secondary:hover {
                 background: var(--vscode-button-secondaryHoverBackground);
             }
-        `}_generateSharedScripts(){return`
+        `}s(){return`
             const vscode = acquireVsCodeApi();
-        `}getPresets(){return{minimal:{name:"Minimal",description:"Clean and simple - just show modification times in short format",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!1,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!1,showStatusBar:!1}},developer:{name:"Developer",description:"Perfect for development - includes Git info, file sizes, and color coding",settings:{dateDecorationFormat:"smart",colorScheme:"recency",showFileSize:!0,showGitInfo:"author",badgePriority:"time",fadeOldFiles:!0,enableContextMenu:!0,showStatusBar:!0}},accessible:{name:"Accessible",description:"High contrast and screen reader friendly with detailed tooltips",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!0,accessibilityMode:!0,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!0,keyboardNavigation:!0}},powerUser:{name:"Power User",description:"All features enabled: Git badges, sizes, colors, and status bar details",hidden:!0,settings:{dateDecorationFormat:"smart",colorScheme:"vibrant",showFileSize:!0,showGitInfo:"both",badgePriority:"author",fadeOldFiles:!0,enableContextMenu:!0,showStatusBar:!0,highContrastMode:!1,accessibilityMode:!1}},gitFocused:{name:"Git-Focused",description:"Prioritize Git authorship and commit details",hidden:!0,settings:{dateDecorationFormat:"smart",colorScheme:"subtle",showFileSize:!1,showGitInfo:"both",badgePriority:"author",fadeOldFiles:!1,enableContextMenu:!0,showStatusBar:!0,highContrastMode:!1,accessibilityMode:!1}}}}getTips(){return[{icon:"\u2328\uFE0F",title:"Keyboard Shortcuts",description:"Use Ctrl+Shift+D (Cmd+Shift+D on Mac) to quickly toggle decorations on/off."},{icon:"\u{1F3AF}",title:"Smart Exclusions",description:"The extension automatically detects and suggests excluding build folders for better performance."},{icon:"\u{1F4CA}",title:"Performance Analytics",description:'Use "Show Performance Analytics" to monitor cache performance and optimization opportunities.'},{icon:"\u{1F50D}",title:"Context Menu",description:"Right-click any file to access Git history, file details, and quick actions."}]}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this._initialized,templateCount:this._templates?Object.keys(this._templates).length:0,loaded:this._initialized}}dispose(){this._templates=null,this._initialized=!1,this._logger.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets,createOnboardingAssets:__name(()=>new OnboardingAssets,"createOnboardingAssets"),getPresets:__name(()=>new OnboardingAssets().getPresets(),"getPresets"),getTips:__name(()=>new OnboardingAssets().getTips(),"getTips"),getMemoryInfo:(()=>{let sharedInstance=null;return()=>(sharedInstance||(sharedInstance=new OnboardingAssets),sharedInstance.getMemoryInfo())})()};
-//# sourceMappingURL=onboardingAssets.js.map
+        `}getPresets(){return{minimal:{name:"Minimal",description:"Clean and simple - just show modification times in short format",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!1,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!1,showStatusBar:!1}},developer:{name:"Developer",description:"Perfect for development - includes Git info, file sizes, and color coding",settings:{dateDecorationFormat:"smart",colorScheme:"recency",showFileSize:!0,showGitInfo:"author",badgePriority:"time",fadeOldFiles:!0,enableContextMenu:!0,showStatusBar:!0}},accessible:{name:"Accessible",description:"High contrast and screen reader friendly with detailed tooltips",settings:{dateDecorationFormat:"relative-short",colorScheme:"none",highContrastMode:!0,accessibilityMode:!0,showFileSize:!1,showGitInfo:"none",badgePriority:"time",fadeOldFiles:!1,enableContextMenu:!0,keyboardNavigation:!0}},powerUser:{name:"Power User",description:"All features enabled: Git badges, sizes, colors, and status bar details",hidden:!0,settings:{dateDecorationFormat:"smart",colorScheme:"vibrant",showFileSize:!0,showGitInfo:"both",badgePriority:"author",fadeOldFiles:!0,enableContextMenu:!0,showStatusBar:!0,highContrastMode:!1,accessibilityMode:!1}},gitFocused:{name:"Git-Focused",description:"Prioritize Git authorship and commit details",hidden:!0,settings:{dateDecorationFormat:"smart",colorScheme:"subtle",showFileSize:!1,showGitInfo:"both",badgePriority:"author",fadeOldFiles:!1,enableContextMenu:!0,showStatusBar:!0,highContrastMode:!1,accessibilityMode:!1}}}}getTips(){return[{icon:"\u2328\uFE0F",title:"Keyboard Shortcuts",description:"Use Ctrl+Shift+D (Cmd+Shift+D on Mac) to quickly toggle decorations on/off."},{icon:"\u{1F3AF}",title:"Smart Exclusions",description:"The extension automatically detects and suggests excluding build folders for better performance."},{icon:"\u{1F4CA}",title:"Performance Analytics",description:'Use "Show Performance Analytics" to monitor cache performance and optimization opportunities.'},{icon:"\u{1F50D}",title:"Context Menu",description:"Right-click any file to access Git history, file details, and quick actions."}]}getMemoryInfo(){return{chunkName:"onboarding-assets",estimatedSize:"~23KB",templatesLoaded:this.t,templateCount:this.e?Object.keys(this.e).length:0,loaded:this.t}}dispose(){this.e=null,this.t=!1,this._logger.debug("Onboarding assets disposed")}};module.exports={OnboardingAssets:o,createOnboardingAssets:()=>new o,getPresets:()=>new o().getPresets(),getTips:()=>new o().getTips(),getMemoryInfo:(()=>{let t=null;return()=>(t||(t=new o),t.getMemoryInfo())})()};
