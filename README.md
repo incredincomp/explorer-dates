@@ -89,7 +89,6 @@ The hover tooltip always shows the full freshness label, exact timestamp, data s
 - [DOCS/UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) — v1.3.x migration steps and presets
 - [DOCS/ARCHITECTURE.md](./DOCS/ARCHITECTURE.md) — module federation, chunk gating, and bundle optimization details
 - [DOCS/COMMANDS.md](./DOCS/COMMANDS.md) — command palette reference with IDs and descriptions
-- [DOCS/PERFORMANCE_BASELINES.md](./DOCS/PERFORMANCE_BASELINES.md) — managing local vs. CI performance baselines and downloading artifacts
 
 ### Memory tests (quick start)
 

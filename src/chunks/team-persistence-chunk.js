@@ -2,7 +2,13 @@
  * Team persistence chunk - lightweight lazy factory
  * The heavy TeamConfigPersistenceManager is imported and instantiated on-demand
  * to keep the runtime chunks small at activation time.
+ *
+ * Static require is used intentionally so esbuild bundles the proxy and its
+ * impl into this chunk. This avoids runtime path failures caused by the
+ * src/ directory being excluded from the installed VSIX package.
  */
+
+const { TeamConfigPersistenceManager } = require('../teamConfigPersistence.proxy');
 
 module.exports = {
     createTeamPersistenceManager: (context) => {
@@ -10,29 +16,7 @@ module.exports = {
 
         function ensureManager() {
             if (_manager) return _manager;
-            const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
-            if (typeof dynamicRequire !== 'function') {
-                throw new Error('Team persistence manager requires a Node environment');
-            }
-            const candidates = [
-                '../teamConfigPersistence.proxy',
-                '../teamConfigPersistence.proxy.js',
-                '../../src/teamConfigPersistence.proxy',
-                '../../src/teamConfigPersistence.proxy.js'
-            ];
-            let mod = null;
-            for (const candidate of candidates) {
-                try {
-                    mod = dynamicRequire(candidate);
-                    if (mod) break;
-                } catch {
-                    // try next candidate
-                }
-            }
-            if (!mod) {
-                throw new Error('Unable to load teamConfigPersistence.proxy');
-            }
-            _manager = new mod.TeamConfigPersistenceManager(context);
+            _manager = new TeamConfigPersistenceManager(context);
             return _manager;
         }
 

@@ -185,11 +185,11 @@ function registerRuntimeCommands(context) {
             }
         }),
         
-        // Suggest optimal preset for current workspace
+        // Suggest optimal preset for current workspace (force=true always shows output)
         registerCommand('explorerDates.suggestOptimalPreset', async () => {
             try {
                 await ensureManagers();
-                await runtimeManager.checkAutoSuggestion();
+                await runtimeManager.checkAutoSuggestion(true);
             } catch (error) {
                 logger.error('Suggest optimal preset command failed:', error);
                 vscode.window.showErrorMessage(`Failed to suggest preset: ${error.message}`);

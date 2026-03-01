@@ -455,6 +455,10 @@
         {
           "command": "explorerDates.clearPreview",
           "when": "false"
+        },
+        {
+          "command": "explorerDates.runWebDiagnostics",
+          "when": "explorerDates.isWeb"
         }
       ]
     },

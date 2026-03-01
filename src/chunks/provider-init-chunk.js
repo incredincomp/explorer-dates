@@ -103,12 +103,9 @@ async function hydrateProviderOptionalSystems(provider) {
 
         // Kick off telemetry scheduling (the advanced chunk may have scheduled this already)
         try {
-            const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
-            if (typeof dynamicRequire === 'function') {
-                const t = dynamicRequire('./decoration-telemetry-chunk');
-                if (t && typeof t.scheduleTelemetryReport === 'function' && provider._allocationTelemetryEnabled) {
-                    t.scheduleTelemetryReport(provider);
-                }
+            const t = require('./decoration-telemetry-chunk');
+            if (t && typeof t.scheduleTelemetryReport === 'function' && provider._allocationTelemetryEnabled) {
+                t.scheduleTelemetryReport(provider);
             }
         } catch (e) {
             provider._logger?.debug('provider-init: scheduling telemetry failed', e);

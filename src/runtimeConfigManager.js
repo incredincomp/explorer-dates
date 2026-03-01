@@ -84,13 +84,21 @@ class RuntimeConfigManager {
     }
     
     /**
-     * Auto-suggestion with workspace-specific cadence tracking
-     * Suggests once per workspace unless heuristics change drastically
+     * Auto-suggestion with workspace-specific cadence tracking.
+     * @param {boolean} [force=false] When true, skips the cadence check and
+     *   always shows a result — used when the user explicitly invokes the command.
      */
-    async checkAutoSuggestion() {
+    async checkAutoSuggestion(force = false) {
         try {
             const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
-            if (!workspaceUri) return;
+            if (!workspaceUri) {
+                if (force) {
+                    vscode.window.showInformationMessage(
+                        'Explorer Dates: No workspace folder is open. Open a folder to receive configuration suggestions.'
+                    );
+                }
+                return;
+            }
             
             const currentProfile = await detectWorkspaceProfile(workspaceUri);
             const workspaceKey = generateWorkspaceKey(workspaceUri, currentProfile);
@@ -98,25 +106,39 @@ class RuntimeConfigManager {
             const suggestionHistory = this._globalState.get(this._suggestionHistoryKey, {});
             const lastSuggestion = suggestionHistory[workspaceKey];
             
-            // Check if suggestion needed based on profile change or first time
-            const shouldSuggest = !lastSuggestion || 
+            // force=true bypasses cadence so the explicit command always produces output
+            const shouldSuggest = force || !lastSuggestion || 
                 lastSuggestion.profileDetected !== currentProfile ||
                 await this._hasHeuristicsChanged(lastSuggestion);
             
             if (shouldSuggest) {
                 const suggested = await this._showAutoSuggestion(currentProfile);
                 if (suggested) {
-                    // Update suggestion history
-                    const analysis = await analyzeWorkspaceEnvironment(workspaceUri);
-                    suggestionHistory[workspaceKey] = {
-                        profileDetected: currentProfile,
-                        suggestedAt: Date.now(),
-                        fileCountAtSuggestion: analysis?.fileCount || 0,
-                        accepted: suggested.accepted,
-                        presetId: suggested.preset
-                    };
-                    await this._globalState.update(this._suggestionHistoryKey, suggestionHistory);
-                    logger.info('Auto-suggestion updated:', suggestionHistory[workspaceKey]);
+                    if (force && suggested.reason === 'minimal savings') {
+                        vscode.window.showInformationMessage(
+                            `Explorer Dates: Your configuration is already well-optimized for a ${currentProfile} workspace. No changes recommended.`
+                        );
+                    } else if (suggested.accepted !== undefined) {
+                        // Update suggestion history
+                        const analysis = await analyzeWorkspaceEnvironment(workspaceUri);
+                        suggestionHistory[workspaceKey] = {
+                            profileDetected: currentProfile,
+                            suggestedAt: Date.now(),
+                            fileCountAtSuggestion: analysis?.fileCount || 0,
+                            accepted: suggested.accepted,
+                            presetId: suggested.preset
+                        };
+                        await this._globalState.update(this._suggestionHistoryKey, suggestionHistory);
+                        logger.info('Auto-suggestion updated:', suggestionHistory[workspaceKey]);
+                    }
+                }
+            } else if (force) {
+                // Cadence says no, but user asked explicitly — still show result
+                const suggested = await this._showAutoSuggestion(currentProfile);
+                if (suggested?.reason === 'minimal savings') {
+                    vscode.window.showInformationMessage(
+                        `Explorer Dates: Your configuration is already well-optimized for a ${currentProfile} workspace. No changes recommended.`
+                    );
                 }
             }
         } catch (error) {

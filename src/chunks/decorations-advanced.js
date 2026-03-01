@@ -642,11 +642,8 @@ function scheduleTelemetryReport(provider) {
 
 function reportAllocationTelemetry(provider) {
     try {
-        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
-        if (typeof dynamicRequire === 'function') {
-            const chunk = dynamicRequire('./decoration-telemetry-chunk');
-            if (chunk && typeof chunk.reportAllocationTelemetry === 'function') return chunk.reportAllocationTelemetry(provider);
-        }
+        const chunk = require('./decoration-telemetry-chunk');
+        if (chunk && typeof chunk.reportAllocationTelemetry === 'function') return chunk.reportAllocationTelemetry(provider);
     } catch (e) { provider._logger?.debug?.('Delegated reportAllocationTelemetry failed', e); }
 
     const telemetry = provider.getMetrics().allocationTelemetry;
