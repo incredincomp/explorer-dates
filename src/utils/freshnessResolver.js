@@ -227,21 +227,48 @@ function parseGithubUri(uri) {
     return { owner, repo, filePath, ref };
 }
 
-// Parses vscode-vfs://github/<owner>/<repo>/<path> URIs used by vscode.dev / github.dev.
-// The branch/ref is not encoded in the URI on these platforms, so we default to HEAD
-// which resolves to the default branch on the GitHub commits API.
+// Decode the branch/ref embedded in a vscode-vfs authority.
+// Format: "github" (HEAD) or "github+<hex-encoded-utf8-json>"
+// JSON schema: {"v":1,"ref":{"type":1|2|3|4,"id":"<ref>"}}
+//   type 1 = HEAD (default branch), 2 = tag, 3 = commit SHA, 4 = named branch
+function decodeVscodeVfsRef(authority) {
+    const plusIdx = (authority || '').indexOf('+');
+    if (plusIdx === -1) return 'HEAD';
+    const hex = authority.slice(plusIdx + 1);
+    try {
+        let str;
+        if (typeof TextDecoder !== 'undefined') {
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < bytes.length; i++) {
+                bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+            }
+            str = new TextDecoder('utf-8').decode(bytes);
+        } else {
+            str = '';
+            for (let i = 0; i < hex.length; i += 2) {
+                str += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+            }
+        }
+        const json = JSON.parse(str);
+        const refId = json?.ref?.id;
+        if (typeof refId === 'string' && refId.length > 0) return refId;
+    } catch { /* ignore */ }
+    return 'HEAD';
+}
+
+// Parses vscode-vfs://github[+<hexjson>]/<owner>/<repo>/<path> URIs used by vscode.dev / github.dev.
+// The authority is "github" (plain HEAD) or "github+<hex>" (encodes branch/tag/commit).
 function parseVscodeVfsUri(uri) {
     if (!uri) return null;
     if (uri.scheme !== 'vscode-vfs') return null;
-    if (uri.authority !== 'github') return null;
+    if (!String(uri.authority || '').startsWith('github')) return null;
     const path = normalizePath(uri.path || '').replace(/^\/+/, '');
     const segments = path.split('/').filter(Boolean);
     if (segments.length < 2) return null;
     const owner = segments[0];
     const repo = segments[1];
     const filePath = segments.slice(2).join('/');
-    const params = new URLSearchParams(uri.query || '');
-    const ref = params.get('ref') || params.get('branch') || 'HEAD';
+    const ref = decodeVscodeVfsRef(uri.authority || '');
     return { owner, repo, filePath, ref };
 }
 
@@ -256,8 +283,8 @@ function findGithubWorkspaceContext(uri) {
                 const relativePath = getRelativePath(folder.uri.path || '', uri?.path || '');
                 return { ...parsed, filePath: relativePath };
             }
-            // vscode.dev / github.dev: workspace folders use vscode-vfs://github/<owner>/<repo>
-            if (folderScheme === 'vscode-vfs' && folder?.uri?.authority === 'github') {
+            // vscode.dev / github.dev: workspace folders use vscode-vfs://github[+<hexjson>]/<owner>/<repo>
+            if (folderScheme === 'vscode-vfs' && String(folder?.uri?.authority || '').startsWith('github')) {
                 const parsed = parseVscodeVfsUri(folder.uri);
                 if (!parsed) continue;
                 // Compute path relative to repo root (strip leading /<owner>/<repo>/ from file URI)
@@ -274,18 +301,6 @@ function findGithubWorkspaceContext(uri) {
 async function resolveFromGitHub(uri, config) {
     const parsed = parseGithubUri(uri) || parseVscodeVfsUri(uri) || findGithubWorkspaceContext(uri);
     if (!parsed || !parsed.owner || !parsed.repo || !parsed.filePath) {
-        // Diagnostic: log full URI components so we know the exact path/authority format
-        diagLog('warn', 'GitHub context parse failed', {
-            scheme: uri?.scheme,
-            authority: uri?.authority,
-            path: uri?.path,
-            query: uri?.query,
-            folders: (vscode.workspace.workspaceFolders || []).map(f => ({
-                scheme: f?.uri?.scheme,
-                authority: f?.uri?.authority,
-                path: f?.uri?.path
-            }))
-        });
         return { freshness: null, reason: 'github-context-missing' };
     }
     const cacheKey = `${parsed.owner}/${parsed.repo}@${parsed.ref}:${parsed.filePath}`;
