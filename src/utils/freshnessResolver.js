@@ -274,6 +274,18 @@ function findGithubWorkspaceContext(uri) {
 async function resolveFromGitHub(uri, config) {
     const parsed = parseGithubUri(uri) || parseVscodeVfsUri(uri) || findGithubWorkspaceContext(uri);
     if (!parsed || !parsed.owner || !parsed.repo || !parsed.filePath) {
+        // Diagnostic: log full URI components so we know the exact path/authority format
+        diagLog('warn', 'GitHub context parse failed', {
+            scheme: uri?.scheme,
+            authority: uri?.authority,
+            path: uri?.path,
+            query: uri?.query,
+            folders: (vscode.workspace.workspaceFolders || []).map(f => ({
+                scheme: f?.uri?.scheme,
+                authority: f?.uri?.authority,
+                path: f?.uri?.path
+            }))
+        });
         return { freshness: null, reason: 'github-context-missing' };
     }
     const cacheKey = `${parsed.owner}/${parsed.repo}@${parsed.ref}:${parsed.filePath}`;
