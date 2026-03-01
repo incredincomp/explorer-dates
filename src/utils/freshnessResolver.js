@@ -227,15 +227,44 @@ function parseGithubUri(uri) {
     return { owner, repo, filePath, ref };
 }
 
+// Parses vscode-vfs://github/<owner>/<repo>/<path> URIs used by vscode.dev / github.dev.
+// The branch/ref is not encoded in the URI on these platforms, so we default to HEAD
+// which resolves to the default branch on the GitHub commits API.
+function parseVscodeVfsUri(uri) {
+    if (!uri) return null;
+    if (uri.scheme !== 'vscode-vfs') return null;
+    if (uri.authority !== 'github') return null;
+    const path = normalizePath(uri.path || '').replace(/^\/+/, '');
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length < 2) return null;
+    const owner = segments[0];
+    const repo = segments[1];
+    const filePath = segments.slice(2).join('/');
+    const params = new URLSearchParams(uri.query || '');
+    const ref = params.get('ref') || params.get('branch') || 'HEAD';
+    return { owner, repo, filePath, ref };
+}
+
 function findGithubWorkspaceContext(uri) {
     try {
         const folders = vscode.workspace.workspaceFolders || [];
         for (const folder of folders) {
-            if (folder?.uri?.scheme === 'github') {
+            const folderScheme = folder?.uri?.scheme;
+            if (folderScheme === 'github') {
                 const parsed = parseGithubUri(folder.uri);
                 if (!parsed) continue;
                 const relativePath = getRelativePath(folder.uri.path || '', uri?.path || '');
                 return { ...parsed, filePath: relativePath };
+            }
+            // vscode.dev / github.dev: workspace folders use vscode-vfs://github/<owner>/<repo>
+            if (folderScheme === 'vscode-vfs' && folder?.uri?.authority === 'github') {
+                const parsed = parseVscodeVfsUri(folder.uri);
+                if (!parsed) continue;
+                // Compute path relative to repo root (strip leading /<owner>/<repo>/ from file URI)
+                const uriSegments = normalizePath(uri?.path || '').replace(/^\/+/, '').split('/').filter(Boolean);
+                const filePath = uriSegments.slice(2).join('/');
+                if (!filePath) continue;
+                return { ...parsed, filePath };
             }
         }
     } catch { /* ignore */ }
@@ -243,7 +272,7 @@ function findGithubWorkspaceContext(uri) {
 }
 
 async function resolveFromGitHub(uri, config) {
-    const parsed = parseGithubUri(uri) || findGithubWorkspaceContext(uri);
+    const parsed = parseGithubUri(uri) || parseVscodeVfsUri(uri) || findGithubWorkspaceContext(uri);
     if (!parsed || !parsed.owner || !parsed.repo || !parsed.filePath) {
         return { freshness: null, reason: 'github-context-missing' };
     }
