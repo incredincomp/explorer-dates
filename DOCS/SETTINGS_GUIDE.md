@@ -1,6 +1,6 @@
-# Explorer Dates v1.3.0 - Complete Settings Guide
+# Explorer Dates v1.3.1 - Complete Settings Guide
 
-This guide documents every setting and recommended configuration for Explorer Dates, including new v1.3.0 feature flags, team configuration options, and bundle optimization strategies.
+This guide documents every setting and recommended configuration for Explorer Dates, including v1.3.x feature flags, team configuration options, and bundle optimization strategies.
 
 ## Telemetry & Privacy
 
@@ -12,10 +12,10 @@ This project does not collect telemetry by default. Optional telemetry and diagn
 
 See `README.md` for additional context about telemetry and privacy.
 
-## 🆕 v1.3.0 Feature Control Settings
+## 🆕 v1.3.x Feature Control Settings
 
 ### Bundle Optimization
-v1.3.0 introduces granular feature control to reduce bundle size and improve performance:
+v1.3.x introduces granular feature control to reduce bundle size and improve performance:
 
 ```json
 {

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.3.0, including the module federation system that powers chunking, feature gating, and bundle optimization.
+Explorer Dates is a VS Code extension that displays file modification dates as decorations in the Explorer sidebar. This document outlines the architecture and key components of version 1.3.x, including the module federation system that powers chunking, feature gating, and bundle optimization.
 
 ## Module Federation & Chunking (v1.3.0)
 

@@ -1,8 +1,8 @@
-# Explorer Dates v1.3.0 - Command Palette Reference
+# Explorer Dates v1.3.1 - Command Palette Reference
 
 Use **Ctrl+Shift+P / Cmd+Shift+P** and type the phrases below to access every Explorer Dates command. Each entry matches the title registered in `package.json`.
 
-## 🆕 New Commands in v1.3.0
+## 🆕 New Commands in v1.3.x
 
 ### Team Configuration
 | Command Palette Entry | Identifier | What it does |

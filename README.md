@@ -22,11 +22,11 @@ Quickly view file activity and prioritize recent work from the Explorer.
 2. Reload VS Code to activate decorations.
 3. Configure settings or apply a preset using `Explorer Dates: Apply Configuration Preset`.
 
-Note: Explorer badges are limited to two characters. Full timestamps and metadata remain available in Tooltips and accessibility output.
+Note: Explorer badges are limited to two characters. Full timestamps and metadata remain available in tooltips and accessibility output.
 
 For full usage and configuration, see the documentation in `DOCS/` (Troubleshooting, Settings Guide, Upgrade Guide, and Commands).
 
-**Release notes:** v1.3.0 — Module federation and team configuration. See `CHANGELOG.md` for full details.
+**Release notes:** v1.3.1 — Security hardening and web runtime stabilization. See `CHANGELOG.md` for full details.
 
 ## How It Works
 
@@ -62,7 +62,7 @@ The hover tooltip always shows the full freshness label, exact timestamp, data s
 4. **Try shortcuts**: Ctrl+Shift+D to toggle, right-click files for options
 
 ### First-Time Setup Recommendations
-- **Large projects / Low resource systems**: Enable `performanceMode: true` to turn off all non-essential features except basic date/time Tooltips
+- **Large projects / Low resource systems**: Enable `performanceMode: true` to turn off all non-essential features except basic date/time tooltips
 - **Large projects (without performance mode)**: Enable performance exclusions for `node_modules`, `dist`, etc.
 - **Visual preference**: Try `colorScheme: "recency"` and `showFileSize: true`
 - **Minimal look**: Use `dateDecorationFormat: "smart"` (default)
@@ -115,7 +115,7 @@ Notes:
 - Git-only commands automatically hide when the web host cannot expose repository metadata.
 - Remote environments (Codespaces, Dev Containers, Remote Tunnels) leverage the same web bundle, so Explorer Dates stays lightweight even when running over the network.
 
-For details about v1.3.0 (module federation, bundle sizing, and team configuration), see `DOCS/V1_3_RELEASE_NOTES.md` and `CHANGELOG.md`. The upgrade guide is available at `DOCS/UPGRADE_GUIDE.md`.
+For details about v1.3.x (module federation, bundle sizing, team configuration, and 1.3.1 runtime hardening), see `DOCS/V1_3_RELEASE_NOTES.md` and `CHANGELOG.md`. The upgrade guide is available at `DOCS/UPGRADE_GUIDE.md`.
 
 > Note: This project is personally maintained. Current releases are distributed publicly under the MIT license via the VS Code Marketplace. Future versions may be privately distributed; published OSS releases will remain under the MIT license.
 
@@ -161,7 +161,7 @@ For full configuration details and examples, see `DOCS/SETTINGS_GUIDE.md`. The S
 
 **v1.2.5 Memory Enhancements:**
 - **Decoration Pooling**: Reuses `FileDecoration` objects instead of allocating new ones per request (99.9% cache hit rate)
-- **Flyweight String Caching**: Capped FIFO caches for badge strings and Tooltips prevent transient allocations
+- **Flyweight String Caching**: Capped FIFO caches for badge strings and tooltips prevent transient allocations
 - **Advanced Cache Slimming**: Compact storage reduces per-entry memory footprint by ~40%
 - **Memory Shedding**: Optional adaptive guardrail that monitors heap and stretches refresh intervals under pressure
 
@@ -260,7 +260,19 @@ See [CHANGELOG.md](./CHANGELOG.md) for complete details.
 
 ## Release Notes
 
-### Version 1.3.0 (Latest)
+### Version 1.3.1 (Latest)
+
+**Security & Web Runtime Stabilization** *(Released February 4, 2026; patch updates through February 26, 2026)*
+
+- Added defense-in-depth workspace trust enforcement for write-capable commands.
+- Improved web runtime support for virtual workspaces and non-`file` URI schemes.
+- Hidden unsupported diagnostics in web hosts with environment-aware command gating.
+- Added stronger web fallback behavior for optional chunk loading and diagnostics.
+- Retained the module federation architecture and team configuration system introduced in 1.3.0.
+
+---
+
+### Version 1.3.0
 
 **Module Federation & Team Configuration Release** *(Released January 4, 2026)*
 
