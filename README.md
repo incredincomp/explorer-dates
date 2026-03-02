@@ -112,7 +112,7 @@ Notes:
 - Browser-specific behaviors:
   - Templates export/import via download dialogs because the sandbox cannot write to disk.
   - Persistent cache and Onboarding data use VS Code’s synced `globalState`, so settings sync with the user's Microsoft/GitHub account.
-- Git-only commands automatically hide when the web Host cannot expose repository metadata.
+- Git-only commands automatically hide when the web host cannot expose repository metadata.
 - Remote environments (Codespaces, Dev Containers, Remote Tunnels) leverage the same web bundle, so Explorer Dates stays lightweight even when running over the network.
 
 For details about v1.3.0 (module federation, bundle sizing, and team configuration), see `DOCS/V1_3_RELEASE_NOTES.md` and `CHANGELOG.md`. The upgrade guide is available at `DOCS/UPGRADE_GUIDE.md`.

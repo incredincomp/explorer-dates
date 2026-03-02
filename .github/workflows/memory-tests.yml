@@ -34,8 +34,12 @@ jobs:
       - name: Run baseline memory soak test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-soak*.js tests/test-memory*.js >/dev/null 2>&1; then
-            for f in tests/test-memory-soak*.js tests/test-memory*.js; do
+          shopt -s nullglob
+          files=(tests/test-memory*.js)
+          # Deduplicate files
+          files=($(printf '%s\n' "${files[@]}" | sort -u))
+          if [ ${#files[@]} -gt 0 ]; then
+            for f in "${files[@]}"; do
               echo "Running $f"
               case "$f" in
                 *memory-*) node --expose-gc "$f" ;; 
@@ -55,8 +59,14 @@ jobs:
         run: |
           LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
           if [ -z "$LOG_FILE" ]; then
-            echo "⚠️ Skipping check (no memory log found)"
-            exit 0
+            # Distinguish between "no tests present" and "tests present but no log produced"
+            if ls tests/test-memory-soak*.js tests/test-memory*.js >/dev/null 2>&1; then
+              echo "❌ Memory log not found even though memory tests are present (possible test or logging failure)"
+              exit 1
+            else
+              echo "⚠️ Skipping check (no memory soak tests found)"
+              exit 0
+            fi
           fi
           DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
           if [ -z "$DELTA" ]; then
@@ -99,8 +109,12 @@ jobs:
       - name: Run memory shedding test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-shedding*.js tests/test-memory*.js >/dev/null 2>&1; then
-            for f in tests/test-memory-shedding*.js tests/test-memory*.js; do
+          shopt -s nullglob
+          files=(tests/test-memory-shedding*.js tests/test-memory*.js)
+          # Deduplicate files
+          files=($(printf '%s\n' "${files[@]}" | sort -u))
+          if [ ${#files[@]} -gt 0 ]; then
+            for f in "${files[@]}"; do
               echo "Running $f"
               case "$f" in
                 *memory-*) node --expose-gc "$f" ;; 
@@ -120,8 +134,14 @@ jobs:
         run: |
           LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
           if [ -z "$LOG_FILE" ]; then
-            echo "⚠️ Skipping check (no memory log found)"
-            exit 0
+            # Distinguish between "no tests present" and "tests present but no log produced"
+            if ls tests/test-memory-soak*.js tests/test-memory*.js >/dev/null 2>&1; then
+              echo "❌ Memory log not found even though memory tests are present (possible test or logging failure)"
+              exit 1
+            else
+              echo "⚠️ Skipping check (no memory soak tests found)"
+              exit 0
+            fi
           fi
           DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
           if [ -z "$DELTA" ]; then
@@ -164,8 +184,12 @@ jobs:
       - name: Run lightweight mode test
         run: |
           set -euo pipefail
-          if ls tests/test-memory-lightweight*.js tests/test-memory*.js >/dev/null 2>&1; then
-            for f in tests/test-memory-lightweight*.js tests/test-memory*.js; do
+          shopt -s nullglob
+          files=(tests/test-memory-lightweight*.js tests/test-memory*.js)
+          # Deduplicate files
+          files=($(printf '%s\n' "${files[@]}" | sort -u))
+          if [ ${#files[@]} -gt 0 ]; then
+            for f in "${files[@]}"; do
               echo "Running $f"
               case "$f" in
                 *memory-*) node --expose-gc "$f" ;; 
@@ -185,8 +209,14 @@ jobs:
         run: |
           LOG_FILE=$(ls -t logs/memory-soak-*.json 2>/dev/null | head -1)
           if [ -z "$LOG_FILE" ]; then
-            echo "⚠️ Skipping check (no memory log found)"
-            exit 0
+            # Distinguish between "no tests present" and "tests present but no log produced"
+            if ls tests/test-memory-lightweight*.js tests/test-memory*.js >/dev/null 2>&1; then
+              echo "❌ Memory log not found even though memory tests are present (possible test or logging failure)"
+              exit 1
+            else
+              echo "⚠️ Skipping check (no memory tests found)"
+              exit 0
+            fi
           fi
           DELTA=$(grep -o '"heapDelta":[0-9.]*' "$LOG_FILE" | head -1 | cut -d: -f2)
           if [ -z "$DELTA" ]; then

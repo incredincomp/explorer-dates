@@ -247,7 +247,7 @@ See [UPGRADE_GUIDE.md](./DOCS/UPGRADE_GUIDE.md) for detailed migration instructi
 
 ### Incremental Indexer Hygiene
 - Removed workspace folders are pruned from the in-memory stat index immediately, preventing stale entries from lingering after you close a repo or remove a Codespace root.
-- reinitializing the indexer now disposes any previous worker host before creating another, eliminating worker_threads/WebWorker leaks when performance mode toggles on/off.
+- Reinitializing the indexer now disposes any previous worker host before creating another, eliminating worker_threads/WebWorker leaks when performance mode toggles on/off.
 
 ### Web Worker Reliability
 - The worker host’s capability probe accepts environments where `URL` is exposed as a function (the standard shape in browsers), so the web bundle consistently spins up a real WebWorker instead of falling back to inline hashing on `vscode.dev`/`github.dev`.

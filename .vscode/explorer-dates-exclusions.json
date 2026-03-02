@@ -5,13 +5,11 @@
     "bin",
     ".vscode",
     ".vscode-test",
-    "vscode-linux-x64-1.107.1",
-    "vscode-linux-x64-1.108.2",
     "dist",
     "node_modules",
     "build",
     "vendor"
   ],
-  "updatedAt": "2026-02-06T01:22:13.278Z",
+  "updatedAt": "2026-03-02T00:00:00.000Z",
   "version": 1
 }

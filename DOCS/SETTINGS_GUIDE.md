@@ -8,11 +8,9 @@ This project does not collect telemetry by default. Optional telemetry and diagn
 
 - `explorerDates.enableTelemetry` (boolean, default: `false`) — When `true`, the extension records optional diagnostic telemetry events locally for debugging and support purposes. This provides an opt-in mechanism that complements the `EXPLORER_DATES_TELEMETRY` environment flag used for ad-hoc diagnostics.
 
-- `explorerDates.clearTelemetryData` — A command that clears locally-stored telemetry events from your VS Code instance. This command is interactive and requires confirmation before deleting data. Note: this command only clears locally stored diagnostic telemetry (`explorerDates.telemetryEvents`) — it does not clear migration history or other diagnostic artifacts. For programmatic clearing in scripts or automation, use the explicit wrapper command `explorerDates.clearTelemetryData.force` (which requires an explicit opt-in), but avoid calling it from untrusted automation.
+- `explorerDates.clearTelemetryData` — A command that clears locally-stored telemetry events from your VS Code instance. This command is interactive and requires confirmation before deleting data. Note: this command only clears locally stored diagnostic telemetry (`explorerDates.telemetryEvents`) — it does not clear migration history or other diagnostic artifacts. For programmatic clearing in scripts or automation, use the explicit wrapper command `explorerDates.clearTelemetryData.force` (which requires an explicit opt-in), but avoid calling it from untrusted automation. Tip: run this via the Command Palette as **Explorer Dates: Clear Telemetry Data** (`explorerDates.clearTelemetryData`).
 
 See `README.md` for additional context about telemetry and privacy.
-
-You can clear locally-stored diagnostic telemetry using the command `Explorer Dates: Clear Telemetry Data` (`explorerDates.clearTelemetryData`). This command prompts for confirmation and removes locally stored telemetry events.
 
 ## 🆕 v1.3.0 Feature Control Settings
 
@@ -107,9 +105,9 @@ Because source information cannot fit in a 2-character badge, it is included in 
 - Setting: `explorerDates.badge.sourceLabelMode`
 - Default: `"auto"`
 
-| Value | Behaviour |
+| Value | Behavior |
 |-------|----------|
-| `"auto"`   | Shows `Source:` only when it is not the expected normal case (source is not Filesystem, or confidence is not high). Keeps tooltips clean for everyday local files while surfacing the source when it matters. |
+| Value | Behavior |
 | `"always"` | Always includes `Source:` in the tooltip. |
 | `"never"`  | Omits `Source:` from all tooltips. |
 
