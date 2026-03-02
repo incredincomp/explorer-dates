@@ -65,8 +65,8 @@ function formatSourceLabel(source) {
     }
 }
 
-// VS Code FileDecoration.badge is limited to 2 Unicode code points.
-// All values returned here must be ≤ 2 characters.
+// VS Code FileDecoration.badge is limited to 2 characters.
+// Keep values short because some Unicode glyphs may render unexpectedly.
 function formatBadgeAge(bucket) {
     switch (bucket) {
         case 'now':   return '!!';

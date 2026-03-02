@@ -51,7 +51,7 @@ The extension uses VS Code's `FileDecorationProvider` API to add date badges nex
 
 The hover tooltip always shows the full freshness label, exact timestamp, data source (Filesystem, Git, or GitHub), and confidence level. The `explorerDates.badge.sourceLabelMode` setting controls when the source line appears in tooltips (`auto`, `always`, or `never`).
 
-**Note**: VS Code enforces a hard 2-codepoint limit for Explorer badges. Strings longer than 2 characters are silently rejected before reaching the Explorer UI. Explorer Dates uses short symbols to stay within this limit. Full date, source, and Git info are always available in the decoration tooltip and accessibility text.
+**Note**: VS Code enforces a hard 2-character limit for Explorer badges. Some Unicode glyphs can still behave unexpectedly depending on how they are encoded/rendered, so shorter badge text is safer. Explorer Dates uses short symbols to stay within this limit. Full date, source, and Git info are always available in the decoration tooltip and accessibility text.
 
 ## Getting Started
 
