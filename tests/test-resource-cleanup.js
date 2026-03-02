@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
-const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
 async function main() {
@@ -40,7 +39,7 @@ async function main() {
             const mockFs = require('fs').promises;
             const originalStat = mockFs.stat;
             let operationInProgress = true;
-            mockFs.stat = async (filePath) => {
+            mockFs.stat = async (_filePath) => { void _filePath;
                 if (operationInProgress) {
                     // Simulate long-running operation
                     await new Promise(resolve => setTimeout(resolve, 50));
@@ -52,19 +51,21 @@ async function main() {
                 };
             };
 
-            // Start decoration operation
-            const uri = vscode.Uri.file('/active-workspace/test-file.js');
-            const decorationPromise = provider.provideFileDecoration(uri);
+            try {
+                // Start decoration operation
+                const uri = vscode.Uri.file('/active-workspace/test-file.js');
+                const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
-            // Dispose provider while operation is active
-            provider.dispose();
-            operationInProgress = false;
+                // Dispose provider while operation is active
+                await provider.dispose();
+                operationInProgress = false;
 
-            // Cleanup
-            mockFs.stat = originalStat;
-
-            // Should dispose gracefully without errors
-            assert(provider._isDisposed, 'Provider not properly disposed during active operations');
+                // Should dispose gracefully without errors
+                assert(provider._isDisposed, 'Provider not properly disposed during active operations');
+            } finally {
+                // Cleanup
+                mockFs.stat = originalStat;
+            }
         });
 
         await runTest('Resource Disposal Under Stress', async () => {
@@ -78,7 +79,7 @@ async function main() {
             }
 
             // Dispose immediately while operations are running
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal metrics
             assert(provider._isDisposed, 'Provider not disposed under stress conditions');
@@ -104,10 +105,10 @@ async function main() {
             }
 
             // Verify cache has entries (optional check since cache may be optimized)
-            const cacheSize = provider._decorationCache?.size || 0;
+            const cacheSize = provider._decorationCache?.size || 0; void cacheSize;
 
             // Dispose and verify cleanup
-            provider.dispose();
+            await provider.dispose();
 
             // Check all cache structures are cleared
             if (provider._decorationCache && provider._decorationCache.size > 0) {
@@ -140,7 +141,7 @@ async function main() {
             }
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify event listeners were cleaned up
             if (provider._onDidChangeFileDecorations && !listenersRemoved && provider._onDidChangeFileDecorations._listeners) {
@@ -161,7 +162,7 @@ async function main() {
             const provider = new FileDateDecorationProvider();
 
             // Mock file watcher
-            let watcherDisposed = false;
+            let watcherDisposed = false; void watcherDisposed;
             const mockWatcher = {
                 onDidChange: () => ({ dispose: () => {} }),
                 onDidCreate: () => ({ dispose: () => {} }),
@@ -175,7 +176,7 @@ async function main() {
             }
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal completed
             assert(provider._isDisposed, 'Provider should be disposed');
@@ -191,7 +192,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Check that key references are cleared
             const criticalReferences = [
@@ -229,7 +230,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Simulate configuration reset
-            provider.dispose();
+            await provider.dispose();
 
             // Verify clean disposal
             assert(provider._isDisposed, 'Provider not marked as disposed after configuration reset');
@@ -249,7 +250,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Simulate workspace closure
-            provider.dispose();
+            await provider.dispose();
 
             // Verify graceful disposal
             assert(provider._isDisposed, 'Provider not properly disposed on workspace close');
@@ -266,7 +267,7 @@ async function main() {
             // Mock slow file operation
             const mockFs = require('fs').promises;
             const originalStat = mockFs.stat;
-            mockFs.stat = async (filePath) => {
+            mockFs.stat = async (_filePath) => { void _filePath;
                 // Simulate slow operation
                 await new Promise(resolve => setTimeout(resolve, 100));
                 return {
@@ -276,22 +277,24 @@ async function main() {
                 };
             };
 
-            // Start operation
-            const startTime = Date.now();
-            const decorationPromise = provider.provideFileDecoration(uri);
+            try {
+                // Start operation
+                const startTime = Date.now();
+                const decorationPromise = provider.provideFileDecoration(uri); void decorationPromise;
 
-            // Dispose quickly (should not wait for slow operation)
-            provider.dispose();
-            const disposeTime = Date.now() - startTime;
+                // Dispose quickly (should not wait for slow operation)
+                await provider.dispose();
+                const disposeTime = Date.now() - startTime;
 
-            // Cleanup
-            mockFs.stat = originalStat;
+                // Should dispose quickly
+                assert(provider._isDisposed, 'Provider not disposed during graceful shutdown');
 
-            // Should dispose quickly
-            assert(provider._isDisposed, 'Provider not disposed during graceful shutdown');
-
-            // Note: Disposal time check is lenient since it depends on implementation
-            console.log(`   Disposal completed in ${disposeTime}ms`);
+                // Note: Disposal time check is lenient since it depends on implementation
+                console.log(`   Disposal completed in ${disposeTime}ms`);
+            } finally {
+                // Cleanup
+                mockFs.stat = originalStat;
+            }
         });
 
         await runTest('Partial Disposal Recovery', async () => {
@@ -302,7 +305,7 @@ async function main() {
             await provider.provideFileDecoration(uri);
 
             // Dispose provider
-            provider.dispose();
+            await provider.dispose();
 
             // Verify disposal completed
             assert(provider._isDisposed, 'Provider not marked as disposed during partial disposal');
@@ -316,12 +319,12 @@ async function main() {
         console.log(`\n🎉 Resource cleanup & disposal tests completed: ${testsPassed}/${testsRun} passed`);
 
         if (testsPassed !== testsRun) {
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         }
 
     } catch (error) {
         console.error('\n❌ Test suite failed:', error.message);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }
 }
 
@@ -329,8 +332,8 @@ async function main() {
 if (require.main === module) {
     main().catch(error => {
         console.error('Fatal error:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }).finally(scheduleExit);
-}
+} 
 
 module.exports = { main };

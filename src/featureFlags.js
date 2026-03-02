@@ -2,13 +2,24 @@
  * Feature flags for optional components to reduce bundle size
  */
 
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { CHUNK_SIZES } = require('./presetDefinitions');
 const { getChunkSourcePath, getAllChunkNames } = require('./shared/chunkMap');
 const { registerFeatureFlagsGlobal } = require('./utils/featureFlagsBridge');
+const { isWebEnvironment } = require('./utils/env');
 let featureLogger = null;
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
-const DEFAULT_CHUNK_TIMEOUT_MS = Number(process.env.EXPLORER_DATES_CHUNK_TIMEOUT || (process.env.NODE_ENV === 'test' ? 1000 : 5000));
+const DEFAULT_CHUNK_TIMEOUT_MS = Number(env.EXPLORER_DATES_CHUNK_TIMEOUT || (env.NODE_ENV === 'test' ? 1000 : 5000));
 const NETWORK_ERROR_CODES = new Set(['ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH']);
 const BUILT_CHUNK_CACHE = new Map();
 const CHUNK_METHOD_ALIASES = {
@@ -18,6 +29,7 @@ const CHUNK_METHOD_ALIASES = {
 };
 
 const DEV_CHUNK_PATH_CACHE = new Map();
+const LAST_FEATURE_FAILURES = new Map();
 
 function getDevChunkImportPath(chunkName) {
     if (DEV_CHUNK_PATH_CACHE.has(chunkName)) {
@@ -61,8 +73,8 @@ let nativeFs = null;
 
 function isWebRuntime() {
     try {
-        if (typeof navigator !== 'undefined' && navigator?.userAgent) {
-            return navigator.userAgent.includes('vscode-web') || navigator.userAgent.includes('Code - Web');
+        if (isWebEnvironment()) {
+            return true;
         }
         return typeof process !== 'undefined' && process?.env?.VSCODE_WEB === 'true';
     } catch {
@@ -284,26 +296,32 @@ const getFeatureConfig = () => {
     try {
         const vscode = require('vscode');
         const config = vscode.workspace.getConfiguration('explorerDates');
+        const isWeb = isWebRuntime();
+        const disableInWeb = (value) => (isWeb ? false : value);
         return {
             enableOnboarding: config.get('enableOnboardingSystem', true),
-            enableExportReporting: config.get('enableExportReporting', true), 
-            enableWorkspaceTemplates: config.get('enableWorkspaceTemplates', true),
+            enableExportReporting: disableInWeb(config.get('enableExportReporting', true)), 
+            enableWorkspaceTemplates: disableInWeb(config.get('enableWorkspaceTemplates', true)),
             enableAnalysisCommands: config.get('enableAnalysisCommands', true),
-            enableAdvancedCache: config.get('enableAdvancedCache', true),
-            enableWorkspaceIntelligence: config.get('enableWorkspaceIntelligence', true),
-            enableIncrementalWorkers: config.get('enableIncrementalWorkers', false),
+            enableAdvancedCache: disableInWeb(config.get('enableAdvancedCache', true)),
+            enableWorkspaceIntelligence: disableInWeb(config.get('enableWorkspaceIntelligence', true)),
+            enableIncrementalWorkers: disableInWeb(config.get('enableIncrementalWorkers', false)),
+            enableGitInsights: disableInWeb(config.get('enableGitInsights', true)),
             enableExtensionApi: config.get('enableExtensionApi', true)
         };
     } catch {
         // Default to all features enabled if VS Code API not available
+        const isWeb = isWebRuntime();
+        const disableInWeb = (value) => (isWeb ? false : value);
         return {
             enableOnboarding: true,
-            enableExportReporting: true,
-            enableWorkspaceTemplates: true, 
+            enableExportReporting: disableInWeb(true),
+            enableWorkspaceTemplates: disableInWeb(true), 
             enableAnalysisCommands: true,
-            enableAdvancedCache: true,
-            enableWorkspaceIntelligence: true,
-            enableIncrementalWorkers: false,
+            enableAdvancedCache: disableInWeb(true),
+            enableWorkspaceIntelligence: disableInWeb(true),
+            enableIncrementalWorkers: disableInWeb(false),
+            enableGitInsights: disableInWeb(true),
             enableExtensionApi: true
         };
     }
@@ -335,6 +353,7 @@ function clearFeatureLoaders() {
 }
 
 async function loadFeatureModule(name) {
+    LAST_FEATURE_FAILURES.delete(name);
     let loader = featureLoaders.get(name);
     if (!loader && chunkResolver) {
         loader = () => chunkResolver(name);
@@ -346,6 +365,7 @@ async function loadFeatureModule(name) {
     try {
         return await runWithChunkTimeout(() => loader(), name);
     } catch (error) {
+        LAST_FEATURE_FAILURES.set(name, error);
         logFeature('warn', 'Feature loader failed', {
             feature: name,
             error: error.message,
@@ -355,6 +375,10 @@ async function loadFeatureModule(name) {
         announceChunkSavings(name);
         return null;
     }
+}
+
+function getFeatureLoadFailure(name) {
+    return LAST_FEATURE_FAILURES.get(name);
 }
 
 /**
@@ -498,9 +522,16 @@ const featureFlags = {
         return loadFeatureModule('decorationsAdvanced');
     },
 
+    async decorationsProviderImpl() {
+        return loadFeatureModule('decorationsProviderImpl');
+    },
+
     async gitInsights() {
-        // Git insights are loaded conditionally when git features are needed
-        // No feature flag check - this is a performance optimization
+        const config = getFeatureConfig();
+        if (!config.enableGitInsights) {
+            logFeatureDisabled('gitInsights', 'gitInsights');
+            return null;
+        }
         return loadFeatureModule('gitInsights');
     },
 
@@ -596,6 +627,7 @@ const exportedFeatureFlags = {
     unregisterFeatureLoader,
     clearFeatureLoaders,
     loadFeatureModule,
+    getFeatureLoadFailure,
     registerDefaultLoaders
 };
 

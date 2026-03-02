@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
 const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
 
@@ -12,7 +11,7 @@ async function main() {
             'explorerDates.featureLevel': 'standard'
         }
     });
-    const { vscode } = mockInstall;
+
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     let testsRun = 0;
@@ -37,7 +36,7 @@ async function main() {
                 const permissionDeniedUri = VSCodeUri.file('/root/forbidden-file.txt');
                 
                 // Mock filesystem to throw EACCES
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async () => {
                     const error = new Error('EACCES: permission denied');
                     error.code = 'EACCES';
                     error.errno = -13;
@@ -59,7 +58,7 @@ async function main() {
                 const missingFileUri = VSCodeUri.file('/nonexistent/missing-file.txt');
                 
                 // Mock filesystem to throw ENOENT
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async () => {
                     const error = new Error('ENOENT: no such file or directory');
                     error.code = 'ENOENT';
                     error.errno = -2;
@@ -81,7 +80,7 @@ async function main() {
                 const systemFileUri = VSCodeUri.file('/sys/kernel/debug/system-file');
                 
                 // Mock filesystem to throw EPERM
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async () => {
                     const error = new Error('EPERM: operation not permitted');
                     error.code = 'EPERM';
                     error.errno = -1;
@@ -103,7 +102,7 @@ async function main() {
                 const slowFileUri = VSCodeUri.file('/network/slow-file.txt');
                 
                 // Mock filesystem to hang for a long time
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     return new Promise((resolve, reject) => {
                         // Simulate a very slow network operation
                         setTimeout(() => {
@@ -129,7 +128,7 @@ async function main() {
                 const networkFileUri = VSCodeUri.file('//server/share/file.txt');
                 
                 // Mock filesystem to throw network error
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     const error = new Error('ENETUNREACH: network is unreachable');
                     error.code = 'ENETUNREACH';
                     error.errno = -51;
@@ -151,7 +150,7 @@ async function main() {
                 const brokenSymlinkUri = VSCodeUri.file('/tmp/broken-symlink');
                 
                 // Mock filesystem to throw on broken symlink
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     const error = new Error('ELOOP: too many symbolic links encountered');
                     error.code = 'ELOOP';
                     error.errno = -40;
@@ -173,7 +172,7 @@ async function main() {
                 const lockedFileUri = VSCodeUri.file('/tmp/locked-file.txt');
                 
                 // Mock filesystem to throw file locked error
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     const error = new Error('EBUSY: resource busy or locked');
                     error.code = 'EBUSY';
                     error.errno = -16;
@@ -195,7 +194,7 @@ async function main() {
                 const invalidFileUri = VSCodeUri.file('/proc/invalid-fd');
                 
                 // Mock filesystem to throw invalid file descriptor
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     const error = new Error('EBADF: bad file descriptor');
                     error.code = 'EBADF';
                     error.errno = -9;
@@ -217,7 +216,7 @@ async function main() {
                 const corruptFileUri = VSCodeUri.file('/mnt/corrupt-disk/file.txt');
                 
                 // Mock filesystem to throw corruption error
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (_uri) => { void _uri;
                     const error = new Error('EIO: I/O error');
                     error.code = 'EIO';
                     error.errno = -5;
@@ -238,7 +237,7 @@ async function main() {
             try {
                 // Test that good files still work when some fail
                 let callCount = 0;
-                provider._fileSystem.stat = async (uri) => {
+                provider._fileSystem.stat = async (uri) => { void uri;
                     callCount++;
                     if (callCount === 1) {
                         // First call succeeds

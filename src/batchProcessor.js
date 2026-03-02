@@ -1,5 +1,14 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 
 /**
  * Batch Processing Manager for file decorations

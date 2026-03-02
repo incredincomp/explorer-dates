@@ -2,7 +2,15 @@
 
 const assert = require('assert');
 const mockHelpers = require('./helpers/mockVscode');
-const { createExtensionContext, createIsolatedMock, TestSuiteManager, MockStateValidator, globalStateValidator } = mockHelpers;
+const { createExtensionContext, createIsolatedMock, TestSuiteManager, MockStateValidator, globalStateValidator } = mockHelpers; void createExtensionContext; void globalStateValidator;
+const { addWarningFilters } = require('./helpers/warningFilters');
+
+addWarningFilters([
+    /State violations detected in violation-test:/,
+    /Added config keys:/,
+    /Removed config keys:/,
+    /Config changed:/
+]);
 
 async function testBasicMockIsolation() {
     console.log('Testing basic mock isolation...');

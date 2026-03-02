@@ -4,7 +4,7 @@
  */
 
 const vscode = require('vscode');
-const { getFileName } = require('./utils/pathUtils');
+let getFileName = (p) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.getFileName === 'function') { getFileName = chunk.getFileName; return getFileName(p); } } } catch { /* ignore */ } const s = String(p || ''); const normalized = s.replace(/\\/g, '/'); const idx = normalized.lastIndexOf('/'); return idx === -1 ? normalized : normalized.substring(idx + 1); };
 
 /**
  * Test VS Code's decoration rendering system

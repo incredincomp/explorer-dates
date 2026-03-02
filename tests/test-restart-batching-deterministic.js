@@ -95,7 +95,7 @@ async function testDeterministicDebounceTimer() {
         try {
             const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
             runtimeManager = new RuntimeConfigManager(context);
-        } catch (error) {
+        } catch {
             // Create minimal mock if module doesn't exist
             runtimeManager = {
                 _queueRestartPrompt(settings) {
@@ -202,7 +202,7 @@ async function testPendingRestartPersistenceAcrossRestarts() {
         
         let promptMessage = null;
         const originalShowInformationMessage = vscode.window.showInformationMessage;
-        vscode.window.showInformationMessage = async (message, ...args) => {
+        vscode.window.showInformationMessage = async (message, ...args) => { void args;
             promptMessage = message;
             return 'Reload Later';
         };

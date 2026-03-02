@@ -224,7 +224,7 @@ async function testJestCompatibility() {
             try {
                 const chunkPath = require.resolve(fullSourcePath);
                 delete require.cache[chunkPath];
-            } catch (_resolveError) {
+            } catch {
                 // If resolve fails, that's fine for this test
                 console.log('   ℹ️ Cache clearing test - resolve failed (expected in some cases)');
             }
@@ -298,12 +298,12 @@ if (require.main === module) {
         .then(success => {
             // Clean up mock
             mockSetup.dispose();
-            process.exit(success ? 0 : 1);
+            require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
         })
         .catch(error => {
             console.error('❌ Test runner error:', error);
             mockSetup.dispose();
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         });
 }
 

@@ -1,7 +1,18 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
-const { normalizePath, getRelativePath, getFileName } = require('./utils/pathUtils');
+let normalizePath = (v) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.normalizePath === 'function') { normalizePath = chunk.normalizePath; return normalizePath(v); } } } catch { /* ignore */ } return String(v || '').replace(/\\/g, '/'); };
+
+let getFileName = (p) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.getFileName === 'function') { getFileName = chunk.getFileName; return getFileName(p); } } } catch { /* ignore */ } const n = String(p||'').replace(/\\/g,'/'); const idx = n.lastIndexOf('/'); return idx === -1 ? n : n.substring(idx + 1); };
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 /**
@@ -15,28 +26,8 @@ class SmartExclusionManager {
         this._settings = getSettingsCoordinator();
         
         // Common build/cache folders that should be excluded
-        this._commonExclusions = [
-            // Node.js
-            'node_modules', '.npm', '.yarn', 'coverage', 'nyc_output',
-            // Build outputs
-            'dist', 'build', 'out', 'target', 'bin', 'obj',
-            // IDE/Editor
-            '.vscode', '.idea', '.vs', '.vscode-test',
-            // Version control
-            '.git', '.svn', '.hg', '.bzr',
-            // Package managers
-            '.pnpm-store', 'bower_components', 'jspm_packages',
-            // Temporary files
-            'tmp', 'temp', '.tmp', '.cache', '.parcel-cache',
-            // OS specific
-            '.DS_Store', 'Thumbs.db', '__pycache__', '.pytest_cache',
-            // Language specific
-            '.tox', 'venv', '.env', '.virtualenv', 'vendor',
-            // Docker
-            '.docker',
-            // Logs
-            'logs', '*.log'
-        ];
+        // Loaded lazily from JSON to keep the main chunk smaller
+        this._commonExclusions = null;
         
         // Pattern scoring for machine learning-like behavior
         this._patternScores = new Map();
@@ -45,6 +36,22 @@ class SmartExclusionManager {
         this._legacyProfilesSetting = 'workspaceExclusionProfiles';
         
         this._logger.info('SmartExclusionManager initialized');
+        this._commonExclusionsLoaded = false;
+    }
+
+    async _ensureCommonExclusions() {
+        if (this._commonExclusionsLoaded && Array.isArray(this._commonExclusions)) {
+            return this._commonExclusions;
+        }
+        try {
+            const mod = await import('./data/commonExclusions.json');
+            this._commonExclusions = mod && mod.default ? mod.default : mod;
+        } catch {
+            // Fallback to a small set to avoid blocking functionality
+            this._commonExclusions = ['node_modules', 'dist', 'build', '.git'];
+        }
+        this._commonExclusionsLoaded = true;
+        return this._commonExclusions;
     }
 
     /**
@@ -91,13 +98,17 @@ class SmartExclusionManager {
                 projectType: 'unknown',
                 riskFolders: []
             };
+            // Ensure common exclusions are loaded lazily
+            await this._ensureCommonExclusions();
 
             // Detect project type from files
             analysis.projectType = await this._detectProjectType(workspaceUri);
             
             // Scan for common exclusion patterns
-            const foundFolders = await this._scanForExclusionCandidates(workspaceUri, workspacePath);
-            
+// Delegate scanning to lazily-loaded scanner to keep the main chunk small
+        const scanner = await import('./chunks/workspaceIntelligenceScanner.js');
+        const foundFolders = await scanner.scanForExclusionCandidates(workspaceUri, workspacePath, this._fs, this._logger);
+
             // Score and rank patterns
             const scoredPatterns = this._scorePatterns(foundFolders, analysis.projectType);
             
@@ -155,146 +166,21 @@ class SmartExclusionManager {
         return 'unknown';
     }
 
-    /**
-     * Scan workspace for folders that should likely be excluded
-     */
-    async _scanForExclusionCandidates(workspaceUri, workspacePath, maxDepth = 2) {
-        const candidates = [];
-        
-        const scanDirectory = async (dirUri, currentDepth = 0) => {
-            if (currentDepth > maxDepth) return;
-            
-            try {
-                const entries = await this._fs.readdir(dirUri, { withFileTypes: true });
-                
-                for (const entry of entries) {
-                    if (entry.isDirectory()) {
-                        const fullUri = vscode.Uri.joinPath(dirUri, entry.name);
-                        const fullPath = normalizePath(fullUri.fsPath || fullUri.path);
-                        const relativePath = getRelativePath(workspacePath, fullPath);
-                        
-                        // Check if this matches our common exclusions
-                        if (this._commonExclusions.includes(entry.name)) {
-                            candidates.push({
-                                name: entry.name,
-                                path: relativePath,
-                                type: 'common',
-                                size: await this._getDirectorySize(fullUri)
-                            });
-                        }
-                        
-                        // Check for large directories that might be build outputs
-                        const size = await this._getDirectorySize(fullUri);
-                        if (size > 10 * 1024 * 1024) { // > 10MB
-                            candidates.push({
-                                name: entry.name,
-                                path: relativePath,
-                                type: 'large',
-                                size: size
-                            });
-                        }
-                        
-                        // Recursively scan subdirectories
-                        await scanDirectory(fullUri, currentDepth + 1);
-                    }
-                }
-            } catch {
-                // Skip directories we can't access
-            }
-        };
-        
-        await scanDirectory(workspaceUri);
-        return candidates;
-    }
 
     /**
      * Get directory size (approximate)
      */
     async _getDirectorySize(dirUri) {
-        try {
-            const entries = await this._fs.readdir(dirUri, { withFileTypes: true });
-            let size = 0;
-            let fileCount = 0;
-            
-            for (const entry of entries) {
-                if (fileCount > 100) break; // Limit for performance
-                
-                if (entry.isFile()) {
-                    try {
-                        const fileUri = vscode.Uri.joinPath(dirUri, entry.name);
-                        const stat = await this._fs.stat(fileUri);
-                        size += stat.size;
-                        fileCount++;
-                    } catch {
-                        // Skip files we can't access
-                    }
-                }
-            }
-            
-            return size;
-        } catch {
-            return 0;
-        }
+        const io = await import('./chunks/workspace-intel-io-chunk');
+        return io.getDirectorySize(dirUri);
     }
 
     /**
      * Score patterns based on project type and characteristics
      */
-    _scorePatterns(candidates, projectType) {
-        return candidates.map(candidate => {
-            let score = 0;
-            let riskLevel = 'low';
-            
-            // Base score for common exclusions
-            if (candidate.type === 'common') {
-                score += 0.8;
-            }
-            
-            // Score based on size (larger = more likely to exclude)
-            if (candidate.size > 100 * 1024 * 1024) { // > 100MB
-                score += 0.9;
-                riskLevel = 'high';
-            } else if (candidate.size > 10 * 1024 * 1024) { // > 10MB
-                score += 0.5;
-                riskLevel = 'medium';
-            }
-            
-            // Project-specific scoring
-            switch (projectType) {
-                case 'javascript':
-                    if (['node_modules', '.npm', 'coverage', 'dist', 'build'].includes(candidate.name)) {
-                        score += 0.9;
-                    }
-                    break;
-                case 'python':
-                    if (['__pycache__', '.pytest_cache', 'venv', '.env'].includes(candidate.name)) {
-                        score += 0.9;
-                    }
-                    break;
-                case 'java':
-                    if (['target', 'build', '.gradle'].includes(candidate.name)) {
-                        score += 0.9;
-                    }
-                    break;
-                // Add more project types as needed
-            }
-            
-            // Never suggest excluding source directories
-            const sourcePatterns = ['src', 'lib', 'app', 'components', 'pages'];
-            if (sourcePatterns.includes(candidate.name.toLowerCase())) {
-                score = 0;
-                riskLevel = 'none';
-            }
-            
-            return {
-                pattern: candidate.name,
-                path: candidate.path,
-                score: Math.min(score, 1.0),
-                riskLevel,
-                size: candidate.size,
-                type: candidate.type
-            };
-        });
+    async _scorePatterns(candidates, projectType) {
+        const logic = await import('./chunks/workspace-intel-logic-chunk');
+        return logic.scorePatterns(candidates, projectType);
     }
 
     /**
@@ -353,15 +239,19 @@ class SmartExclusionManager {
         let combinedFolders = [...globalFolders];
         let combinedPatterns = [...globalPatterns];
         
-        // Add workspace-specific exclusions
+        // Add workspace-specific exclusions (fast)
         const workspaceExclusions = await this.getWorkspaceExclusions(workspaceUri);
         combinedFolders.push(...workspaceExclusions);
         
-        // Add smart exclusions if enabled
+        // If smart exclusions are enabled, try to use cached analysis; if missing,
+        // kick off analysis in the background but don't await it to keep hot paths fast.
         if (smartEnabled) {
-            const analysis = await this.analyzeWorkspace(workspaceUri);
-            if (analysis) {
-                combinedFolders.push(...analysis.suggestedExclusions);
+            const cached = this._workspaceAnalysis.get((workspaceUri && (workspaceUri.fsPath || workspaceUri.path)) || 'unknown-workspace');
+            if (cached && cached.suggestedExclusions && cached.suggestedExclusions.length) {
+                combinedFolders.push(...cached.suggestedExclusions);
+            } else {
+                // Fire-and-forget analysis; errors are logged inside analyzeWorkspace
+                this.analyzeWorkspace(workspaceUri).catch(() => {});
             }
         }
         
@@ -565,82 +455,23 @@ class SmartExclusionManager {
     }
 
     async _readWorkspaceExclusionsFile(rootUri) {
-        const fileUri = this._getExclusionsFileUri(rootUri);
-        if (!fileUri) {
-            return null;
-        }
-
-        try {
-            const raw = await this._fs.readFile(fileUri, 'utf8');
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                return this._dedupeList(parsed);
-            }
-            if (Array.isArray(parsed?.exclusions)) {
-                return this._dedupeList(parsed.exclusions);
-            }
-            return null;
-        } catch (error) {
-            if (error?.code === 'ENOENT' || error?.name === 'EntryNotFound' || error?.message?.includes('ENOENT')) {
-                return null;
-            }
-            this._logger.warn('Failed to read workspace exclusions file', { error: error.message });
-            return null;
-        }
+        const io = await import('./chunks/workspace-intel-io-chunk');
+        return io.readWorkspaceExclusionsFile(rootUri);
     }
 
     async _writeWorkspaceExclusionsFile(rootUri, exclusions) {
-        const fileUri = this._getExclusionsFileUri(rootUri);
-        if (!fileUri) {
-            return;
-        }
-
-        const settingsDir = this._getWorkspaceSettingsDir(rootUri);
-        if (settingsDir) {
-            await this._fs.ensureDirectory(settingsDir);
-        }
-
-        const payload = {
-            version: 1,
-            updatedAt: new Date().toISOString(),
-            exclusions
-        };
-
-        await this._fs.writeFile(fileUri, JSON.stringify(payload, null, 2));
+        const io = await import('./chunks/workspace-intel-io-chunk');
+        return io.writeWorkspaceExclusionsFile(rootUri, exclusions);
     }
 
     async _migrateLegacyExclusions(workspaceUri, rootUri) {
-        const workspaceKey = this._getWorkspaceKey(workspaceUri);
-        const profiles = this._settings.getValue(this._legacyProfilesSetting) || {};
-        const legacy = Array.isArray(profiles[workspaceKey]) ? this._dedupeList(profiles[workspaceKey]) : [];
-
-        if (!legacy.length) {
-            return null;
-        }
-
-        if (rootUri) {
-            await this._writeWorkspaceExclusionsFile(rootUri, legacy);
-            await this._removeLegacyProfile(workspaceUri);
-            this._logger.info(`Migrated workspace exclusions for ${workspaceKey} to workspace settings file`);
-            return legacy;
-        }
-
-        return legacy;
+        const io = await import('./chunks/workspace-intel-io-chunk');
+        return io.migrateLegacyExclusions(workspaceUri, rootUri);
     }
 
     async _removeLegacyProfile(workspaceUri) {
-        const workspaceKey = this._getWorkspaceKey(workspaceUri);
-        const profiles = this._settings.getValue(this._legacyProfilesSetting) || {};
-
-        if (!(workspaceKey in profiles)) {
-            return;
-        }
-
-        delete profiles[workspaceKey];
-        await this._settings.updateSetting(this._legacyProfilesSetting, profiles, {
-            scope: 'user',
-            reason: 'workspace-exclusion-migration'
-        });
+        const io = await import('./chunks/workspace-intel-io-chunk');
+        return io.removeLegacyProfile(workspaceUri);
     }
 
     _dedupeList(values = []) {
@@ -662,188 +493,19 @@ class SmartExclusionManager {
     /**
      * Show detailed exclusion review
      */
-    _showExclusionReviewSingle(analysis) {
-        const panel = vscode.window.createWebviewPanel(
-            'exclusionReview',
-            'Smart Exclusion Review',
-            vscode.ViewColumn.One,
-            { enableScripts: true }
-        );
-
-        panel.webview.html = this._generateReviewHTML([{
-            workspaceKey: 'single-workspace',
-            workspaceName: 'Workspace',
-            analysis,
-            previous: []
-        }]);
+    async _showExclusionReviewSingle(analysis) {
+        const logic = await import('./chunks/workspace-intel-logic-chunk');
+        return logic.showExclusionReviewSingle(this, analysis);
     }
 
-    _showExclusionReviewBulk(reviewEntries) {
-        if (!Array.isArray(reviewEntries) || reviewEntries.length === 0) {
-            return;
-        }
-
-        const panel = vscode.window.createWebviewPanel(
-            'exclusionReview',
-            'Smart Exclusion Review',
-            vscode.ViewColumn.One,
-            { enableScripts: true, retainContextWhenHidden: true }
-        );
-
-        panel.webview.onDidReceiveMessage(async (message) => {
-            if (message?.type === 'save' && message.workspaceKey && Array.isArray(message.exclusions)) {
-                const entry = reviewEntries.find((e) => e.workspaceKey === message.workspaceKey);
-                if (!entry?.workspaceUri) {
-                    return;
-                }
-
-                const confirm = await vscode.window.showWarningMessage(
-                    `Apply updated exclusions for ${entry.workspaceName}?`,
-                    { modal: true },
-                    'Apply',
-                    'Cancel'
-                );
-
-                if (confirm !== 'Apply') {
-                    panel.webview.postMessage({ type: 'saveCanceled', workspaceKey: message.workspaceKey });
-                    return;
-                }
-
-                await this.saveWorkspaceExclusions(entry.workspaceUri, this._dedupeList(message.exclusions));
-                this._logger.info('Updated smart exclusions from review', {
-                    workspace: entry.workspaceName,
-                    count: message.exclusions.length
-                });
-                panel.webview.postMessage({ type: 'saved', workspaceKey: message.workspaceKey });
-            }
-        });
-
-        panel.webview.html = this._generateReviewHTML(reviewEntries);
+    async _showExclusionReviewBulk(reviewEntries) {
+        const logic = await import('./chunks/workspace-intel-logic-chunk');
+        return logic.showExclusionReviewBulk(this, reviewEntries);
     }
 
     _generateReviewHTML(reviewEntries) {
-        const formatSize = (bytes) => {
-            if (bytes < 1024) return `${bytes} B`;
-            const kb = bytes / 1024;
-            if (kb < 1024) return `${kb.toFixed(1)} KB`;
-            const mb = kb / 1024;
-            return `${mb.toFixed(1)} MB`;
-        };
-
-        const escapeHtml = (value) => String(value || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-
-        const renderTable = (entry) => {
-            const analysis = entry.analysis;
-            const suggestionRows = (analysis?.detectedPatterns || []).map((pattern) => `
-                <tr>
-                    <td>${escapeHtml(pattern.name)}</td>
-                    <td>${escapeHtml(pattern.path)}</td>
-                    <td>${formatSize(pattern.size)}</td>
-                    <td>${escapeHtml(pattern.type)}</td>
-                    <td>
-                        <input type="checkbox" data-workspace="${escapeHtml(entry.workspaceKey)}" data-name="${escapeHtml(pattern.name)}" ${analysis?.suggestedExclusions?.includes(pattern.name) ? 'checked' : ''}>
-                    </td>
-                </tr>
-            `).join('');
-
-            return `
-                <section class="workspace">
-                    <header>
-                        <h2>${escapeHtml(entry.workspaceName)}</h2>
-                        <div class="project-info">
-                            <div><strong>Project Type:</strong> ${escapeHtml(analysis?.projectType || 'unknown')}</div>
-                            <div><strong>Detected Patterns:</strong> ${analysis?.detectedPatterns?.length || 0}</div>
-                            <div><strong>Suggested Exclusions:</strong> ${analysis?.suggestedExclusions?.length || 0}</div>
-                        </div>
-                        <button class="save" data-workspace="${escapeHtml(entry.workspaceKey)}">Save changes</button>
-                        <span class="status" id="status-${escapeHtml(entry.workspaceKey)}"></span>
-                    </header>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Folder</th>
-                                <th>Path</th>
-                                <th>Size</th>
-                                <th>Type</th>
-                                <th>Exclude</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${suggestionRows}
-                        </tbody>
-                    </table>
-                </section>
-            `;
-        };
-
-        const sections = reviewEntries.map(renderTable).join('');
-
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>Smart Exclusion Review</title>
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; }
-                    .workspace { margin-bottom: 32px; border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 12px; }
-                    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-                    .project-info { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--vscode-editor-foreground); }
-                    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-                    th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--vscode-panel-border); }
-                    th { background-color: var(--vscode-editor-background); font-weight: bold; }
-                    button.save { padding: 6px 12px; }
-                    .status { font-size: 12px; color: var(--vscode-descriptionForeground); }
-                </style>
-            </head>
-            <body>
-                <h1>🧠 Smart Exclusion Review</h1>
-                <p>Adjust exclusion selections per workspace and click "Save changes". Each save will ask for confirmation.</p>
-                ${sections}
-                <script>
-                    const vscode = acquireVsCodeApi();
-
-                    function getSelections(workspaceKey) {
-                        const boxes = Array.from(document.querySelectorAll('input[type="checkbox"][data-workspace="' + workspaceKey + '"]'));
-                        return boxes.filter((box) => box.checked).map((box) => box.dataset.name);
-                    }
-
-                    function setStatus(workspaceKey, text, success) {
-                        const el = document.getElementById('status-' + workspaceKey);
-                        if (el) {
-                            el.textContent = text;
-                            el.style.color = success ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editor-foreground)';
-                        }
-                    }
-
-                    document.querySelectorAll('button.save').forEach((button) => {
-                        button.addEventListener('click', () => {
-                            const workspaceKey = button.dataset.workspace;
-                            const exclusions = getSelections(workspaceKey);
-                            setStatus(workspaceKey, 'Saving...', false);
-                            vscode.postMessage({ type: 'save', workspaceKey, exclusions });
-                        });
-                    });
-
-                    window.addEventListener('message', (event) => {
-                        const message = event.data;
-                        if (!message || !message.type) return;
-                        if (message.type === 'saved') {
-                            setStatus(message.workspaceKey, 'Saved', true);
-                        }
-                        if (message.type === 'saveCanceled') {
-                            setStatus(message.workspaceKey, 'Canceled', false);
-                        }
-                    });
-                </script>
-            </body>
-            </html>
-        `;
+        // Delegate HTML generation to the workspace-intel logic chunk to avoid bundling UI templates in the core
+        return import('./chunks/workspace-intel-logic-chunk').then((logic) => logic.generateReviewHTML(reviewEntries));
     }
 }
 

@@ -8,6 +8,8 @@ module.exports = [
             "*.vsix",
             ".env",
             "dist/**",
+            ".local-web-cert/**",
+            ".vscode-dev-sideload/**",
             "tests/artifacts/**"
         ]
     },
@@ -23,6 +25,9 @@ module.exports = [
                 AbortController: "readonly"
             }
         },
+        plugins: {
+            import: require('eslint-plugin-import')
+        },
         rules: {
             "no-const-assign": "warn",
             "no-this-before-super": "warn",
@@ -31,9 +36,13 @@ module.exports = [
             "no-unused-vars": "warn",
             "constructor-super": "warn",
             "valid-typeof": "warn",
-            "no-console": "off"
+            "no-console": "off",
+            // In CI environments the 'import' plugin may sometimes be unavailable
+            // due to install/profile differences; treat this rule as optional.
+            "import/no-dynamic-require": "off"
         }
     },
+
     {
         files: ["src/webview/**/*.js"],
         languageOptions: {

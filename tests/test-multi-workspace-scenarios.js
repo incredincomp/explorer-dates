@@ -1,8 +1,44 @@
 #!/usr/bin/env node
 
-const fs = require('fs').promises;
-const path = require('path');
+const fs = require('fs').promises; void fs;
+const path = require('path'); void path;
 const { createTestMock } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
+
+// Debug instrumentation: track worker_threads Worker creations and terminations to find leaks
+try {
+    const workerThreads = eval('require')('worker_threads');
+    if (workerThreads && workerThreads.Worker) {
+        const OriginalWorkerCtor = workerThreads.Worker;
+        workerThreads._createdWorkers = workerThreads._createdWorkers || new Set();
+        workerThreads.Worker = function(...args) {
+            const w = new OriginalWorkerCtor(...args);
+            try {
+                const id = w.threadId || '<no-id>';
+                console.log(`🐝 Worker created: ${id}`);
+            } catch {
+                console.log('🐝 Worker created (info unavailable)');
+            }
+            workerThreads._createdWorkers.add(w);
+            const origTerminate = w.terminate && w.terminate.bind(w);
+            if (origTerminate) {
+                w.terminate = async function() {
+                    const r = await origTerminate();
+                    workerThreads._createdWorkers.delete(w);
+                    console.log('🐝 Worker terminated');
+                    return r;
+                };
+            }
+            w.on && w.on('exit', () => {
+                workerThreads._createdWorkers.delete(w);
+                console.log('🐝 Worker exit event');
+            });
+            return w;
+        };
+    }
+} catch {
+    // ignore if worker_threads not available in this environment
+}
 
 // Mock vscode globally BEFORE requiring provider
 const mockVsCode = createTestMock({
@@ -418,7 +454,7 @@ async function testResourceManagementAcrossWorkspaces() {
     // Test 3: Workspace deletion and resource cleanup
     total++;
     try {
-        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createTestMock();
+        const { vscode: mock, removeWorkspaceFolder, dispose: localDispose } = createTestMock(); void mock;
         
         const provider = new FileDateDecorationProvider();
         let disposeCallCount = 0;
@@ -723,10 +759,93 @@ async function testProviderLifecycleInMultiWorkspace() {
 
 // Run all tests
 runAllTests()
-    .then(() => {
+    .then(async () => {
         console.log('\n🎉 Multi-workspace scenario tests completed');
+        // Debug: show active handles to detect what is keeping Node alive
+        try {
+            const handles = process._getActiveHandles ? process._getActiveHandles() : [];
+            console.log('🔍 Active handles count after tests:', handles.length);
+            console.log('🔍 Active handle types:', handles.map(h => h && h.constructor ? h.constructor.name : String(h)));
+
+            // Detailed inspection and opportunistic cleanup for WriteStream handles
+            for (const h of handles) {
+                try {
+                    const ctor = h && h.constructor ? h.constructor.name : String(h);
+                    if (ctor === 'WriteStream') {
+                        const details = {
+                            fd: h.fd,
+                            path: h.path,
+                            writable: Boolean(h.writable),
+                            closed: Boolean(h.closed),
+                            isStd: h === process.stdout || h === process.stderr
+                        };
+                        console.log('   🔌 Detected WriteStream:', details);
+
+                        // If this is not stdout/stderr, try to end/close it to release the handle.
+                        if (!details.isStd) {
+                            if (typeof h.end === 'function') {
+                                try {
+                                    h.end(() => console.log('   🔒 WriteStream.end() completed'));
+                                } catch (e) {
+                                    console.warn('   ⚠️ Failed to end WriteStream:', e && e.message);
+                                }
+                            }
+                            if (typeof h.close === 'function') {
+                                try {
+                                    h.close();
+                                } catch {
+                                    // ignore
+                                }
+                            }
+                        }
+                    } else if (ctor === 'MessagePort') {
+                        // Attempt to close any detached MessagePort handles left open by workers
+                        try {
+                            console.log('   🔌 Detected MessagePort - attempting to close');
+                            if (typeof h.close === 'function') {
+                                try { h.close(); console.log('   🔒 MessagePort.close() called'); } catch (e) { console.warn('   ⚠️ Failed to close MessagePort:', e && e.message); }
+                            }
+                        } catch {
+                            // ignore
+                        }
+                    }
+                } catch {
+                    // ignore per-handle inspection failures
+                }
+            }
+        } catch (e) {
+            console.warn('Could not inspect active handles:', e && e.message);
+        }
+
+        // Dispose the global mock created at the top of this file to ensure all timers and
+        // resources are cleaned up so the Node process can exit cleanly.
+        try {
+            if (mockVsCode && typeof mockVsCode.dispose === 'function') {
+                await mockVsCode.dispose();
+            }
+        } catch (disposeError) {
+            console.warn('Failed to dispose global test mock:', disposeError?.message || disposeError);
+        }
+        // Ensure the process exits even if a lingering handle remains
+        try {
+            scheduleExit();
+        } catch {
+            // swallow
+        }
     })
-    .catch((error) => {
+    .catch(async (error) => {
         console.error('Test runner failed:', error);
-        process.exit(1);
+        try {
+            if (mockVsCode && typeof mockVsCode.dispose === 'function') {
+                await mockVsCode.dispose();
+            }
+        } catch (disposeError) {
+            console.warn('Failed to dispose global test mock after failure:', disposeError?.message || disposeError);
+        }
+        // Force exit to ensure test runner does not hang due to lingering handles
+        try {
+            scheduleExit();
+        } catch {
+            require('./helpers/forceExit').scheduleExit(0, 1);
+        }
     });

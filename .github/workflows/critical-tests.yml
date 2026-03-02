@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  contract-tests:
+    name: Contract Guardrail Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run contract guardrails
+        run: |
+          set -euo pipefail
+          if [ -f tests/test-chunk-contracts.js ] && [ -f tests/test-provider-contract.js ]; then
+            npm run test:contracts
+          else
+            echo "Skipping contract guardrails (tests missing)"
+          fi
+
   critical-tests:
     name: Critical Runtime Tests
     runs-on: ubuntu-latest
@@ -24,4 +48,10 @@ jobs:
         run: npm ci
 
       - name: Run critical regression tests
-        run: npm run test:critical
+        run: |
+          set -euo pipefail
+          npm run lint
+          npm run test:critical
+          if [ -f tests/verify-config.js ]; then echo "Running tests/verify-config.js"; node tests/verify-config.js; else echo "Skipping test:config (missing)"; fi
+          if ls tests/test-configuration*.js >/dev/null 2>&1; then for f in tests/test-configuration*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping test:config-scenarios (missing)"; fi
+          if [ -f tests/test-package-when-contexts.js ]; then echo "Running tests/test-package-when-contexts.js"; node tests/test-package-when-contexts.js; else echo "Skipping package when-clauses audit (missing)"; fi

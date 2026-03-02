@@ -15,14 +15,11 @@
  */
 
 const assert = require('assert');
-const path = require('path');
 const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 
 // Platform detection utilities
 const { scheduleExit } = require('./helpers/forceExit');
 const isWindows = process.platform === 'win32';
-const isMacOS = process.platform === 'darwin';
-const isLinux = process.platform === 'linux';
 
 /**
  * Test Windows-style path handling
@@ -33,7 +30,7 @@ async function testWindowsPathHandling() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -84,7 +81,7 @@ async function testUnixPathHandling() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -136,7 +133,7 @@ async function testCaseSensitivityHandling() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -194,7 +191,7 @@ async function testSpecialCharacterHandling() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -261,7 +258,7 @@ async function testUriSchemeCompatibility() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -339,7 +336,7 @@ async function testPlatformEnvironmentVariables() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     
     try {
         // Test platform detection logic
@@ -436,7 +433,7 @@ async function testCrossPlatformGitIntegration() {
             'explorerDates.showGitInfo': 'author'
         }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -491,7 +488,7 @@ async function testFileSystemLimitations() {
     const mockInstall = createTestMock({
         config: { 'explorerDates.performanceMode': false }
     });
-    const { vscode } = mockInstall;
+    const { vscode } = mockInstall; void vscode;
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
 
     try {
@@ -607,7 +604,8 @@ async function main() {
     
     if (failed > 0) {
         console.log(`\n⚠️ ${failed} cross-platform tests failed - extension may have platform-specific issues`);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
+        return;
     } else {
         console.log('\n🎉 All cross-platform compatibility tests passed!');
     }
@@ -617,8 +615,8 @@ async function main() {
 if (require.main === module) {
     main().catch(error => {
         console.error('Cross-platform test suite crashed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     }).finally(scheduleExit);
-}
+} 
 
 module.exports = { main };

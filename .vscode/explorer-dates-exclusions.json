@@ -1,0 +1,15 @@
+{
+  "exclusions": [
+    ".git",
+    "logs",
+    "bin",
+    ".vscode",
+    ".vscode-test",
+    "dist",
+    "node_modules",
+    "build",
+    "vendor"
+  ],
+  "updatedAt": "2026-03-02T00:00:00.000Z",
+  "version": 1
+}

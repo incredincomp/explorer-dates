@@ -6,9 +6,13 @@
 const { getLogger } = require('../utils/logger');
 const { execAsync } = require('../utils/execAsync');
 const { IndexWorkerHost } = require('../workers/indexWorkerHost');
-const { getRelativePath } = require('../utils/pathUtils');
+// Prefer shared utils chunk when available
+let getRelativePath;
+try { const shared = require('../chunks/utils-shared-chunk'); if (shared) getRelativePath = shared.getRelativePath; } catch { /* ignore */ }
+if (!getRelativePath) { const pathUtils = require('../utils/pathUtils'); getRelativePath = pathUtils.getRelativePath; }
 
-const DISABLE_GIT_FEATURES = process.env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const DISABLE_GIT_FEATURES = env.EXPLORER_DATES_DISABLE_GIT_FEATURES === '1';
 
 class GitInsightsManager {
     constructor() {
@@ -69,10 +73,14 @@ class GitInsightsManager {
     /**
      * Dispose of resources
      */
-    dispose() {
+    async dispose() {
+        this._logger.debug('GitInsightsManager.dispose called');
         if (this._workerHost) {
             try {
-                this._workerHost.dispose();
+                if (typeof this._workerHost.dispose === 'function') {
+                    await this._workerHost.dispose();
+                    this._logger.debug('GitInsightsManager: awaited workerHost.dispose()');
+                }
             } catch (error) {
                 this._logger.debug('Error disposing git insights worker:', error.message);
             }

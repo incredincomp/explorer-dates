@@ -1,5 +1,11 @@
 const { templateStore } = require('./templateStore');
-const { ensureDate } = require('./dateHelpers');
+// Prefer shared utils chunk when available
+let ensureDate;
+try {
+    const shared = require('../chunks/utils-shared-chunk');
+    if (shared) ensureDate = shared.ensureDate;
+} catch { /* ignore */ }
+if (!ensureDate) { const dateHelpers = require('./dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 
 const HTML_ESCAPE_LOOKUP = {
     '&': '&amp;',

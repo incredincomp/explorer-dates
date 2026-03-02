@@ -5,13 +5,12 @@
  * Verifies that webview assets are properly chunked and lazy-loaded
  */
 
-const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const { performance } = require('perf_hooks');
 
 // Set up VS Code mock before requiring any extension modules
-const { createTestMock, createExtensionContext, loadChunkForTesting, validateAllChunks, getAllChunkNames } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext, loadChunkForTesting, validateAllChunks } = require('./helpers/mockVscode');
 const { CHUNK_MAP } = require('../src/shared/chunkMap');
 const mockSetup = createTestMock({
     explorerDates: {
@@ -358,12 +357,12 @@ if (require.main === module) {
         .then(success => {
             // Clean up mock
             mockSetup.dispose();
-            process.exit(success ? 0 : 1);
+            require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
         })
         .catch(error => {
             console.error('❌ Test runner error:', error);
             mockSetup.dispose();
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         });
 }
 

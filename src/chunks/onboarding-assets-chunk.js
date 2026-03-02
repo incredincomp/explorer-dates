@@ -65,7 +65,9 @@ class OnboardingAssets {
      * Fill setup wizard template with preset data
      */
     _fillSetupTemplate(template, presets) {
-        const presetOptions = Object.entries(presets).map(([key, preset]) => `
+        const presetOptions = Object.entries(presets)
+            .filter(([, preset]) => !preset.hidden)
+            .map(([key, preset]) => `
             <div class="preset-option" data-preset="${key}" 
                  onmouseenter="previewConfiguration({preset: '${key}'})" 
                  onmouseleave="clearPreview()">
@@ -80,7 +82,7 @@ class OnboardingAssets {
 
         const moreOptionsLink = `
             <div class="more-options">
-                <p><strong>Need more options?</strong> Try the <a href="#" onclick="showAllPresets()">Power User</a> or <a href="#" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
+                <p><strong>Need more options?</strong> Try the <a href="#" onmouseenter="previewConfiguration({preset: 'powerUser'})" onmouseleave="clearPreview()" onclick="showAllPresets()">Power User</a> or <a href="#" onmouseenter="previewConfiguration({preset: 'gitFocused'})" onmouseleave="clearPreview()" onclick="showGitFocused()">Git-Focused</a> presets, or configure manually in Settings.</p>
             </div>
         `;
 
@@ -648,6 +650,121 @@ class OnboardingAssets {
     }
 
     /**
+     * Provide configuration presets via the assets chunk to keep onboarding lightweight
+     */
+    getPresets() {
+        return {
+            minimal: {
+                name: 'Minimal',
+                description: 'Clean and simple - just show modification times in short format',
+                settings: {
+                    dateDecorationFormat: 'relative-short',
+                    colorScheme: 'none',
+                    highContrastMode: false,
+                    showFileSize: false,
+                    showGitInfo: 'none',
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: false,
+                    showStatusBar: false
+                }
+            },
+            developer: {
+                name: 'Developer',
+                description: 'Perfect for development - includes Git info, file sizes, and color coding',
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'recency',
+                    showFileSize: true,
+                    showGitInfo: 'author',
+                    badgePriority: 'time',
+                    fadeOldFiles: true,
+                    enableContextMenu: true,
+                    showStatusBar: true
+                }
+            },
+            accessible: {
+                name: 'Accessible',
+                description: 'High contrast and screen reader friendly with detailed tooltips',
+                settings: {
+                    dateDecorationFormat: 'relative-short',
+                    colorScheme: 'none',
+                    highContrastMode: true,
+                    accessibilityMode: true,
+                    showFileSize: false,
+                    showGitInfo: 'none',
+                    badgePriority: 'time',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    keyboardNavigation: true
+                }
+            },
+            powerUser: {
+                name: 'Power User',
+                description: 'All features enabled: Git badges, sizes, colors, and status bar details',
+                hidden: true,
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'vibrant',
+                    showFileSize: true,
+                    showGitInfo: 'both',
+                    badgePriority: 'author',
+                    fadeOldFiles: true,
+                    enableContextMenu: true,
+                    showStatusBar: true,
+                    highContrastMode: false,
+                    accessibilityMode: false
+                }
+            },
+            gitFocused: {
+                name: 'Git-Focused',
+                description: 'Prioritize Git authorship and commit details',
+                hidden: true,
+                settings: {
+                    dateDecorationFormat: 'smart',
+                    colorScheme: 'subtle',
+                    showFileSize: false,
+                    showGitInfo: 'both',
+                    badgePriority: 'author',
+                    fadeOldFiles: false,
+                    enableContextMenu: true,
+                    showStatusBar: true,
+                    highContrastMode: false,
+                    accessibilityMode: false
+                }
+            }
+        };
+    }
+
+    /**
+     * Provide tips for the tips and tricks dialog
+     */
+    getTips() {
+        return [
+            {
+                icon: '⌨️',
+                title: 'Keyboard Shortcuts',
+                description: 'Use Ctrl+Shift+D (Cmd+Shift+D on Mac) to quickly toggle decorations on/off.'
+            },
+            {
+                icon: '🎯',
+                title: 'Smart Exclusions',
+                description: 'The extension automatically detects and suggests excluding build folders for better performance.'
+            },
+            {
+                icon: '📊',
+                title: 'Performance Analytics',
+                description: 'Use "Show Performance Analytics" to monitor cache performance and optimization opportunities.'
+            },
+            {
+                icon: '🔍',
+                title: 'Context Menu',
+                description: 'Right-click any file to access Git history, file details, and quick actions.'
+            }
+        ];
+    }
+
+    /**
      * Get memory usage info for this chunk
      */
     getMemoryInfo() {
@@ -673,6 +790,8 @@ class OnboardingAssets {
 module.exports = {
     OnboardingAssets,
     createOnboardingAssets: () => new OnboardingAssets(),
+    getPresets: () => new OnboardingAssets().getPresets(),
+    getTips: () => new OnboardingAssets().getTips(),
     getMemoryInfo: (() => {
         let sharedInstance = null;
         return () => {

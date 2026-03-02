@@ -1,11 +1,21 @@
 const vscode = require('vscode');
 const { getLogger } = require('./utils/logger');
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
-const { getExtension, normalizePath } = require('./utils/pathUtils');
-const { ensureDate } = require('./utils/dateHelpers');
+let getExtension = (filePath) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.getExtension === 'function') { getExtension = chunk.getExtension; return getExtension(filePath); } } } catch { /* ignore */ } try { const name = String(filePath || ''); const dotIndex = name.lastIndexOf('.'); return dotIndex <= 0 ? '' : name.substring(dotIndex).toLowerCase(); } catch { return ''; } };
+let normalizePath = (input) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.normalizePath === 'function') { normalizePath = chunk.normalizePath; return normalizePath(input); } } } catch { /* ignore */ } return String(input || '').replace(/\\/g, '/'); };
+// Prefer shared utils chunk when available
+let ensureDate;
+try {
+    const shared = require('./chunks/utils-shared-chunk');
+    if (shared) ensureDate = shared.ensureDate;
+} catch { /* ignore */ }
+if (!ensureDate) { const dateHelpers = require('./utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
+const { getLocalization } = require('./utils/localization');
+const l10n = getLocalization();
 
 const logger = getLogger();
-const isWeb = process.env.VSCODE_WEB === 'true';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWeb = env.VSCODE_WEB === 'true';
 const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test'];
 const DEFAULT_EXCLUDED_PATTERNS = ['**/*.tmp', '**/*.log', '**/.git/**', '**/node_modules/**'];
 const DEFAULT_MAX_TRACKED_FILES = 3000;
@@ -33,12 +43,12 @@ class ExportReportingManager {
         this._fileWatcherSubscriptions = [];
         this._userActivityDisposables = [];
         this._recentUserInteraction = new Map();
-        this._userInteractionTtlMs = Number(process.env.EXPLORER_DATES_USER_ACTIVITY_TTL_MS || 5 * 60 * 1000);
+        this._userInteractionTtlMs = Number(env.EXPLORER_DATES_USER_ACTIVITY_TTL_MS || 5 * 60 * 1000);
         this._activitySourceStats = {
             user: 0,
             watcher: 0
         };
-        this._lightweightMode = process.env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
+        this._lightweightMode = env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
         this._trackingDisabled = false;
         this._loadConfiguration();
         this._setupConfigurationWatcher();
@@ -247,7 +257,7 @@ class ExportReportingManager {
             } = options;
 
             if (!this.allowedFormats.includes(format)) {
-                const warning = `Report format "${format}" is disabled. Allowed formats: ${this.allowedFormats.join(', ')}`;
+                const warning = l10n.getString('reportFormatDisabled', format, this.allowedFormats.join(', '));
                 vscode.window.showWarningMessage(warning);
                 logger.warn(warning);
                 return null;
@@ -258,13 +268,13 @@ class ExportReportingManager {
             
             if (outputPath) {
                 await this.saveReport(formattedReport, outputPath);
-                vscode.window.showInformationMessage(`Report saved to ${outputPath}`);
+                vscode.window.showInformationMessage(l10n.getString('reportSaved', outputPath));
             }
             
             return formattedReport;
         } catch (error) {
             logger.error('Failed to generate file modification report:', error);
-            vscode.window.showErrorMessage('Failed to generate report');
+            vscode.window.showErrorMessage(l10n.getString('reportGenerateFailed'));
             return null;
         }
     }
@@ -663,7 +673,7 @@ ${report.files
             if (isWeb) {
                 const encoded = encodeURIComponent(content);
                 await vscode.env.openExternal(vscode.Uri.parse(`data:text/plain;charset=utf-8,${encoded}`));
-                vscode.window.showInformationMessage('Report download triggered in browser');
+                vscode.window.showInformationMessage(l10n.getString('reportDownloadTriggered'));
                 return;
             }
 
@@ -797,7 +807,7 @@ ${report.files
 
             const selected = await vscode.window.showQuickPick(
                 Object.keys(options),
-                { placeHolder: 'Select report time range' }
+                { placeHolder: l10n.getString('selectReportTimeRangePlaceholder') }
             );
 
             if (!selected) return;
@@ -807,7 +817,7 @@ ${report.files
             const formatOptions = ['JSON', 'CSV', 'HTML', 'Markdown'];
             const format = await vscode.window.showQuickPick(
                 formatOptions,
-                { placeHolder: 'Select report format' }
+                { placeHolder: l10n.getString('selectReportFormatPlaceholder') }
             );
 
             if (!format) return;

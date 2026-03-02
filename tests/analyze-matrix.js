@@ -262,5 +262,5 @@ console.log('\n✅ Matrix analysis complete');
 
 if (failureCount > 0) {
     console.error(`❌ Matrix analysis failed: ${failureCount} missing or invalid scenario(s)`);
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+} 

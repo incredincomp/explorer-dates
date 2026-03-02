@@ -5,6 +5,9 @@
 const vscode = require('vscode');
 const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
 const { SettingsOrganizer } = require('../utils/settingsOrganizer');
+const { getLocalization } = require('../utils/localization');
+const { requireWorkspaceTrust } = require('../utils/trustGuard');
+const l10n = getLocalization();
 
 const settingsCoordinator = getSettingsCoordinator();
 const RESET_TO_DEFAULTS_COMMAND = 'explorerDates.resetToDefaults';
@@ -24,13 +27,14 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
     // Migrate Settings Command
     subscriptions.push(vscode.commands.registerCommand('explorerDates.migrateSettings', async () => {
         try {
+            requireWorkspaceTrust('settings migration');
             const migrationManager = await getSettingsMigrationManager();
             if (!migrationManager) {
-                vscode.window.showWarningMessage('Settings migration system unavailable.');
+                vscode.window.showWarningMessage(l10n.getString('migrateChecking'));
                 return;
             }
 
-            vscode.window.showInformationMessage('Checking for settings that need migration...');
+            vscode.window.showInformationMessage(l10n.getString('migrateChecking'));
             const results = await migrationManager.migrateAllSettings(context);
             const organizationSummary = await migrationManager.autoOrganizeSettingsIfNeeded(context, {
                 trigger: 'manual-migrate',
@@ -46,9 +50,9 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
             }
 
             if (messageParts.length === 0) {
-                vscode.window.showInformationMessage('✅ All settings are up to date!');
+                vscode.window.showInformationMessage(l10n.getString('migrateAllUpToDate'));
             } else {
-                vscode.window.showInformationMessage(`✅ Explorer Dates maintenance applied: ${messageParts.join(' + ')}.`);
+                vscode.window.showInformationMessage(l10n.getString('migrateApplied', messageParts.join(' + ')));
             }
             
             logger.info('Manual settings migration completed', {
@@ -64,6 +68,7 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
     // Organize Explorer Dates Settings Command
     subscriptions.push(vscode.commands.registerCommand('explorerDates.organizeSettings', async () => {
         try {
+            requireWorkspaceTrust('settings organization');
             const organizer = new SettingsOrganizer(context);
             const summary = await organizer.organize();
 
@@ -75,7 +80,7 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
                 sortedFiles ? `${sortedFiles} explorer-dates file(s) sorted` : null
             ].filter(Boolean).join(' • ') || 'No changes were necessary.';
 
-            vscode.window.showInformationMessage(`Explorer Dates settings organized: ${details}`);
+            vscode.window.showInformationMessage(l10n.getString('organizeSettingsResult', details));
             logger.info('Organize settings command executed', summary);
         } catch (error) {
             logger.error('Failed to organize Explorer Dates settings', error);
@@ -115,18 +120,19 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
     // Clean Legacy Settings Command
     subscriptions.push(vscode.commands.registerCommand('explorerDates.cleanLegacySettings', async () => {
         try {
+            requireWorkspaceTrust('legacy settings cleanup');
             const migrationManager = await getSettingsMigrationManager();
             if (!migrationManager) {
-                vscode.window.showWarningMessage('Settings migration system unavailable.');
+                vscode.window.showWarningMessage(l10n.getString('migrateChecking'));
                 return;
             }
 
             const cleaned = await migrationManager.cleanupDeprecatedSettings();
             
             if (cleaned) {
-                vscode.window.showInformationMessage('✅ Deprecated settings have been cleaned up!');
+                vscode.window.showInformationMessage(l10n.getString('cleanupSuccess'));
             } else {
-                vscode.window.showInformationMessage('ℹ️ No deprecated settings found to clean up.');
+                vscode.window.showInformationMessage(l10n.getString('cleanupNoDeprecated'));
             }
             
             logger.info('Legacy settings cleanup completed', { cleaned });
@@ -141,14 +147,14 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
         try {
             const migrationManager = await getSettingsMigrationManager();
             if (!migrationManager) {
-                vscode.window.showWarningMessage('Settings migration system unavailable.');
+                vscode.window.showWarningMessage(l10n.getString('migrateChecking'));
                 return;
             }
 
             const history = migrationManager.getMigrationHistory(context);
             
             if (history.length === 0) {
-                vscode.window.showInformationMessage('No migration history found.');
+                vscode.window.showInformationMessage(l10n.getString('showMigrationHistoryNoHistory'));
                 return;
             }
 
@@ -158,6 +164,47 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
             logger.error('Failed to show migration history', error);
             vscode.window.showErrorMessage(`Failed to show migration history: ${error.message}`);
         }
+    }));
+
+    // Clear Telemetry Command
+
+    async function _clearTelemetryHandler(options = {}) {
+        try {
+            requireWorkspaceTrust('clear telemetry data');
+            
+            // Force option (programmatic): requires explicit opt-in via options.force===true
+            const force = options && options.force === true;
+
+            let confirmation = null;
+            if (!force) {
+                confirmation = await vscode.window.showWarningMessage(
+                    l10n.getString('clearTelemetryPrompt'),
+                    { modal: true },
+                    l10n.getString('clearTelemetryConfirm'),
+                    l10n.getString('clearTelemetryCancel')
+                );
+                if (confirmation !== l10n.getString('clearTelemetryConfirm')) {
+                    return;
+                }
+            }
+
+            if (context?.globalState && typeof context.globalState.update === 'function') {
+                await context.globalState.update('explorerDates.telemetryEvents', []);
+            }
+
+            vscode.window.showInformationMessage(l10n.getString('clearTelemetrySuccess'));
+            logger.info('Cleared telemetry events from globalState');
+        } catch (error) {
+            logger.error('Failed to clear telemetry data', error);
+            vscode.window.showErrorMessage(`Failed to clear telemetry data: ${error.message}`);
+        }
+    }
+
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.clearTelemetryData', _clearTelemetryHandler));
+
+    // Non-interactive wrapper (explicit programmatic opt-in via .force)
+    subscriptions.push(vscode.commands.registerCommand('explorerDates.clearTelemetryData.force', async () => {
+        await _clearTelemetryHandler({ force: true });
     }));
 
     // Apply Custom Colors Command (enhanced)
@@ -194,6 +241,7 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
                     break;
 
                 case 'Apply Default Colors':
+                    requireWorkspaceTrust('apply custom colors');
                     const workbenchConfig = vscode.workspace.getConfiguration('workbench');
                     const existingColors = workbenchConfig.get('colorCustomizations', {});
                     const newColors = { ...existingColors, ...defaultColors };
@@ -260,6 +308,8 @@ async function registerMigrationCommands({ context, logger, getSettingsMigration
                     break;
 
                 case 'Save to File':
+                    requireWorkspaceTrust('save configuration to file');
+                    
                     const uri = await vscode.window.showSaveDialog({
                         defaultUri: vscode.Uri.file('explorer-dates-config.json'),
                         filters: { 'JSON': ['json'] }
@@ -391,15 +441,17 @@ async function registerResetCommandOnce({ context, logger, subscriptions }) {
     subscriptions.push(vscode.commands.registerCommand(RESET_TO_DEFAULTS_COMMAND, async () => {
         try {
             const confirmation = await vscode.window.showWarningMessage(
-                'This will reset all Explorer Dates settings to their default values. Are you sure?',
+                l10n.getString('resetConfirmation'),
                 { modal: true },
-                'Reset Settings',
-                'Cancel'
+                l10n.getString('resetConfirm'),
+                l10n.getString('resetCancel')
             );
 
-            if (confirmation !== 'Reset Settings') {
+            if (confirmation !== l10n.getString('resetConfirm')) {
                 return;
             }
+
+            requireWorkspaceTrust('reset settings to defaults');
 
             const packageJson = context.extension.packageJSON;
             const configProperties = packageJson?.contributes?.configuration?.properties || {};
@@ -418,7 +470,7 @@ async function registerResetCommandOnce({ context, logger, subscriptions }) {
                 }
             }
 
-            vscode.window.showInformationMessage(`✅ Reset ${resetCount} settings to defaults.`);
+            vscode.window.showInformationMessage(l10n.getString('resetSuccess', resetCount));
             logger.info('Settings reset to defaults', { resetCount });
         } catch (error) {
             logger.error('Failed to reset settings to defaults', error);

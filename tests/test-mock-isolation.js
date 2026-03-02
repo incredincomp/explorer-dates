@@ -261,6 +261,7 @@ async function disposeContext(context) {
     }
     context.subscriptions.length = 0;
 }
+void disposeContext;
 
 async function main() {
     console.log('🧪 Starting STRICT isolation validation tests...\n');

@@ -1,0 +1,3 @@
+var module = { exports: {} }; var exports = module.exports; (function() {
+var o=null;function n(){return o||(o={debug:(...r)=>{},info:(...r)=>{},warn:(...r)=>{},error:(...r)=>{}},o)}function t(){return n()}var e=class{constructor(){this.r=n()}debug(...r){this.r.debug(...r)}info(...r){this.r.info(...r)}warn(...r){this.r.warn(...r)}error(...r){this.r.error(...r)}};module.exports={getLogger:t,Logger:e};
+})(); (function(){const primaryKey="explorerDatesChunks";const legacyKey="__explorerDatesChunks";const registry=(globalThis[primaryKey]=globalThis[primaryKey]||globalThis[legacyKey]||(globalThis[legacyKey]={}));registry["logger"]=module.exports;})();

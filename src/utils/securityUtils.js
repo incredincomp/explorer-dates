@@ -1,5 +1,6 @@
 const { normalizePath, getUriPath } = require('./pathUtils');
 const { getLogger } = require('./logger');
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
 /**
  * Security utilities for safe file path handling and input validation
@@ -52,15 +53,15 @@ const WORKSPACE_SAFE_EXTENSIONS = new Set([
 
 const detectSecurityEnvironment = () => {
     if (
-        process.env.EXPLORER_DATES_TEST_MODE === '1' ||
-        process.env.NODE_ENV === 'test' ||
-        process.env.VSCODE_TEST === '1'
+        env.EXPLORER_DATES_TEST_MODE === '1' ||
+        env.NODE_ENV === 'test' ||
+        env.VSCODE_TEST === '1'
     ) {
         return 'test';
     }
     if (
-        process.env.EXPLORER_DATES_DEV_MODE === '1' ||
-        process.env.NODE_ENV === 'development'
+        env.EXPLORER_DATES_DEV_MODE === '1' ||
+        env.NODE_ENV === 'development'
     ) {
         return 'development';
     }

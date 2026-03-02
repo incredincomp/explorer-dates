@@ -14,12 +14,39 @@ const CHUNK_MAP = {
     advancedCache: 'src/chunks/advancedCache-chunk',
     batchProcessor: 'src/chunks/batchProcessor-chunk',
     decorationsAdvanced: 'src/chunks/decorations-advanced',
+    decorationsStatic: 'src/chunks/decorations-static',
     workspaceIntelligence: 'src/chunks/workspaceIntelligence',
+
+    // Newly split decoration helper chunks (keeps `decorationsAdvanced` smaller)
+    decorationLogic: 'src/chunks/decoration-logic-chunk',
+    decorationProvide: 'src/chunks/decoration-provide-chunk',
+    decorationHelpers: 'src/chunks/decoration-helpers-chunk',
+    decorationBatch: 'src/chunks/decoration-batch-chunk',
+    decorationWorkspaceIntel: 'src/chunks/decoration-workspace-intel-chunk',
+    decorationTelemetry: 'src/chunks/decoration-telemetry-chunk',
+    decorationRefresh: 'src/chunks/decoration-refresh-chunk',
+    decorationMemory: 'src/chunks/decoration-memory-chunk',
+    decorationPool: 'src/chunks/decoration-pool-chunk',
+    providerInit: 'src/chunks/provider-init-chunk',
+    // Provider core chunks (keeps heavy provider implementation out of core bundle)
+    fileDateProviderImpl: 'src/chunks/file-date-provider-impl',
+    fileDateProviderImplExport: 'src/chunks/file-date-provider-impl-export',
+    // Shared utilities
+    utilsShared: 'src/chunks/utils-shared-chunk',
     incrementalWorkers: 'src/chunks/incrementalWorkers',
+    incrementalIndexer: 'src/chunks/incrementalIndexer-chunk',
     uiAdapters: 'src/chunks/ui-adapters',
     gitInsights: 'src/chunks/gitInsights-chunk',
     smartWatcherFallback: 'src/chunks/smartWatcherFallback-chunk',
-    runtimeManagement: 'src/chunks/runtime-management'
+    runtimeManagement: 'src/chunks/runtime-management',
+    runtimeManagementHeavy: 'src/chunks/runtime-management-heavy',
+    teamPersistence: 'src/chunks/team-persistence-chunk',
+    teamPersistenceUI: 'src/chunks/team-persistence-ui-chunk',
+    teamPersistenceLogic: 'src/chunks/team-persistence-logic-chunk',
+    settingsCoordinatorImpl: 'src/chunks/settings-coordinator-impl-chunk',
+    logger: 'src/chunks/logger-chunk',
+    // alias for the heavier runtime logger implementation
+    loggerImpl: 'src/chunks/logger-impl-chunk'
 };
 
 /**
@@ -52,8 +79,22 @@ function generateDevLoaderMap(localRequire) {
     return map;
 }
 
+/**
+ * Chunks that are intentionally excluded from the web (browser) build.
+ * These chunks rely on Node.js-only APIs (e.g. child_process, git, fs).
+ */
+const WEB_EXCLUDED_CHUNKS = new Set([
+    'gitInsights',
+    'reporting',
+    'templates',
+    'advancedCache',
+    'runtimeManagementHeavy',
+    'incrementalWorkers'
+]);
+
 module.exports = {
     CHUNK_MAP,
+    WEB_EXCLUDED_CHUNKS,
     getChunkSourcePath,
     getAllChunkNames,
     generateDevLoaderMap

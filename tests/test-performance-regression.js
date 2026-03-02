@@ -8,6 +8,7 @@ const fsp = fs.promises;
 
 // Setup mock environment before requiring chunks
 const { createTestMock, expectChunkOrFail } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 const { BaselineManager, LATEST_METRICS_FILE, ARTIFACTS_DIR } = require('./baseline-manager');
 
 const mock = createTestMock();
@@ -67,7 +68,7 @@ TARGET_CHUNKS.forEach((chunkName) => {
 function loadBuiltChunk(chunkName) {
     const resolved = path.join(workspaceRoot, 'dist', 'chunks', `${chunkName}.js`);
     delete require.cache[require.resolve(resolved)];
-    // eslint-disable-next-line global-require, import/no-dynamic-require
+     
     const mod = require(resolved);
     return mod?.default || mod;
 }
@@ -509,6 +510,8 @@ if (require.main === module) {
             if (mock && mock.dispose) {
                 mock.dispose();
             }
+            // Ensure we exit promptly after success/failure
+            scheduleExit(0, process.exitCode ?? 0);
         });
 }
 

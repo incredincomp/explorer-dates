@@ -17,128 +17,84 @@ const CHUNK_SIZES = {
 
 const BASE_BUNDLE_SIZE = 99; // Core extension bundle size in KB
 
-const PRESET_DEFINITIONS = {
-    'minimal': {
-        id: 'minimal',
-        name: 'Minimal',
-        description: 'Core decorations only, smallest bundle (~99KB)',
-        targetBundleSize: BASE_BUNDLE_SIZE,
-        settings: {
-            'explorerDates.enableOnboardingSystem': false,
-            'explorerDates.enableAnalysisCommands': false,
-            'explorerDates.enableExportReporting': false,
-            'explorerDates.enableExtensionApi': false,
-            'explorerDates.enableWorkspaceTemplates': false,
-            'explorerDates.enableAdvancedCache': false,
-            'explorerDates.enableWorkspaceIntelligence': false,
-            'explorerDates.enableIncrementalWorkers': false,
-            'explorerDates.performanceMode': true,
-            'explorerDates.showDateDecorations': true,
-            'explorerDates.dateDecorationFormat': 'relative-short'
-        },
-        targetScenarios: [
-            'Resource-constrained environments',
-            'Basic file dates only',
-            'Large remote workspaces'
-        ]
-    },
-    
-    'balanced': {
-        id: 'balanced',
-        name: 'Balanced',
-        description: 'Essential features with optimization (~200KB)',
-        targetBundleSize: BASE_BUNDLE_SIZE + CHUNK_SIZES.onboarding + CHUNK_SIZES.workspaceTemplates + CHUNK_SIZES.advancedCache + CHUNK_SIZES.analysisCommands,
-        settings: {
-            'explorerDates.enableOnboardingSystem': true,
-            'explorerDates.enableAnalysisCommands': true,
-            'explorerDates.enableExportReporting': false,
-            'explorerDates.enableExtensionApi': false,
-            'explorerDates.enableWorkspaceTemplates': true,
-            'explorerDates.enableAdvancedCache': true,
-            'explorerDates.enableWorkspaceIntelligence': false,
-            'explorerDates.enableIncrementalWorkers': false,
-            'explorerDates.performanceMode': true,
-            'explorerDates.smartFileWatching': true
-        },
-        targetScenarios: [
-            'Most development workflows',
-            'Remote environments',
-            'Medium to large workspaces'
-        ]
-    },
-    
-    'web-development': {
-        id: 'web-development',
-        name: 'Web Development',
-        description: 'Optimized for web projects (~240KB)',
-        targetBundleSize: BASE_BUNDLE_SIZE + CHUNK_SIZES.onboarding + CHUNK_SIZES.analysisCommands + CHUNK_SIZES.workspaceTemplates + CHUNK_SIZES.advancedCache + CHUNK_SIZES.incrementalWorkers,
-        settings: {
-            'explorerDates.enableOnboardingSystem': true,
-            'explorerDates.enableAnalysisCommands': true,
-            'explorerDates.enableExportReporting': false,
-            'explorerDates.enableExtensionApi': false,
-            'explorerDates.enableWorkspaceTemplates': true,
-            'explorerDates.enableAdvancedCache': true,
-            'explorerDates.enableWorkspaceIntelligence': false,
-            'explorerDates.enableIncrementalWorkers': true,
-            'explorerDates.showGitInfo': 'author',
-            'explorerDates.colorScheme': 'file-type'
-        },
-        targetScenarios: [
-            'JavaScript/TypeScript projects',
-            'Node.js development',
-            'Frontend frameworks'
-        ]
-    },
-    
-    'enterprise': {
-        id: 'enterprise',
-        name: 'Enterprise',
-        description: 'Full feature set with reporting and API (~380KB)',
-        targetBundleSize: Object.values(CHUNK_SIZES).reduce((sum, size) => sum + size, BASE_BUNDLE_SIZE),
-        settings: {
-            'explorerDates.enableOnboardingSystem': true,
-            'explorerDates.enableAnalysisCommands': true,
-            'explorerDates.enableExportReporting': true,
-            'explorerDates.enableExtensionApi': true,
-            'explorerDates.enableWorkspaceTemplates': true,
-            'explorerDates.enableAdvancedCache': true,
-            'explorerDates.enableWorkspaceIntelligence': true,
-            'explorerDates.enableIncrementalWorkers': true,
-            'explorerDates.persistentCache': true,
-            'explorerDates.smartExclusions': true
-        },
-        targetScenarios: [
-            'Team lead workflows',
-            'Analytics and reporting needs',
-            'API integration requirements',
-            'Full workspace intelligence'
-        ]
-    },
-    
-    'data-science': {
-        id: 'data-science',
-        name: 'Data Science',
-        description: 'Optimized for data workflows (~280KB)',
-        targetBundleSize: BASE_BUNDLE_SIZE + CHUNK_SIZES.onboarding + CHUNK_SIZES.analysisCommands + CHUNK_SIZES.exportReporting + CHUNK_SIZES.workspaceIntelligence + CHUNK_SIZES.advancedCache,
-        settings: {
-            'explorerDates.enableOnboardingSystem': true,
-            'explorerDates.enableAnalysisCommands': true,
-            'explorerDates.enableExportReporting': true,
-            'explorerDates.enableExtensionApi': false,
-            'explorerDates.enableWorkspaceTemplates': false,
-            'explorerDates.enableAdvancedCache': true,
-            'explorerDates.enableWorkspaceIntelligence': true,
-            'explorerDates.enableIncrementalWorkers': false,
-            'explorerDates.dateDecorationFormat': 'iso-detailed'
-        },
-        targetScenarios: [
-            'Jupyter notebooks',
-            'Python data analysis',
-            'Research workflows'
-        ]
+// Lazy-load PRESET_DEFINITIONS from a chunk to avoid duplicating large static data across many chunks
+function _getPresetDefinitionsSync() {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/preset-definitions-chunk');
+            if (chunk && chunk.PRESET_DEFINITIONS) return chunk.PRESET_DEFINITIONS;
+        }
+    } catch {
+        // if chunk not available (dev/test), fall back to a compact inlined subset
     }
-};
+
+    // Compact fallback definitions (keeps behavior but small footprint)
+    const FALLBACK_PRESET = {
+        minimal: {
+            id: 'minimal',
+            name: 'Minimal',
+            description: 'Lean setup that prioritizes responsiveness in large repos.',
+            targetScenarios: ['Large repos', 'Low resources', 'Minimal UI'],
+            settings: { 'explorerDates.performanceMode': true, 'explorerDates.showDateDecorations': true }
+        },
+        balanced: {
+            id: 'balanced',
+            name: 'Balanced',
+            description: 'Default feature mix for most workspaces.',
+            targetScenarios: ['General development', 'Mixed workloads'],
+            settings: {
+                'explorerDates.enableOnboardingSystem': true,
+                'explorerDates.enableAnalysisCommands': true,
+                'explorerDates.performanceMode': false,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
+        },
+        'web-development': {
+            id: 'web-development',
+            name: 'Web Development',
+            description: 'Optimized for frontend and full-stack web projects.',
+            targetScenarios: ['Web apps', 'Frontend teams'],
+            settings: {
+                'explorerDates.enableOnboardingSystem': true,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'file-type',
+                'explorerDates.badgePriority': 'time'
+            }
+        },
+        enterprise: {
+            id: 'enterprise',
+            name: 'Enterprise',
+            description: 'Full feature set with reporting and integrations enabled.',
+            targetScenarios: ['Large teams', 'Governed environments'],
+            settings: {
+                'explorerDates.enableExportReporting': true,
+                'explorerDates.enableExtensionApi': true,
+                'explorerDates.dateDecorationFormat': 'smart',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
+        },
+        'data-science': {
+            id: 'data-science',
+            name: 'Data Science',
+            description: 'Insight-focused profile for data-heavy projects.',
+            targetScenarios: ['Data analysis', 'Research workflows'],
+            settings: {
+                'explorerDates.enableWorkspaceIntelligence': true,
+                'explorerDates.dateDecorationFormat': 'iso-detailed',
+                'explorerDates.colorScheme': 'recency',
+                'explorerDates.badgePriority': 'time'
+            }
+        }
+    };
+
+    return FALLBACK_PRESET;
+}
+
+const PRESET_DEFINITIONS = _getPresetDefinitionsSync();
 
 /**
  * Settings that require extension restart when changed
@@ -179,20 +135,22 @@ function calculateBundleSize(settings) {
  * Gets the default preset recommendation based on profile
  */
 function getDefaultPresetForProfile(profile) {
+    // Try to use the possibly-lazy definitions, otherwise fall back to compact definitions
+    const defs = PRESET_DEFINITIONS;
     switch (profile) {
         case 'minimal':
         case 'extreme':
-            return PRESET_DEFINITIONS.minimal;
+            return defs.minimal || defs['minimal'];
         case 'balanced':
-            return PRESET_DEFINITIONS.balanced;
+            return defs.balanced || defs['balanced'];
         case 'web-development':
-            return PRESET_DEFINITIONS['web-development'];
+            return defs['web-development'] || defs['web-development'];
         case 'data-science':
-            return PRESET_DEFINITIONS['data-science'];
+            return defs['data-science'] || defs['data-science'];
         case 'enterprise':
-            return PRESET_DEFINITIONS.enterprise;
+            return defs.enterprise || defs['enterprise'];
         default:
-            return PRESET_DEFINITIONS.balanced;
+            return defs.balanced || defs['balanced'];
     }
 }
 

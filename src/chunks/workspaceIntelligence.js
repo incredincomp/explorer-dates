@@ -4,9 +4,51 @@
  * Only loaded when workspace indexing features are enabled
  */
 
-const { IncrementalIndexer } = require('../incrementalIndexer');
-const { SmartExclusionManager } = require('../smartExclusion');
+// Lazy-load heavy components to reduce initial chunk size
+let IncrementalIndexer = null;
+let SmartExclusionManager = null;
 const { getLogger } = require('../utils/logger');
+
+const { getFeatureFlagsGlobal } = require('../utils/featureFlagsBridge');
+async function _ensureWorkspaceIntelligenceComponents() {
+    // Load heavy implementation from a separate implementation chunk to reduce this chunk's size
+    try {
+        if (!IncrementalIndexer || !SmartExclusionManager) {
+            const impl = await import('./workspace-intel-impl-chunk.js');
+            IncrementalIndexer = impl.IncrementalIndexer;
+            // Fetch SmartExclusion lazily from impl chunk to avoid bundling smartExclusion
+            if (typeof impl.getSmartExclusionManagerConstructor === 'function') {
+                const ctor = await impl.getSmartExclusionManagerConstructor();
+                SmartExclusionManager = ctor || null;
+            } else {
+                SmartExclusionManager = impl.SmartExclusionManager || null;
+            }
+        }
+    } catch {
+        // Fallback to previous behavior if the impl chunk fails to load
+        try {
+            if (!IncrementalIndexer) {
+                const featureFlagsGlobal = getFeatureFlagsGlobal();
+                const chunk = featureFlagsGlobal ? await featureFlagsGlobal.loadFeatureModule('incrementalIndexer') : null;
+                if (chunk && chunk.IncrementalIndexer) {
+                    IncrementalIndexer = chunk.IncrementalIndexer;
+                } else {
+                    const mod = await import('../incrementalIndexer.js');
+                    IncrementalIndexer = mod.IncrementalIndexer;
+                }
+            }
+        } catch {
+            // Try local fallback
+            const mod = await import('../incrementalIndexer.js');
+            IncrementalIndexer = mod.IncrementalIndexer;
+        }
+
+        if (!SmartExclusionManager) {
+            const mod = await import('../smartExclusion.js');
+            SmartExclusionManager = mod.SmartExclusionManager;
+        }
+    }
+}
 
 class WorkspaceIntelligenceManager {
     constructor(fileSystem) {
@@ -28,11 +70,12 @@ class WorkspaceIntelligenceManager {
         const { batchProcessor, enableProgressiveAnalysis } = options;
         const hasProgressiveApi = !!(batchProcessor?.processDirectoryProgressively);
 
-        // Initialize incremental indexer
+        // Initialize incremental indexer (lazy-loaded implementation)
         if (!this._incrementalIndexer) {
+            await _ensureWorkspaceIntelligenceComponents();
             this._incrementalIndexer = new IncrementalIndexer(this._fileSystem);
         }
-        this._incrementalIndexer.initialize({ 
+        await this._incrementalIndexer.initialize({ 
             batchProcessor: hasProgressiveApi ? batchProcessor : null,
             enableProgressiveAnalysis
         });
@@ -41,8 +84,9 @@ class WorkspaceIntelligenceManager {
             this._logger.warn('BatchProcessor missing progressive API; workspace indexing disabled');
         }
 
-        // Initialize smart exclusion manager
+        // Initialize smart exclusion manager (lazy-loaded implementation)
         if (!this._smartExclusion) {
+            await _ensureWorkspaceIntelligenceComponents();
             this._smartExclusion = new SmartExclusionManager();
         }
 
@@ -200,9 +244,25 @@ class WorkspaceIntelligenceManager {
     }
 }
 
+// Synchronously expose constructors for tests and dev loader. These are
+// intentionally best-effort (may be null in some runtime/federation builds) —
+// runtime consumers should still use WorkspaceIntelligenceManager which
+// lazily resolves implementations via _ensureWorkspaceIntelligenceComponents().
+let _syncIncrementalIndexer = null;
+let _syncSmartExclusionManager = null;
+try {
+    _syncIncrementalIndexer = require('../incrementalIndexer').IncrementalIndexer;
+} catch {
+    _syncIncrementalIndexer = null;
+}
+try {
+    _syncSmartExclusionManager = require('../smartExclusion').SmartExclusionManager;
+} catch {
+    _syncSmartExclusionManager = null;
+}
+
 module.exports = {
     WorkspaceIntelligenceManager,
-    // Export individual components for direct access if needed
-    IncrementalIndexer,
-    SmartExclusionManager
+    IncrementalIndexer: _syncIncrementalIndexer,
+    SmartExclusionManager: _syncSmartExclusionManager
 };

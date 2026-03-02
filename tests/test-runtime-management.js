@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 const mockHelpers = require('./helpers/mockVscode');
 const mockInstall = mockHelpers.createTestMock();
 const { createExtensionContext, createTestMock } = mockHelpers;
 const { RuntimeConfigManager } = require('../src/runtimeConfigManager');
-const { TeamConfigPersistenceManager } = require('../src/teamConfigPersistence');
+const { TeamConfigPersistenceManager } = require('../src/teamConfigPersistence.proxy');
 
 async function disposeContext(context) {
     if (!context?.subscriptions) return;
@@ -60,7 +61,7 @@ async function testPresetAutoSuggestion() {
     try {
         const explorerConfig = vscode.workspace.getConfiguration('explorerDates');
 
-        // Balanced preset disables reporting/API and enables performance mode
+        // Balanced preset disables reporting/API and keeps performance mode off
         assert.strictEqual(
             explorerConfig.get('enableExportReporting'),
             false,
@@ -73,8 +74,8 @@ async function testPresetAutoSuggestion() {
         );
         assert.strictEqual(
             explorerConfig.get('performanceMode'),
-            true,
-            'Balanced preset should enable performance mode'
+            false,
+            'Balanced preset should keep performance mode disabled'
         );
 
         assert.strictEqual(
@@ -89,7 +90,7 @@ async function testPresetAutoSuggestion() {
         );
         assert.strictEqual(
             workspaceConfigValues['explorerDates.performanceMode'],
-            true,
+            false,
             'Balanced preset should persist performance mode override at workspace scope'
         );
 
@@ -127,6 +128,7 @@ async function testTeamConfigScaffold() {
         // Scenario 1: no team config present - mock should explicitly return no workspace
         const context = createExtensionContext();
         const manager = new TeamConfigPersistenceManager(context);
+        await manager._ensureImpl();
         
         // Explicitly mock the file check to return false for no team config scenario
         manager._fileExists = async () => false;
@@ -241,7 +243,7 @@ async function testNewTeamConfigFeatures() {
                     'invalidSetting': true
                 });
                 console.log('❌ Should have rejected invalid settings');
-            } catch (validationError) {
+            } catch {
                 console.log('✅ Invalid settings properly rejected');
             }
             
@@ -326,11 +328,31 @@ async function testNewTeamConfigFeatures() {
     }
 }
 
+async function testRuntimeChunkDoesNotBundleTeamPersistence() {
+    const chunkPath = path.join(__dirname, '..', 'dist', 'chunks', 'runtimeManagement.js');
+    if (!fs.existsSync(chunkPath)) {
+        console.warn('⚠️  runtimeManagement chunk missing; run "npm run compile" to validate bundle contents.');
+        return;
+    }
+
+    const content = fs.readFileSync(chunkPath, 'utf8');
+    assert.ok(
+        !content.includes('teamConfigPersistence.impl'),
+        'runtimeManagement chunk should not bundle teamConfigPersistence.impl.js'
+    );
+    assert.ok(
+        !content.includes('teamConfigPersistence.impl.js'),
+        'runtimeManagement chunk should not include teamConfigPersistence.impl.js source'
+    );
+    console.log('✅ Runtime chunk does not bundle team persistence impl');
+}
+
 async function main() {
     try {
         await testPresetAutoSuggestion();
         await testTeamConfigScaffold();
         await testNewTeamConfigFeatures();
+        await testRuntimeChunkDoesNotBundleTeamPersistence();
         console.log('🎯 Runtime configuration tests completed');
     } catch (error) {
         console.error('❌ Runtime configuration tests failed:', error);

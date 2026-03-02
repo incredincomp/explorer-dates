@@ -1,7 +1,16 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { getLocalization } = require('./utils/localization');
-const { getFileName } = require('./utils/pathUtils');
+let getFileName = (filePath) => { try { const dynamicRequire = typeof eval === 'function' ? eval('require') : null; if (typeof dynamicRequire === 'function') { const chunk = dynamicRequire('./chunks/path-utils-chunk'); if (chunk && typeof chunk.getFileName === 'function') { getFileName = chunk.getFileName; return getFileName(filePath); } } } catch { /* ignore */ } try { const p = String(filePath || ''); const normalized = p.replace(/\\/g, '/'); const last = normalized.lastIndexOf('/'); return last === -1 ? normalized : normalized.substring(last + 1); } catch { return 'unknown'; } };
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 
 /**

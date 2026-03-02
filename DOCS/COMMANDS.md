@@ -1,8 +1,8 @@
-# Explorer Dates v1.3.0 - Command Palette Reference
+# Explorer Dates v1.3.1 - Command Palette Reference
 
 Use **Ctrl+Shift+P / Cmd+Shift+P** and type the phrases below to access every Explorer Dates command. Each entry matches the title registered in `package.json`.
 
-## 🆕 New Commands in v1.3.0
+## 🆕 New Commands in v1.3.x
 
 ### Team Configuration
 | Command Palette Entry | Identifier | What it does |
@@ -24,6 +24,14 @@ Use **Ctrl+Shift+P / Cmd+Shift+P** and type the phrases below to access every Ex
 | `Explorer Dates: Validate Configuration` | `explorerDates.validateConfiguration` | Comprehensive configuration validation with detailed errors |
 | `Explorer Dates: Preview Configuration` | `explorerDates.previewConfiguration` | Preview configuration changes before applying |
 | `Explorer Dates: Clear Configuration Preview` | `explorerDates.clearPreview` | Exit configuration preview mode |
+
+### Settings Migration
+| Command Palette Entry | Identifier | What it does |
+| --- | --- | --- |
+| `Explorer Dates: Migrate Settings` | `explorerDates.migrateSettings` | Runs the migration engine to update deprecated settings |
+| `Explorer Dates: Organize Settings` | `explorerDates.organizeSettings` | Moves Explorer Dates settings to the correct scope and tidies workspace files |
+| `Explorer Dates: Clean Legacy Settings` | `explorerDates.cleanLegacySettings` | Removes deprecated or legacy settings keys |
+| `Explorer Dates: Show Migration History` | `explorerDates.showMigrationHistory` | Displays what settings were migrated and when |
 
 ## Everyday Commands
 
@@ -55,6 +63,8 @@ Use **Ctrl+Shift+P / Cmd+Shift+P** and type the phrases below to access every Ex
 | `Explorer Dates: Show Current Configuration` | `explorerDates.showCurrentConfig` | Displays the effective Explorer Dates configuration (including workspace overrides). |
 | `Explorer Dates: Reset to Default Settings` | `explorerDates.resetToDefaults` | Restores every Explorer Dates setting to its default value. |
 | `Explorer Dates: Apply Custom Colors` | `explorerDates.applyCustomColors` | Copies the recommended `workbench.colorCustomizations` snippet for the custom color scheme. |
+| `Explorer Dates: Export Configuration` | `explorerDates.exportConfiguration` | Exports Explorer Dates settings to a JSON file for backup or sharing. |
+| `Explorer Dates: Clear Telemetry Data` | `explorerDates.clearTelemetryData` | Clears locally-stored diagnostic telemetry events (prompts for confirmation). |
 | `Explorer Dates: Open Logs` | `explorerDates.openLogs` | Opens the “Explorer Dates” output channel for real-time logging. |
 | `Explorer Dates: Show Keyboard Shortcuts` | `explorerDates.showKeyboardShortcuts` | Lists built-in keybindings such as copy date, refresh, and diagnostics. |
 | `Explorer Dates: Show Feature Tour` | `explorerDates.showFeatureTour` | Runs the onboarding carousel that explains badges, caching, and key features. |

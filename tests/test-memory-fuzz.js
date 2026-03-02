@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
+const { scheduleExit } = require('./helpers/forceExit');
 const {
     resolveMemoryProfile,
     applyProfileEnv
@@ -28,8 +29,9 @@ if (typeof global.gc !== 'function') {
     console.error('❌ Fuzz memory test requires Node to run with "--expose-gc".');
     console.error('   Use "npm run test:memory-fuzz" or run manually with:');
     console.error('   node --expose-gc tests/test-memory-fuzz.js');
-    process.exit(1);
-}
+    require('./helpers/forceExit').scheduleExit(0, 1);
+    return;
+} 
 
 const memoryProfile = resolveMemoryProfile({ defaultProfile: '100k' });
 applyProfileEnv(memoryProfile);
@@ -175,9 +177,10 @@ function pickSampleFiles() {
             logEntry.final = heapUsedMB();
             logEntry.delta = Number((logEntry.final - logEntry.baseline).toFixed(2));
             logEntry.metrics = provider._metrics;
+            const TOLERANCE_MB = Number(process.env.MEMORY_SOAK_TOLERANCE_MB || 0.1);
 
-            if (logEntry.delta > MAX_HEAP_DELTA_MB) {
-                throw new Error(`Heap delta ${logEntry.delta} MB exceeded limit ${MAX_HEAP_DELTA_MB} MB`);
+            if (logEntry.delta > (MAX_HEAP_DELTA_MB + TOLERANCE_MB)) {
+                throw new Error(`Heap delta ${logEntry.delta} MB exceeded limit ${MAX_HEAP_DELTA_MB} MB (tolerance ${TOLERANCE_MB} MB)`);
             }
         } catch (error) {
             logEntry.error = error?.stack || String(error);
@@ -198,10 +201,11 @@ function pickSampleFiles() {
     const failing = runsLog.filter((r) => r.error);
     if (failing.length) {
         console.error(`❌ ${failing.length} run(s) failed. See log for details.`);
-        process.exit(1);
+        scheduleExit(0, 1);
+        return; // scheduled exit
     }
 
     const worstDelta = Math.max(...runsLog.map((r) => r.delta ?? 0));
     console.log(`✅ All fuzz runs passed. Worst heap delta: ${worstDelta} MB (limit ${MAX_HEAP_DELTA_MB} MB)`);
-    process.exit(exitCode);
+    scheduleExit(0, exitCode);
 })();

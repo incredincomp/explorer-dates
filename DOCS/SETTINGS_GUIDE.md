@@ -1,11 +1,21 @@
-# Explorer Dates v1.3.0 - Complete Settings Guide
+# Explorer Dates v1.3.1 - Complete Settings Guide
 
-This guide documents every setting and recommended configuration for Explorer Dates, including new v1.3.0 feature flags, team configuration options, and bundle optimization strategies.
+This guide documents every setting and recommended configuration for Explorer Dates, including v1.3.x feature flags, team configuration options, and bundle optimization strategies.
 
-## 🆕 v1.3.0 Feature Control Settings
+## Telemetry & Privacy
+
+This project does not collect telemetry by default. Optional telemetry and diagnostic events are gated by the `EXPLORER_DATES_TELEMETRY` environment flag and an explicit opt-in setting `explorerDates.enableTelemetry`.
+
+- `explorerDates.enableTelemetry` (boolean, default: `false`) — When `true`, the extension records optional diagnostic telemetry events locally for debugging and support purposes. This provides an opt-in mechanism that complements the `EXPLORER_DATES_TELEMETRY` environment flag used for ad-hoc diagnostics.
+
+- `explorerDates.clearTelemetryData` — A command that clears locally-stored telemetry events from your VS Code instance. This command is interactive and requires confirmation before deleting data. Note: this command only clears locally stored diagnostic telemetry (`explorerDates.telemetryEvents`) — it does not clear migration history or other diagnostic artifacts. For programmatic clearing in scripts or automation, use the explicit wrapper command `explorerDates.clearTelemetryData.force` (which requires an explicit opt-in), but avoid calling it from untrusted automation. Tip: run this via the Command Palette as **Explorer Dates: Clear Telemetry Data** (`explorerDates.clearTelemetryData`).
+
+See `README.md` for additional context about telemetry and privacy.
+
+## 🆕 v1.3.x Feature Control Settings
 
 ### Bundle Optimization
-v1.3.0 introduces granular feature control to reduce bundle size and improve performance:
+v1.3.x introduces granular feature control to reduce bundle size and improve performance:
 
 ```json
 {
@@ -63,6 +73,58 @@ Examples (visual badge only — actual tooltip contains full info):
 - `time`: `5m`
 - `author`: `JD` (for "Jane Doe")
 - `size`: `5K` (compact kilobytes)
+
+### Freshness Badges
+
+Explorer Dates can display age-based freshness symbols in the badge when the freshness resolver is active.  All symbols are ≤ 2 characters — VS Code's `FileDecoration.badge` enforces a hard codepoint limit and silently discards anything longer (words like `now`, `today`, and `stale` are dropped before they reach the Explorer UI).
+
+| Badge | Meaning | Default age range |
+|-------|---------|-------------------|
+| `!!`  | Just now — modified very recently | Within the last ~60 minutes |
+| `T`   | Today — modified today but not recently | Today, more than ~1 hour ago |
+| `2d`  | A couple of days ago | Within 2 days |
+| `1w`  | About a week ago | Within 7 days |
+| `~~`  | Stale — older than a week | More than 7 days ago |
+| `?`   | Age unknown | Cannot be determined |
+
+The tooltip always shows the full human-readable freshness label (`now`, `today`, `2 days`, `1 week`, `stale`) regardless of the badge symbol used.
+
+#### Freshness Age Thresholds
+
+The boundaries that map a file age to a badge symbol are configurable:
+
+- `explorerDates.freshnessBucketMinutesNow` — Minutes threshold for `!!` (default: `60`)
+- `explorerDates.freshnessBucketHoursToday` — Hours threshold for `T` (default: `24`)
+- `explorerDates.freshnessBucketDaysTwo` — Days threshold for `2d` (default: `2`)
+- `explorerDates.freshnessBucketDaysWeek` — Days threshold for `1w` (default: `7`)
+
+#### Tooltip Source Line (`explorerDates.badge.sourceLabelMode`)
+
+Because source information cannot fit in a 2-character badge, it is included in the hover tooltip instead. This setting controls when the `Source:` line appears:
+
+- Setting: `explorerDates.badge.sourceLabelMode`
+- Default: `"auto"`
+
+| Value     | Behavior |
+|-----------|----------|
+| `"auto"`  | Includes `Source:` when it adds context (for example, Git or low-confidence sources); hides it for high-confidence filesystem timestamps. |
+| `"always"`| Always includes `Source:` in the tooltip. |
+| `"never"` | Omits `Source:` from all tooltips. |
+
+Tooltip example — source is Git (`auto` mode, source line shown):
+```
+Freshness: 2d
+Exact time: 2026-02-24 14:32:00
+Source: Git
+Confidence: high
+```
+
+Tooltip example — source is Filesystem with high confidence (`auto` mode, source line hidden):
+```
+Freshness: today
+Exact time: 2026-02-26 09:15:00
+Confidence: high
+```
 
 Compact size formatting examples:
 - `512` bytes → `512` (fits in 2 chars? fallback to `51` or `512` depending on format; extension uses a 2-char compact fallback)

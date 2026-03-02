@@ -5,6 +5,16 @@ const { addWarningFilters } = require('./helpers/warningFilters');
 
 process.env.EXPLORER_DATES_TEST_MODE = '1';
 addWarningFilters([/Failed to register analysis commands/]);
+// Clear global fallback used by extension during testing to avoid cross-test leakage
+if (typeof globalThis !== 'undefined') {
+    try {
+        // WeakMap fallback; clear entirely to avoid stale entries across tests
+        delete globalThis.__explorerDates_analysisWarningWeakMap;
+        // Older fallback keys (legacy attempts)
+        delete globalThis['explorerDates.analysisCommandsDisabledWarningByWorkspace'];
+        delete globalThis['explorerDates.analysisCommandsDisabledWarningByWorkspace_TS'];
+    } catch {}
+}
 
 const extensionRoot = path.resolve(__dirname, '..');
 const sampleWorkspaceRoot = path.join(extensionRoot, 'tests', 'fixtures', 'sample-workspace');
@@ -232,8 +242,9 @@ async function testChunkFailureHandling() {
     {
         clearCaches();
         const featureFlags = require('../src/featureFlags');
-        const originalAnalysis = featureFlags.analysisCommands;
-        featureFlags.analysisCommands = async () => null;
+
+        // Canonical test: register a loader that returns null for the analysis chunk
+        featureFlags.registerFeatureLoader('analysis', async () => null);
 
         const mock = createTestMock({
             config: { 'explorerDates.enableAnalysisCommands': true }
@@ -245,17 +256,20 @@ async function testChunkFailureHandling() {
             throw new Error('Analysis commands should not register when chunk returns null');
         }
 
-        featureFlags.analysisCommands = originalAnalysis;
+        // Restore canonical loaders
+        featureFlags.clearFeatureLoaders();
+        featureFlags.registerDefaultLoaders();
         mock.dispose();
     }
 
     {
         clearCaches();
         const featureFlags = require('../src/featureFlags');
-        const originalAnalysis = featureFlags.analysisCommands;
-        featureFlags.analysisCommands = async () => {
+
+        // Canonical test: register a loader that throws to simulate chunk failure
+        featureFlags.registerFeatureLoader('analysis', async () => {
             throw new Error('Simulated diagnostics chunk failure');
-        };
+        });
 
         const mock = createTestMock({
             config: { 'explorerDates.enableAnalysisCommands': true }
@@ -267,7 +281,9 @@ async function testChunkFailureHandling() {
             throw new Error('Expected warning when diagnostics chunk fails to load');
         }
 
-        featureFlags.analysisCommands = originalAnalysis;
+        // Restore canonical loaders
+        featureFlags.clearFeatureLoaders();
+        featureFlags.registerDefaultLoaders();
         mock.dispose();
     }
 

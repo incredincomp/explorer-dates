@@ -1,11 +1,47 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { generateWorkspaceKey, detectWorkspaceProfile, analyzeWorkspaceEnvironment } = require('./utils/workspaceDetection');
 const { PRESET_DEFINITIONS, calculateBundleSize, getDefaultPresetForProfile, RESTART_REQUIRED_SETTINGS } = require('./presetDefinitions');
 const { getSettingsCoordinator } = require('./utils/settingsCoordinator');
 const { WORKSPACE_SCALE_LARGE_THRESHOLD, WORKSPACE_SCALE_EXTREME_THRESHOLD } = require('./constants');
+const { diagLog } = require('./utils/webDiagnostics');
+const isWebRuntime = (() => {
+    try {
+        return vscode?.env?.uiKind === vscode?.UIKind?.Web;
+    } catch {
+        return false;
+    }
+})();
 
 const logger = getLogger();
+const quickPickUnavailableMessage = 'Explorer Dates: This action is unavailable in this environment.';
+
+function ensureQuickPickAvailable(contextLabel) {
+    if (typeof vscode?.window?.showQuickPick === 'function') {
+        return true;
+    }
+    diagLog('warn', 'QuickPick unavailable', {
+        context: contextLabel,
+        isWeb: isWebRuntime
+    });
+    try {
+        if (typeof vscode?.window?.showInformationMessage === 'function') {
+            vscode.window.showInformationMessage(quickPickUnavailableMessage);
+        }
+    } catch {
+        // Ignore message failures in headless/web harnesses
+    }
+    return false;
+}
 
 /**
  * Manages runtime chunk configuration with auto-suggestions and restart coordination
@@ -48,13 +84,21 @@ class RuntimeConfigManager {
     }
     
     /**
-     * Auto-suggestion with workspace-specific cadence tracking
-     * Suggests once per workspace unless heuristics change drastically
+     * Auto-suggestion with workspace-specific cadence tracking.
+     * @param {boolean} [force=false] When true, skips the cadence check and
+     *   always shows a result — used when the user explicitly invokes the command.
      */
-    async checkAutoSuggestion() {
+    async checkAutoSuggestion(force = false) {
         try {
             const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
-            if (!workspaceUri) return;
+            if (!workspaceUri) {
+                if (force) {
+                    vscode.window.showInformationMessage(
+                        'Explorer Dates: No workspace folder is open. Open a folder to receive configuration suggestions.'
+                    );
+                }
+                return;
+            }
             
             const currentProfile = await detectWorkspaceProfile(workspaceUri);
             const workspaceKey = generateWorkspaceKey(workspaceUri, currentProfile);
@@ -62,25 +106,39 @@ class RuntimeConfigManager {
             const suggestionHistory = this._globalState.get(this._suggestionHistoryKey, {});
             const lastSuggestion = suggestionHistory[workspaceKey];
             
-            // Check if suggestion needed based on profile change or first time
-            const shouldSuggest = !lastSuggestion || 
+            // force=true bypasses cadence so the explicit command always produces output
+            const shouldSuggest = force || !lastSuggestion || 
                 lastSuggestion.profileDetected !== currentProfile ||
                 await this._hasHeuristicsChanged(lastSuggestion);
             
             if (shouldSuggest) {
                 const suggested = await this._showAutoSuggestion(currentProfile);
                 if (suggested) {
-                    // Update suggestion history
-                    const analysis = await analyzeWorkspaceEnvironment(workspaceUri);
-                    suggestionHistory[workspaceKey] = {
-                        profileDetected: currentProfile,
-                        suggestedAt: Date.now(),
-                        fileCountAtSuggestion: analysis?.fileCount || 0,
-                        accepted: suggested.accepted,
-                        presetId: suggested.preset
-                    };
-                    await this._globalState.update(this._suggestionHistoryKey, suggestionHistory);
-                    logger.info('Auto-suggestion updated:', suggestionHistory[workspaceKey]);
+                    if (force && suggested.reason === 'minimal savings') {
+                        vscode.window.showInformationMessage(
+                            `Explorer Dates: Your configuration is already well-optimized for a ${currentProfile} workspace. No changes recommended.`
+                        );
+                    } else if (suggested.accepted !== undefined) {
+                        // Update suggestion history
+                        const analysis = await analyzeWorkspaceEnvironment(workspaceUri);
+                        suggestionHistory[workspaceKey] = {
+                            profileDetected: currentProfile,
+                            suggestedAt: Date.now(),
+                            fileCountAtSuggestion: analysis?.fileCount || 0,
+                            accepted: suggested.accepted,
+                            presetId: suggested.preset
+                        };
+                        await this._globalState.update(this._suggestionHistoryKey, suggestionHistory);
+                        logger.info('Auto-suggestion updated:', suggestionHistory[workspaceKey]);
+                    }
+                }
+            } else if (force) {
+                // Cadence says no, but user asked explicitly — still show result
+                const suggested = await this._showAutoSuggestion(currentProfile);
+                if (suggested?.reason === 'minimal savings') {
+                    vscode.window.showInformationMessage(
+                        `Explorer Dates: Your configuration is already well-optimized for a ${currentProfile} workspace. No changes recommended.`
+                    );
                 }
             }
         } catch (error) {
@@ -139,25 +197,74 @@ class RuntimeConfigManager {
         
         const currentSettings = this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         await this._savePresetBackup(presetId, currentSettings);
-        
-        let applied;
-        try {
-            applied = await this._settings.applySettings(preset.settings, {
-                scope: 'workspace',
-                reason: `apply-preset:${presetId}`
-            });
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to apply "${preset.name}" preset: ${error.message}`);
-            logger.error(`Preset application failed for ${presetId}:`, error);
-            throw error;
+
+        const entries = Object.entries(preset.settings || {});
+        const applied = [];
+        const skipped = [];
+        const failed = [];
+        const scope = isWebRuntime ? 'user' : 'workspace';
+        const reason = `apply-preset:${presetId}`;
+        const isRegisteredSetting = (fullKey) => {
+            try {
+                if (!fullKey || typeof fullKey !== 'string') return false;
+                const prefix = 'explorerDates.';
+                if (fullKey.startsWith(prefix)) {
+                    const key = fullKey.slice(prefix.length);
+                    const inspect = vscode.workspace.getConfiguration('explorerDates').inspect(key);
+                    if (!inspect) return false;
+                    return [inspect.defaultValue, inspect.globalValue, inspect.workspaceValue, inspect.workspaceFolderValue]
+                        .some((value) => value !== undefined);
+                }
+                const inspect = vscode.workspace.getConfiguration().inspect(fullKey);
+                if (!inspect) return false;
+                return [inspect.defaultValue, inspect.globalValue, inspect.workspaceValue, inspect.workspaceFolderValue]
+                    .some((value) => value !== undefined);
+            } catch {
+                return false;
+            }
+        };
+
+        for (const [key, value] of entries) {
+            if (!isRegisteredSetting(key)) {
+                skipped.push(key);
+                diagLog('warn', 'Preset skipped unregistered setting', { key, presetId });
+                continue;
+            }
+            try {
+                applied.push(await this._settings.updateSetting(key, value, { scope, reason }));
+            } catch (error) {
+                failed.push({ key, error });
+                logger.warn(`Preset application failed for ${key}: ${error && error.message ? error.message : String(error)}`);
+            }
         }
+
         const changedSettings = applied
             .filter(result => result.updated)
             .map(result => result.key.replace('explorerDates.', ''));
-        
+
+        const summary = `Applied "${preset.name}" preset. Applied: ${changedSettings.length}. Skipped: ${skipped.length}. Failed: ${failed.length}.`;
+        try { vscode.window.showInformationMessage(summary); } catch { /* ignore */ }
+        logger.info(`Applied ${preset.name} preset`, { changedSettings, skipped, failed: failed.length });
+        diagLog('info', 'Preset applied summary', {
+            presetId,
+            applied: changedSettings.length,
+            skipped,
+            failed: failed.map(entry => entry.key),
+            webRuntime: isWebRuntime
+        });
+
         if (changedSettings.length > 0) {
             this._queueRestartPrompt(changedSettings);
-            logger.info(`Applied ${preset.name} preset`, { changedSettings });
+            try {
+                await vscode.commands.executeCommand('explorerDates.refreshDateDecorations');
+                diagLog('info', 'Preset refresh triggered', {
+                    presetId,
+                    applied: changedSettings.length,
+                    skipped: skipped.length
+                });
+            } catch (error) {
+                diagLog('warn', 'Preset refresh failed', { presetId, error: error?.message });
+            }
         }
         
         return {
@@ -217,6 +324,9 @@ class RuntimeConfigManager {
      * Shows preset comparison with QuickPick interface
      */
     async showPresetComparison(currentSettings, recommendedPreset) {
+        if (!ensureQuickPickAvailable('runtimeConfig.showPresetComparison')) {
+            return;
+        }
         const baseSettings = currentSettings || this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         const currentSize = this._calculateCurrentBundleSize(null, baseSettings);
         const recommendedSize = recommendedPreset
@@ -271,6 +381,9 @@ class RuntimeConfigManager {
      * Shows all available presets
      */
     async showAllPresets() {
+        if (!ensureQuickPickAvailable('runtimeConfig.showAllPresets')) {
+            return;
+        }
         const baseSettings = this._extractSettings(vscode.workspace.getConfiguration('explorerDates'));
         const currentSize = this._calculateCurrentBundleSize(null, baseSettings);
         
@@ -338,16 +451,40 @@ class RuntimeConfigManager {
         // Add to pending restart list
         const pending = this._globalState.get(this._pendingRestartKey, []);
         const newPending = [...new Set([...pending, ...settingKeys])];
-        this._globalState.update(this._pendingRestartKey, newPending);
-        
+        // Persist pending restart state but handle failures explicitly to avoid unhandled rejections
+        try {
+            const p = this._globalState.update(this._pendingRestartKey, newPending);
+            if (p && typeof p.then === 'function') {
+                p.catch(err => {
+                    try { logger.warn('Failed to persist pending restart state:', err && err.message); } catch {}
+                });
+            }
+        } catch (err) {
+            try { logger.warn('Failed to persist pending restart state (sync):', err && err.message); } catch {}
+        }
+
         // Debounce restart prompt (2-second delay to batch multiple changes)
         if (this._restartDebounceTimer) {
             clearTimeout(this._restartDebounceTimer);
         }
-        
-        this._restartDebounceTimer = setTimeout(async () => {
-            await this._showBatchedRestartPrompt();
-            this._restartDebounceTimer = null;
+
+        // Use a non-awaiting wrapper that catches and logs any errors to avoid unhandled promise rejections
+        this._restartDebounceTimer = setTimeout(() => {
+            (async () => {
+                try {
+                    await this._showBatchedRestartPrompt();
+                } catch (err) {
+                    logger.error('Failed to show batched restart prompt:', err);
+                    // Best-effort clear pending restarts to avoid repeated failures
+                    try {
+                        await this._globalState.update(this._pendingRestartKey, []);
+                    } catch (e) {
+                        logger.warn('Failed to clear pending restarts after prompt failure:', e && e.message);
+                    }
+                } finally {
+                    this._restartDebounceTimer = null;
+                }
+            })();
         }, 2000);
     }
     
@@ -355,29 +492,48 @@ class RuntimeConfigManager {
      * Shows consolidated restart prompt for all pending chunk changes
      */
     async _showBatchedRestartPrompt() {
-        const pendingChunks = this._globalState.get(this._pendingRestartKey, []);
-        if (pendingChunks.length === 0) return;
-        
-        const chunkNames = pendingChunks.map(chunk => this._formatChunkName(chunk)).join(', ');
-        const settingsText = pendingChunks.length === 1 
-            ? `"${chunkNames}"`
-            : `${pendingChunks.length} settings (${chunkNames})`;
+        // Protect the prompt flow against exceptions so callers (e.g., setTimeout wrapper)
+        // never observe an unhandled rejection. Always attempt to clear pending restarts
+        // on completion or failure to avoid stale state.
+        try {
+            const pendingChunks = this._globalState.get(this._pendingRestartKey, []);
+            if (pendingChunks.length === 0) return;
             
-        const message = `${settingsText} changed. Reload to apply chunk optimizations?`;
-        
-        const action = await vscode.window.showInformationMessage(
-            message,
-            { modal: false },
-            'Reload Now',
-            'Reload Later'
-        );
-        
-        if (action === 'Reload Now') {
-            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+            const chunkNames = pendingChunks.map(chunk => this._formatChunkName(chunk)).join(', ');
+            const settingsText = pendingChunks.length === 1 
+                ? `"${chunkNames}"`
+                : `${pendingChunks.length} settings (${chunkNames})`;
+                
+            const message = `${settingsText} changed. Reload to apply chunk optimizations?`;
+            
+            let action;
+            try {
+                action = await vscode.window.showInformationMessage(
+                    message,
+                    { modal: false },
+                    'Reload Now',
+                    'Reload Later'
+                );
+            } catch (err) {
+                logger.warn('User prompt for restart failed:', err && err.message);
+            }
+            
+            if (action === 'Reload Now') {
+                try {
+                    await vscode.commands.executeCommand('workbench.action.reloadWindow');
+                } catch (err) {
+                    logger.warn('Failed to execute reload command:', err && err.message);
+                }
+            }
+        } catch (err) {
+            logger.error('Error while showing batched restart prompt:', err);
+        } finally {
+            try {
+                await this._globalState.update(this._pendingRestartKey, []);
+            } catch (err) {
+                logger.warn('Failed to clear pending restarts:', err && err.message);
+            }
         }
-        
-        // Clear pending restarts regardless of action
-        await this._globalState.update(this._pendingRestartKey, []);
     }
     
     /**

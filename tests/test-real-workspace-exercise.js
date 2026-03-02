@@ -33,7 +33,7 @@ const mockInstall = createTestMock({
     }
 });
 
-const { TeamConfigPersistenceManager } = require('../src/teamConfigPersistence');
+const { TeamConfigPersistenceManager } = require('../src/teamConfigPersistence.proxy');
 
 async function testRealWorkspaceFileEmission() {
     console.log('🧪 Testing team configuration against real workspace...');
@@ -299,8 +299,8 @@ async function cleanupTestFiles(...files) {
 if (require.main === module) {
     testRealWorkspaceFileEmission().catch(error => {
         console.error('Test failed:', error);
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     });
-}
+} 
 
 module.exports = { testRealWorkspaceFileEmission };

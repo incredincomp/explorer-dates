@@ -1,11 +1,11 @@
-# Explorer Dates - v1.3.0 Upgrade & Configuration Guide
+# Explorer Dates - v1.3.1 Upgrade & Configuration Guide
 
 This guide helps users understand and manage Explorer Dates settings across different versions, with emphasis on automatic migration and proper configuration. The previous standalone settings migration guide has been folded into this document—this is now the single source for migration steps and setting rename details.
 
-## 🆕 What’s New in v1.3.0
+## 🆕 What’s New in v1.3.x
 
 ### Module Federation Architecture
-Explorer Dates v1.3.0 introduces a revolutionary module federation system:
+Explorer Dates v1.3.0 introduced a module federation system that remains the base for v1.3.1:
 - **Base bundle reduced** from 267KB to ~99KB core + 281KB optional chunks
 - **Feature gating** - disable unused features to save up to 36% bundle size
 - **Dynamic loading** - features load only when needed

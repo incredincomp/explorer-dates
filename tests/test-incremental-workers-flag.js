@@ -1,8 +1,23 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
-const { createTestMock, createExtensionContext, VSCodeUri } = require('./helpers/mockVscode');
+const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
+const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
+
+addWarningFilters([
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
+    /Feature loader failed .*incrementalWorkers/
+]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'incremental worker flag test tolerates missing built chunk'
+});
+expectMissingBuiltChunkWarning({
+    chunkName: 'loggerImpl',
+    reason: 'incremental worker flag test tolerates missing built chunk'
+});
 
 let mockInstall;
 let extension;
@@ -95,7 +110,7 @@ async function testIncrementalWorkersDisabled() {
 async function testIncrementalWorkersEnabled() {
     await runTestScenario('Incremental workers enabled - chunk loads successfully', {
         'explorerDates.enableIncrementalWorkers': true
-    }, async (context) => {
+    }, async () => {
         const featureFlags = require('../src/featureFlags');
         
         // Check that the feature flag logic recognizes it as enabled
@@ -114,8 +129,8 @@ async function testIncrementalWorkersEnabled() {
 async function testWebDevelopmentPresetEnablesWorkers() {
     await runTestScenario('Web development preset enables incremental workers', {
         'explorerDates.enableIncrementalWorkers': false // Start with disabled
-    }, async (context) => {
-        const { configValues } = mockInstall;
+    }, async (context) => { void context;
+        const { configValues } = mockInstall; void configValues;
         const presetDefinitions = require('../src/presetDefinitions');
         
         // Get the web-development preset configuration
@@ -147,8 +162,8 @@ async function testWebDevelopmentPresetEnablesWorkers() {
 async function testMinimalPresetDisablesWorkers() {
     await runTestScenario('Minimal preset disables incremental workers', {
         'explorerDates.enableIncrementalWorkers': true // Start with enabled
-    }, async (context) => {
-        const { configValues } = mockInstall;
+    }, async (context) => { void context;
+        const { configValues } = mockInstall; void configValues;
         const presetDefinitions = require('../src/presetDefinitions');
         
         // Get the minimal preset configuration
@@ -180,8 +195,8 @@ async function testMinimalPresetDisablesWorkers() {
 async function testEnterprisePresetEnablesWorkers() {
     await runTestScenario('Enterprise preset enables incremental workers', {
         'explorerDates.enableIncrementalWorkers': false // Start with disabled
-    }, async (context) => {
-        const { configValues } = mockInstall;
+    }, async (context) => { void context;
+        const { configValues } = mockInstall; void configValues;
         const presetDefinitions = require('../src/presetDefinitions');
         
         // Get the enterprise preset configuration
@@ -213,8 +228,8 @@ async function testEnterprisePresetEnablesWorkers() {
 async function testBalancedPresetDisablesWorkers() {
     await runTestScenario('Balanced preset disables incremental workers', {
         'explorerDates.enableIncrementalWorkers': true // Start with enabled
-    }, async (context) => {
-        const { configValues } = mockInstall;
+    }, async (context) => { void context;
+        const { configValues } = mockInstall; void configValues;
         const presetDefinitions = require('../src/presetDefinitions');
         
         // Get the balanced preset configuration
@@ -246,8 +261,8 @@ async function testBalancedPresetDisablesWorkers() {
 async function testDataSciencePresetDisablesWorkers() {
     await runTestScenario('Data science preset disables incremental workers', {
         'explorerDates.enableIncrementalWorkers': true // Start with enabled
-    }, async (context) => {
-        const { configValues } = mockInstall;
+    }, async (context) => { void context;
+        const { configValues } = mockInstall; void configValues;
         const presetDefinitions = require('../src/presetDefinitions');
         
         // Get the data-science preset configuration
@@ -279,7 +294,7 @@ async function testDataSciencePresetDisablesWorkers() {
 async function testFeatureFlagStateConsistency() {
     await runTestScenario('Feature flag state consistency', {
         'explorerDates.enableIncrementalWorkers': false
-    }, async (context) => {
+    }, async () => {
         const featureFlags = require('../src/featureFlags');
         
         // Test getEnabledFeatures list
@@ -318,7 +333,7 @@ async function testFeatureFlagStateConsistency() {
 async function testMissingChunkGracefulHandling() {
     await runTestScenario('Graceful handling of missing chunk modules', {
         'explorerDates.enableIncrementalWorkers': true
-    }, async (context) => {
+    }, async () => {
         const featureFlags = require('../src/featureFlags');
         
         // Temporarily replace the loader to simulate missing module
@@ -398,9 +413,9 @@ if (require.main === module) {
         .finally(() => {
             // Ensure lingering VS Code timers/watchers from presets don't keep the process alive.
             const exitCode = typeof process.exitCode === 'number' ? process.exitCode : 0;
-            setTimeout(() => process.exit(exitCode), 0);
+            setTimeout(() => require('./helpers/forceExit').scheduleExit(0, exitCode), 0);
         });
-}
+} 
 
 module.exports = {
     testIncrementalWorkersDisabled,

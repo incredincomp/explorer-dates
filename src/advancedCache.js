@@ -1,5 +1,14 @@
 const vscode = require('vscode');
-const { getLogger } = require('./utils/logger');
+let getLogger = () => {
+    try {
+        const dynamicRequire = typeof eval === 'function' ? eval('require') : null;
+        if (typeof dynamicRequire === 'function') {
+            const chunk = dynamicRequire('./chunks/logger-chunk');
+            if (chunk && typeof chunk.getLogger === 'function') { getLogger = chunk.getLogger; return getLogger(); }
+        }
+    } catch { /* ignore */ }
+    try { const base = require('./utils/logger'); getLogger = base.getLogger; return getLogger(); } catch { getLogger = () => ({ debug: console.debug?.bind(console) || console.log, info: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) }); return getLogger(); }
+};
 const { fileSystem } = require('./filesystem/FileSystemAdapter');
 const { GLOBAL_STATE_KEYS, DEFAULT_PERSISTENT_CACHE_TTL } = require('./constants');
 
@@ -18,6 +27,7 @@ class AdvancedCache {
         this._maxMemoryUsage = 50 * 1024 * 1024; // 50MB default
         this._currentMemoryUsage = 0;
         this._persistentCacheEnabled = true;
+        this._strictPersistedValidation = false; // When true, reject malformed persisted snapshots
 
         // Persistent storage via VS Code memento for web compatibility
         this._storage = context?.globalState || null;
@@ -34,7 +44,8 @@ class AdvancedCache {
             diskMisses: 0,
             evictions: 0,
             persistentLoads: 0,
-            persistentSaves: 0
+            persistentSaves: 0,
+            persistentRejected: 0 // entries rejected due to strict validation or top-level corruption
         };
         
         // Cache cleanup intervals
@@ -80,6 +91,7 @@ class AdvancedCache {
         const config = vscode.workspace.getConfiguration('explorerDates');
         this._persistentCacheEnabled = config.get('persistentCache', true);
         this._maxMemoryUsage = config.get('maxMemoryUsage', 50) * 1024 * 1024; // Convert MB to bytes
+        this._strictPersistedValidation = config.get('strictPersistentCacheValidation', false);
         this._ensureConfigurationWatcher();
     }
 
@@ -89,7 +101,8 @@ class AdvancedCache {
         }
         this._configurationWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('explorerDates.persistentCache') ||
-                e.affectsConfiguration('explorerDates.maxMemoryUsage')) {
+                e.affectsConfiguration('explorerDates.maxMemoryUsage') ||
+                e.affectsConfiguration('explorerDates.strictPersistentCacheValidation')) {
                 this._loadConfiguration();
             }
         });
@@ -123,26 +136,73 @@ class AdvancedCache {
         };
     }
 
-    _normalizePersistedMetadata(metadata) {
-        if (!metadata) {
-            return null;
+    async _normalizePersistedMetadata(metadata) {
+        // Quick null guard
+        if (!metadata) return null;
+
+        // Non-object tolerant fallback
+        if (typeof metadata !== 'object') {
+            if (this._strictPersistedValidation) return null;
+            return {
+                timestamp: Date.now(),
+                lastAccess: Date.now(),
+                ttl: DEFAULT_PERSISTENT_CACHE_TTL,
+                size: undefined,
+                tags: undefined,
+                version: 1
+            };
         }
+
+        // If strict mode enabled, delegate to a lazily-loaded strict validator to keep this chunk small
+        if (this._strictPersistedValidation) {
+            try {
+                const mod = await import('./advancedCacheStrictValidation.js');
+                return mod.normalizePersistedMetadataStrict(metadata, this._maxMemoryUsage, this._metrics, this._logger);
+            } catch (e) {
+                this._logger.warn('Failed to load strict persistent validation module, falling back to tolerant parsing', e);
+                // fall through to tolerant parsing
+            }
+        }
+
+        // Tolerant parsing (lightweight)
+        const toNumber = (v) => {
+            if (typeof v === 'number' && Number.isFinite(v)) return v;
+            if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+            return NaN;
+        };
+
+        const rawTs = metadata.timestamp ?? metadata.ts;
+        const rawLa = metadata.lastAccess ?? metadata.la;
+        const rawTtl = metadata.ttl ?? metadata.tt;
+        const rawSz = metadata.size ?? metadata.sz;
+
+        const ts = toNumber(rawTs);
+        const la = toNumber(rawLa);
+        const ttl = toNumber(rawTtl);
+        const sz = toNumber(rawSz);
+
+        const tagsRaw = metadata.tags ?? metadata.tg;
+
         return {
-            timestamp: metadata.timestamp ?? metadata.ts ?? Date.now(),
-            lastAccess: metadata.lastAccess ?? metadata.la ?? Date.now(),
-            ttl: metadata.ttl ?? metadata.tt ?? DEFAULT_PERSISTENT_CACHE_TTL,
-            size: metadata.size ?? metadata.sz,
-            tags: metadata.tags ?? metadata.tg,
+            timestamp: Number.isFinite(ts) ? ts : Date.now(),
+            lastAccess: Number.isFinite(la) ? la : Date.now(),
+            ttl: Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_PERSISTENT_CACHE_TTL,
+            size: Number.isFinite(sz) ? sz : undefined,
+            tags: Array.isArray(tagsRaw) ? tagsRaw : undefined,
             version: metadata.version ?? metadata.v ?? 1
         };
     }
 
-    _hydratePersistedEntry(snapshot) {
+    async _hydratePersistedEntry(snapshot) {
         if (!snapshot) {
             return null;
         }
-        const metadata = this._normalizePersistedMetadata(snapshot.metadata || snapshot.meta);
+        const metadata = await this._normalizePersistedMetadata(snapshot.metadata || snapshot.meta);
         if (!metadata) {
+            // If strict validation enabled, count rejection
+            if (this._strictPersistedValidation) {
+                this._metrics.persistentRejected++;
+            }
             return null;
         }
         return this._createCacheEntry(snapshot.data ?? snapshot.value, metadata);
@@ -176,6 +236,24 @@ class AdvancedCache {
         if (this._persistentCacheEnabled) {
             const persistentEntry = await this._getFromPersistentCache(key);
             if (persistentEntry) {
+                // If the persistent entry is larger than the current memory budget, avoid adding it to memory
+                // but return its value so callers can use it without causing a large memory allocation in the cache.
+                if (typeof persistentEntry.size === 'number' && persistentEntry.size > this._maxMemoryUsage) {
+                    // If the entry is only slightly oversized (small multiplier over budget), return value but do not load into memory.
+                    // If it's extremely oversized (very large compared to budget), skip returning to avoid heavy memory usage in callers.
+                    const oversizedBy = persistentEntry.size / Math.max(this._maxMemoryUsage, 1);
+                    if (oversizedBy > 4) {
+                        this._logger.debug(`Persistent entry ${key} is extremely oversized (size ${persistentEntry.size}) exceeding maxMemoryUsage ${this._maxMemoryUsage}; skipping return`);
+                        this._metrics.persistentRejected++;
+                        this._metrics.diskMisses++;
+                        return null;
+                    }
+                    this._logger.debug(`Persistent entry ${key} is oversized (size ${persistentEntry.size}) exceeding maxMemoryUsage ${this._maxMemoryUsage}; returning value without loading into memory`);
+                    // Count as a disk hit since we successfully returned the persisted value
+                    this._metrics.diskHits++;
+                    return persistentEntry.value;
+                }
+
                 this._addToMemory(key, persistentEntry, { skipDirtyFlag: true });
                 this._metrics.diskHits++;
                 return persistentEntry.value;
@@ -209,7 +287,11 @@ class AdvancedCache {
      */
     _addToMemory(key, entry, options = {}) {
         const { skipDirtyFlag = false } = options;
-        if (this._currentMemoryUsage + entry.size > this._maxMemoryUsage) {
+        // If the single entry is larger than the overall budget, log a warning and attempt eviction as before
+        if (typeof entry.size === 'number' && entry.size > this._maxMemoryUsage) {
+            this._logger.warn(`Entry ${key} size ${entry.size} exceeds maxMemoryUsage ${this._maxMemoryUsage}; attempting eviction to make room`);
+        }
+        if (this._currentMemoryUsage + (entry.size || 0) > this._maxMemoryUsage) {
             this._evictOldestItems(entry.size);
         }
         
@@ -307,12 +389,37 @@ class AdvancedCache {
 
         try {
             const cache = this._storage.get(this._storageKey, {});
+
+            // Validate top-level structure
+            if (!cache || typeof cache !== 'object' || Array.isArray(cache)) {
+                this._metrics.persistentRejected++;
+                this._logger.warn('Persistent cache snapshot invalid (expected object) - ignoring');
+                return;
+            }
+
             let loadedCount = 0;
             let skippedCount = 0;
 
             for (const [key, item] of Object.entries(cache)) {
-                const entry = this._hydratePersistedEntry(item);
+                const entry = await this._hydratePersistedEntry(item);
                 if (entry && this._isValid(entry)) {
+                    // Debug: report size and decision for diagnostic purposes
+                    this._logger.debug(`Loading persisted entry key=${key} size=${entry.size} maxMemoryUsage=${this._maxMemoryUsage}`);
+
+                    // If entry size is larger than maximum memory budget, skip adding to memory
+                    if (typeof entry.size === 'number' && entry.size > this._maxMemoryUsage) {
+                        this._logger.debug(`Skipping loading entry ${key} into memory: size (${entry.size}) exceeds maxMemoryUsage`);
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // If strict mode is enabled and entry size is missing, reject
+                    if (this._strictPersistedValidation && (typeof entry.size !== 'number' || !Number.isFinite(entry.size))) {
+                        this._metrics.persistentRejected++;
+                        skippedCount++;
+                        continue;
+                    }
+
                     this._addToMemory(key, entry, { skipDirtyFlag: true });
                     loadedCount++;
                     continue;
@@ -322,7 +429,7 @@ class AdvancedCache {
             this._memoryDirty = false;
 
             this._metrics.persistentLoads++;
-            this._logger.info(`Loaded persistent cache: ${loadedCount} items (${skippedCount} expired)`);
+            this._logger.info(`Loaded persistent cache: ${loadedCount} items (${skippedCount} expired/invalid)`);
         } catch (error) {
             this._logger.error('Failed to load persistent cache from globalState', error);
         }
@@ -375,8 +482,10 @@ class AdvancedCache {
 
         const cache = this._storage.get(this._storageKey, {});
         const item = cache[key];
-        const entry = this._hydratePersistedEntry(item);
+        const entry = await this._hydratePersistedEntry(item);
         if (entry && this._isValid(entry)) {
+            // Return hydrated entry to caller; caller may decide to load it into memory or
+            // return its value directly if it's larger than the current memory budget.
             return entry;
         }
         return null;

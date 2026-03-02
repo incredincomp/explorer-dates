@@ -172,9 +172,11 @@ async function runTests() {
     console.log(`\nTest Results: ${passed} passed, ${failed} failed`);
     
     if (failed > 0) {
-        process.exit(1);
+        require('./helpers/forceExit').scheduleExit(0, 1);
     } else {
         console.log('All Smart Watcher Fallback tests passed! ✅');
+        // Exit promptly on success to avoid CI hangs
+        require('./helpers/forceExit').scheduleExit(0, 0);
     }
 }
 

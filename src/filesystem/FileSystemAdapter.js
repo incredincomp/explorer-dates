@@ -2,10 +2,20 @@ const vscode = require('vscode');
 const { isWebEnvironment } = require('../utils/env');
 const { normalizePath } = require('../utils/pathUtils');
 const { ExtensionError, ERROR_CODES, isPermissionError } = require('../utils/errors');
-const { ensureDate } = require('../utils/dateHelpers');
+// Prefer shared utils chunk when available to reduce duplication
+let ensureDate;
+try {
+    const shared = require('../chunks/utils-shared-chunk');
+    if (shared) ensureDate = shared.ensureDate;
+} catch { /* ignore */ }
+if (!ensureDate) {
+    const dateHelpers = require('../utils/dateHelpers');
+    ensureDate = dateHelpers.ensureDate;
+}
 
-const isWebBuild = process.env.VSCODE_WEB === 'true';
-const forceWorkspaceFs = process.env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
+const isWebBuild = env.VSCODE_WEB === 'true' || isWebEnvironment();
+const forceWorkspaceFs = env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
 let nodeFs = null;
 if (!isWebBuild && !forceWorkspaceFs) {
     try {
@@ -18,6 +28,15 @@ if (!isWebBuild && !forceWorkspaceFs) {
 class FileSystemAdapter {
     constructor() {
         this.isWeb = isWebBuild || isWebEnvironment();
+    }
+
+    _shouldUseWorkspaceFs(target) {
+        try {
+            const uri = this._toUri(target);
+            return !!(uri?.scheme && uri.scheme !== 'file');
+        } catch {
+            return false;
+        }
     }
 
     _toPath(target) {
@@ -59,6 +78,15 @@ class FileSystemAdapter {
         }
 
         if (typeof target === 'string') {
+            const trimmed = target.trim();
+            const looksLikeWindowsDrive = /^[a-zA-Z]:[\\/]/.test(trimmed);
+            const looksLikeUri = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed);
+            if (looksLikeUri && !looksLikeWindowsDrive) {
+                const parsed = vscode.Uri.parse(trimmed);
+                if (parsed.scheme && parsed.scheme !== 'file') {
+                    return parsed;
+                }
+            }
             return vscode.Uri.file(target);
         }
 
@@ -71,11 +99,30 @@ class FileSystemAdapter {
                 }
             }
 
+            if (this.isWeb && typeof target.scheme === 'string' && typeof target.path === 'string') {
+                return vscode.Uri.from({
+                    scheme: target.scheme,
+                    authority: target.authority || '',
+                    path: target.path || '',
+                    query: target.query || '',
+                    fragment: target.fragment || ''
+                });
+            }
+
             if (typeof target.fsPath === 'string' && target.fsPath.length > 0) {
                 return vscode.Uri.file(target.fsPath);
             }
 
             if (typeof target.path === 'string' && target.path.length > 0) {
+                if (this.isWeb && typeof target.scheme === 'string' && target.scheme !== 'file') {
+                    return vscode.Uri.from({
+                        scheme: target.scheme,
+                        authority: target.authority || '',
+                        path: target.path,
+                        query: target.query || '',
+                        fragment: target.fragment || ''
+                    });
+                }
                 return vscode.Uri.file(target.path);
             }
 
@@ -112,7 +159,8 @@ class FileSystemAdapter {
     }
 
     async stat(target) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.stat(this._toPath(target));
         }
 
@@ -129,7 +177,8 @@ class FileSystemAdapter {
     }
 
     async readFile(target, encoding = 'utf8') {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.readFile(this._toPath(target), encoding);
         }
 
@@ -146,7 +195,8 @@ class FileSystemAdapter {
     async writeFile(target, data, encoding = 'utf8') {
         const targetPath = this._toPath(target);
         try {
-            if (!this.isWeb && nodeFs) {
+            const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+            if (!this.isWeb && nodeFs && !useWorkspaceFs) {
                 return nodeFs.writeFile(targetPath, data, encoding);
             }
 
@@ -161,7 +211,8 @@ class FileSystemAdapter {
     async mkdir(target, options = { recursive: true }) {
         const targetPath = this._toPath(target);
         try {
-            if (!this.isWeb && nodeFs) {
+            const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+            if (!this.isWeb && nodeFs && !useWorkspaceFs) {
                 return nodeFs.mkdir(targetPath, options);
             }
 
@@ -173,7 +224,8 @@ class FileSystemAdapter {
     }
 
     async readdir(target, options = { withFileTypes: false }) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             return nodeFs.readdir(this._toPath(target), options);
         }
 
@@ -192,7 +244,8 @@ class FileSystemAdapter {
     }
 
     async delete(target, options = { recursive: false }) {
-        if (!this.isWeb && nodeFs) {
+        const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
+        if (!this.isWeb && nodeFs && !useWorkspaceFs) {
             const fsPath = this._toPath(target);
             if (options.recursive) {
                 return nodeFs.rm ? nodeFs.rm(fsPath, options) : nodeFs.rmdir(fsPath, options);

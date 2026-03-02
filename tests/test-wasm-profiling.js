@@ -6,8 +6,9 @@
  */
 
 const { performance } = require('perf_hooks');
-const fs = require('fs');
+const fs = require('fs'); void fs;
 const path = require('path');
+const { WEB_EXCLUDED_CHUNKS } = require('../src/shared/chunkMap');
 
 // Set up VS Code mock
 const { createTestMock } = require('./helpers/mockVscode');
@@ -95,17 +96,21 @@ async function testWasmProfilingSystem() {
 
         // Validate built chunk artifacts exist and contain profiling code
         const chunkTargets = [
-            { label: 'Node', file: path.join(__dirname, '../dist/chunks/incrementalWorkers.js') },
-            { label: 'Web', file: path.join(__dirname, '../dist/web-chunks/incrementalWorkers.js') }
+            { label: 'Node', file: path.join(__dirname, '../dist/chunks/incrementalWorkers.js'), required: true },
+            { label: 'Web', file: path.join(__dirname, '../dist/web-chunks/incrementalWorkers.js'), required: !WEB_EXCLUDED_CHUNKS.has('incrementalWorkers') }
         ];
 
         const chunkMarkers = ['IndexWorkerHost', 'performanceStats', 'wasmTotalTime'];
 
         for (const target of chunkTargets) {
             const exists = fs.existsSync(target.file);
-            addResult(`${target.label} incremental workers chunk exists`, exists, target.file);
+            addResult(
+                `${target.label} incremental workers chunk exists`,
+                target.required ? exists : !exists,
+                target.file
+            );
 
-            if (!exists) {
+            if (!exists || !target.required) {
                 continue;
             }
 
@@ -202,12 +207,12 @@ if (require.main === module) {
         .then(success => {
             // Clean up mock
             mockSetup.dispose();
-            process.exit(success ? 0 : 1);
+            require('./helpers/forceExit').scheduleExit(0, success ? 0 : 1);
         })
         .catch(error => {
             console.error('❌ Test runner error:', error);
             mockSetup.dispose();
-            process.exit(1);
+            require('./helpers/forceExit').scheduleExit(0, 1);
         });
 }
 

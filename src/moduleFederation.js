@@ -3,7 +3,7 @@
  * Splits extension into loadable chunks to reduce initial bundle size
  */
 
-const { CHUNK_MAP } = require('./shared/chunkMap');
+const { CHUNK_MAP, WEB_EXCLUDED_CHUNKS } = require('./shared/chunkMap');
 
 // Configuration for module federation
 const federationConfig = {
@@ -17,6 +17,7 @@ const federationConfig = {
                     runtimeEntry: `./chunks/${chunkName}.js`,
                     includes: getChunkIncludes(chunkName),
                     external: getChunkExternal(chunkName),
+                    webExclude: WEB_EXCLUDED_CHUNKS.has(chunkName),
                     ...getChunkMetadata(chunkName)
                 }
             ])
@@ -38,8 +39,10 @@ function getChunkIncludes(chunkName) {
         extensionApi: ['src/extensionApi.js'],
         advancedCache: ['src/advancedCache.js'],
         batchProcessor: ['src/batchProcessor.js'],
-        decorationsAdvanced: ['src/fileDateDecorationProvider.js'],
-        workspaceIntelligence: ['src/incrementalIndexer.js', 'src/smartExclusion.js'],
+        // decorationsAdvanced delegates provider implementation to the dedicated provider chunk
+        decorationsAdvanced: [],
+        workspaceIntelligence: ['src/smartExclusion.js'],
+        incrementalIndexer: ['src/incrementalIndexer.js'],
         incrementalWorkers: ['src/workers/indexWorkerHost.js'],
         uiAdapters: ['src/themeIntegration.js', 'src/accessibility.js'],
         gitInsights: ['src/chunks/git-insights-chunk.js'],
@@ -53,10 +56,14 @@ function getChunkIncludes(chunkName) {
  * Get the external dependencies for a specific chunk
  */
 function getChunkExternal(chunkName) {
-    const baseExternal = ['vscode', './core'];
+    // Treat localization as a shared dependency to avoid duplicating large
+    // translation bundles across every chunk. It will be provided by the
+    // core bundle (`dist/extension.js`) and referenced from chunks at runtime.
+    const baseExternal = ['vscode', './core', './utils/localization', 'src/utils/localization'];
     const additionalExternal = {
         onboarding: ['./onboarding-assets'],
-        analysis: ['./diagnostics']
+        analysis: ['./diagnostics', '../utils/localization'],
+        runtimeManagement: ['./team-persistence-chunk', '../chunks/team-persistence-chunk']
     };
     return [...baseExternal, ...(additionalExternal[chunkName] || [])];
 }

@@ -1,5 +1,4 @@
 const fs = require('fs');
-const fsp = fs.promises;
 const path = require('path');
 const Module = require('module');
 const { registerFeatureFlagsGlobal } = require('../../src/utils/featureFlagsBridge');
@@ -229,6 +228,7 @@ function createConfiguration(
     };
 
     return function getConfiguration(section, _scope) {
+        void _scope;
         if (!section) {
             return {
                 get(key, defaultValue) {
@@ -858,8 +858,8 @@ function createMockVscode(options = {}) {
                     dispose() {}
                 };
             },
-            createWebviewPanel() {
-                return {
+            createWebviewPanel(_, title) {
+                const panel = {
                     webview: {
                         html: '',
                         postMessage() {},
@@ -870,6 +870,12 @@ function createMockVscode(options = {}) {
                     reveal() {},
                     dispose() {}
                 };
+                try {
+                    pushLog(`createWebviewPanel:${title || 'unknown'}`);
+                } catch {
+                    // ignore logging errors in tests
+                }
+                return panel;
             },
             createStatusBarItem() {
                 return {
@@ -895,8 +901,12 @@ function createMockVscode(options = {}) {
             async showInformationMessage(message) {
                 pushLog(message);
                 const options = Array.from(arguments).slice(1);
+                // Prefer non-destructive choices during automated tests to avoid unexpected state changes
+                if (options.includes('Keep Old Settings')) return 'Keep Old Settings';
+                if (options.includes('Ask Later')) return 'Ask Later';
                 return options.find((option) => typeof option === 'string') || message;
             },
+
             async showWarningMessage(message) {
                 pushLog(message);
                 return message;
@@ -941,6 +951,7 @@ function createMockVscode(options = {}) {
                 };
             },
             async getCommands(_filterInternal = true) {
+                void _filterInternal;
                 return Array.from(commandRegistry.keys());
             },
             async executeCommand(commandId, ...args) {
@@ -1257,6 +1268,20 @@ function createMockVscode(options = {}) {
         getActiveFsOperations: () => (workspaceFs._getActiveStats ? workspaceFs._getActiveStats() : []),
         dispose
     };
+
+    // Backwards-compatibility: expose the actual `vscode` API properties directly on the
+    // returned mock so callers can use either `mock.vscode.*` or `mock.*` consistently
+    // across standalone scripts and test-runner contexts.
+    try {
+        for (const [key, value] of Object.entries(actualVscodeMock)) {
+            if (typeof key === 'string' && !(key in mockResult)) {
+                mockResult[key] = value;
+            }
+        }
+    } catch (err) {
+        // non-fatal - preserve original behavior if copying fails
+        console.warn('Mock compatibility: failed to mirror vscode properties on wrapper:', err && err.message);
+    }
     
     // Add isolation features if requested
     if (options.isolated) {
@@ -1322,6 +1347,45 @@ function createExtensionContext(overrides = {}) {
 }
 
 // Chunk testing utilities
+
+// Create a small, realistic feature-loader stub used by tests when they need a
+// lightweight chunk-shaped module rather than the full production chunk. The
+// stub returns a Promise-resolving module and provides both factory-style and
+// constructor-style exports where applicable (e.g. onboarding).
+function createFeatureLoaderStub(chunkName) {
+    const pascal = chunkName.replace(/(^|-)([a-z])/g, (_, p, c) => c.toUpperCase());
+    const factoryName = `create${pascal.endsWith('Chunk') ? pascal : pascal}` + (chunkName === 'onboarding' ? 'Manager' : 'Manager');
+
+    // Special-case onboarding because many tests call onboarding managers directly
+    if (chunkName === 'onboarding') {
+        class OnboardingManager {
+            constructor(context) { this._context = context; }
+            async shouldShowOnboarding() { return false; }
+            showWelcomeMessage() { /* noop */ }
+            dispose() { /* noop */ }
+        }
+        return async () => ({
+            OnboardingManager,
+            createOnboardingManager: (ctx) => new OnboardingManager(ctx)
+        });
+    }
+
+    // Generic minimal manager factory for other chunk types
+    const genericFactory = () => ({
+        // provide a no-op lifecycle surface so consumers can call initialize()/dispose()
+        initialize: async () => {},
+        dispose: () => {}
+    });
+
+    return async () => {
+        const exportObj = {};
+        exportObj[factoryName] = (ctx) => genericFactory(ctx);
+        // also expose a simple marker for tests that only check module presence
+        exportObj._stubFor = chunkName;
+        return exportObj;
+    };
+}
+
 function loadChunkForTesting(chunkName, options = {}) {
     const { suppressLoadErrors = true } = options;
     const { CHUNK_MAP } = require('../../src/shared/chunkMap');
@@ -1365,7 +1429,27 @@ function loadBuiltChunkForTesting(chunkName, options = {}) {
     const originalWebFlag = process.env.VSCODE_WEB;
     if (target === 'web') {
         process.env.VSCODE_WEB = 'true';
+        // Define expected web runtime globals so web chunks can be required in Node for tests
+        globalThis.__EXPLORER_DATES_WEB_CHUNKS__ = globalThis.__EXPLORER_DATES_WEB_CHUNKS__ || {};
+        globalThis.__LEGACY_WEB_CHUNKS__ = globalThis.__LEGACY_WEB_CHUNKS__ || '__EXPLORER_DATES_WEB_CHUNKS__';
+        globalThis.__ED_CHUNKS__ = globalThis.__ED_CHUNKS__ || {};
+        globalThis.__ED_CHUNKS_LEGACY__ = globalThis.__ED_CHUNKS_LEGACY__ || '__ED_CHUNKS__';
+        globalThis.explorerDatesChunks = globalThis.explorerDatesChunks || '__explorerDatesChunks__';
+        globalThis.__explorerDatesChunks = globalThis.__explorerDatesChunks || {};
+        // Provide symbolic chunk name keys so registry assignment in chunks works
+        globalThis.providerInit = globalThis.providerInit || 'providerInit';
+        globalThis.utilsShared = globalThis.utilsShared || 'utilsShared';
+        // Ensure each chunk name is available as a global identifier (some web bundles reference chunk names directly)
+        try {
+            const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+            Object.keys(CHUNK_MAP).forEach((cn) => {
+                if (typeof globalThis[cn] === 'undefined') globalThis[cn] = cn;
+            });
+        } catch {
+            // ignore
+        }
     }
+
     try {
         ensureFeatureFlagsRegistered();
         delete require.cache[chunkPath];
@@ -1414,17 +1498,25 @@ function validateAllChunks() {
 }
 
 function validateBuiltChunks(target = 'node') {
-    const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+    const { CHUNK_MAP, WEB_EXCLUDED_CHUNKS } = require('../../src/shared/chunkMap');
     const chunkNames = Object.keys(CHUNK_MAP);
+    
     const results = {
         target,
         success: true,
         loadedCount: 0,
-        totalCount: chunkNames.length,
-        errors: {}
+        totalCount: target === 'web' ? chunkNames.length - WEB_EXCLUDED_CHUNKS.size : chunkNames.length,
+        errors: {},
+        skipped: []
     };
 
     for (const chunkName of chunkNames) {
+        // Skip chunks that are intentionally excluded from web builds
+        if (target === 'web' && WEB_EXCLUDED_CHUNKS.has(chunkName)) {
+            results.skipped.push(chunkName);
+            continue;
+        }
+        
         try {
             const chunk = loadBuiltChunkForTesting(chunkName, { target, suppressLoadErrors: false });
             if (chunk) {
@@ -1500,6 +1592,7 @@ module.exports = {
     workspaceRoot,
     sampleWorkspaceRoot,
     // Chunk testing utilities
+    createFeatureLoaderStub,
     loadChunkForTesting,
     loadBuiltChunkForTesting,
     validateAllChunks,

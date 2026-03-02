@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 const assert = require('assert');
-const path = require('path');
 const { scheduleExit } = require('./helpers/forceExit');
 const { createTestMock, createExtensionContext } = require('./helpers/mockVscode');
 const { addWarningFilters } = require('./helpers/warningFilters');
+const { expectMissingBuiltChunkWarning } = require('./helpers/chunk-test-env');
 
 addWarningFilters([
     /Feature loader failed/,
@@ -14,8 +14,23 @@ addWarningFilters([
     /is not available because the required/,
     /Export reporting is not available/,
     /Workspace templates is not available/,
-    /Extension API is not available/
+    /Extension API is not available/,
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
+    /Failed to register analysis commands: Module 'analysisCommands' not found/,
+    /Failed to generate report .*ChunkLoadError: Failed to load exportReporting/,
+    /Failed to open template manager .*ChunkLoadError: Failed to load workspaceTemplates/,
+    /Failed to show API information .*ChunkLoadError: Failed to load extensionApi/
 ]);
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'decorationsAdvanced',
+    reason: 'chunk-loading tests intentionally exercise missing built chunks'
+});
+
+expectMissingBuiltChunkWarning({
+    chunkName: 'loggerImpl',
+    reason: 'chunk-loading tests intentionally exercise missing built chunks'
+});
 
 /**
  * Critical Tests for Feature-Module Loading Failures
@@ -332,12 +347,10 @@ async function testLoaderTimeout() {
         // Prevent unhandled rejections if the loader later times out internally
         loadPromise.catch(() => {});
         
-        let timeoutOccurred = false;
         try {
             await Promise.race([loadPromise, timeoutPromise]);
         } catch (error) {
             if (error.message.includes('timeout test exceeded')) {
-                timeoutOccurred = true;
                 console.log(`ℹ️  ${timeoutScenario.name} loader timeout detected as expected`);
             } else {
                 throw error;
@@ -347,6 +360,7 @@ async function testLoaderTimeout() {
         // In a real scenario, we'd want the loader to have internal timeouts
         // For now, verify that the hanging loader doesn't break extension activation
         const context = createExtensionContext();
+        delete require.cache[require.resolve('../extension')];
         const extension = require('../extension');
         
         // Quick activation test - shouldn't wait for hanging loader
@@ -517,11 +531,10 @@ async function testWebEnvironmentChunkFailures() {
         console.log('✅ Web environment: Extension activated despite network failures');
         
         // Verify web-specific error handling
-        let onboardingResult = null;
         let networkError = null;
         
         try {
-            onboardingResult = await featureFlags.onboarding();
+            await featureFlags.onboarding();
         } catch (error) {
             networkError = error;
         }
@@ -557,6 +570,7 @@ async function testWebEnvironmentChunkFailures() {
         console.log('✅ Web environment chunk failure testing completed');
         
     } finally {
+        delete require.cache[require.resolve('../extension')];
         delete process.env.VSCODE_WEB;
         mockInstall.dispose();
     }
