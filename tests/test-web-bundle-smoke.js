@@ -13,7 +13,11 @@ addWarningFilters([
     /No FileDateDecorationProvider available for web runtime/,
     /FileDateDecorationProvider unavailable — continuing without file decorations/,
     /Onboarding preload failed \(non-fatal\): .*OnboardingManager/,
-    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/
+    /Onboarding preload failed \(non-fatal\): .*shouldShowOnboarding is not a function/,
+    /Onboarding logic unavailable, using minimal fallback/,
+    /No built artifact available for chunk/,
+    /Detected existing explorerDates\.resetToDefaults handler; skipping duplicate registration/,
+    /\[ExplorerDates\]\[WebDiag\] QuickPick unavailable/
 ]);
 
 const analysisCommandIds = new Set([

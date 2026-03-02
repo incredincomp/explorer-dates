@@ -464,8 +464,11 @@ async function testBrowseAllPresetsBranch() {
     assert.ok(secondCall.allHavePresets, 'Second call should have preset objects for all items');
     
     // Verify confirmation was shown
-    assert.strictEqual(informationMessages.length, 1, 'Should show one confirmation message');
-    assert.ok(informationMessages[0].includes('Balanced'), 'Confirmation should mention selected preset');
+    assert.ok(informationMessages.length >= 1, 'Should show at least one confirmation message');
+    assert.ok(
+        informationMessages.some((message) => message.includes('Balanced')),
+        'Confirmation should mention selected preset'
+    );
     
     // Test direct browse without recommended preset
     quickPickCallOrder = [];

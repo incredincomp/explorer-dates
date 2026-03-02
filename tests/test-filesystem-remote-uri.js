@@ -50,4 +50,6 @@ async function runTests() {
 runTests().catch((error) => {
     console.error('filesystem remote URI test failed', error);
     process.exitCode = 1;
+}).finally(() => {
+    scheduleExit(0, process.exitCode ?? 0);
 });

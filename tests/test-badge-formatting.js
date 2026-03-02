@@ -11,8 +11,10 @@
  */
 
 const assert = require('assert');
-const { formatBadge } = require('../src/utils/freshnessResolver');
+const { createTestMock } = require('./helpers/mockVscode');
 const { scheduleExit } = require('./helpers/forceExit');
+const mockInstall = createTestMock();
+const { formatBadge } = require('../src/utils/freshnessResolver');
 
 scheduleExit(60000);
 
@@ -166,4 +168,12 @@ function runTests() {
     });
 }
 
-runTests();
+try {
+    runTests();
+    scheduleExit(0, 0);
+} catch (error) {
+    scheduleExit(0, 1);
+    throw error;
+} finally {
+    mockInstall.dispose();
+}

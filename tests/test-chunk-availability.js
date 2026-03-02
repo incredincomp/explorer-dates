@@ -3,6 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { WEB_EXCLUDED_CHUNKS } = require('../src/shared/chunkMap');
 
 // Core production chunks that must exist in both node and web builds
 const REQUIRED_CHUNKS = [
@@ -52,7 +53,9 @@ function assertChunkHealthy(chunkName, targetLabel, targetDir) {
 
 function assertChunkExists(chunkName) {
     assertChunkHealthy(chunkName, 'node', 'chunks');
-    assertChunkHealthy(chunkName, 'web', 'web-chunks');
+    if (!WEB_EXCLUDED_CHUNKS.has(chunkName)) {
+        assertChunkHealthy(chunkName, 'web', 'web-chunks');
+    }
 }
 
 function main() {

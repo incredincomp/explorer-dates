@@ -71,7 +71,9 @@ if (!isWebEnvironment()) {
     }
 }
 const AUTO_SUGGESTION_DELAY_MS = 3000;
-const CRITICAL_CHUNKS = isWebEnvironment() ? [] : ['incrementalWorkers'];
+function getCriticalChunks() {
+    return isWebEnvironment() ? [] : ['incrementalWorkers'];
+}
 
 function resolveDefaultDistPath() {
     if (!nodePath || typeof nodePath.basename !== 'function' || typeof nodePath.join !== 'function') {
@@ -693,7 +695,7 @@ async function activate(context) {
         context.subscriptions.push(l10n);
         initializeTemplateStore(context);
         chunkLoader.initialize(context);
-        chunkLoader.assertChunkArtifacts(CRITICAL_CHUNKS);
+        chunkLoader.assertChunkArtifacts(getCriticalChunks());
         setFeatureChunkResolver((chunkName) =>
             isWebEnvironment()
                 ? chunkLoader._loadWebChunk(chunkName)

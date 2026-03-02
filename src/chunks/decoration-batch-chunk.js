@@ -1,5 +1,4 @@
 const { getFeatureFlagsGlobal } = require('../utils/featureFlagsBridge');
-const featureFlags = getFeatureFlagsGlobal();
 
 function ensureProgressiveJobSet(provider) {
     let jobs = provider['_progressiveLoadingJobs'];
@@ -12,6 +11,11 @@ function ensureProgressiveJobSet(provider) {
 
 async function loadBatchProcessorIfNeeded(provider) {
     if (provider['_performanceMode']) return null;
+    const featureFlags = getFeatureFlagsGlobal();
+    if (!featureFlags || typeof featureFlags.batchProcessor !== 'function') {
+        provider['_logger']?.debug?.('BatchProcessor feature flags not available');
+        return null;
+    }
 
     if (!provider['_batchProcessorModule']) {
         try {

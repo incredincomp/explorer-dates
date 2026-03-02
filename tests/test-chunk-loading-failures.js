@@ -360,6 +360,7 @@ async function testLoaderTimeout() {
         // In a real scenario, we'd want the loader to have internal timeouts
         // For now, verify that the hanging loader doesn't break extension activation
         const context = createExtensionContext();
+        delete require.cache[require.resolve('../extension')];
         const extension = require('../extension');
         
         // Quick activation test - shouldn't wait for hanging loader
@@ -569,6 +570,7 @@ async function testWebEnvironmentChunkFailures() {
         console.log('✅ Web environment chunk failure testing completed');
         
     } finally {
+        delete require.cache[require.resolve('../extension')];
         delete process.env.VSCODE_WEB;
         mockInstall.dispose();
     }

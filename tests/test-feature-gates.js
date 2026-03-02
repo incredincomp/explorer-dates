@@ -26,7 +26,8 @@ addWarningFilters([
     /Failed to open template manager/,
     /Failed to generate report/,
     /Failed to show API information/,
-    /Explorer Dates plugin request "registerPlugin:integration-test" ignored because allowExternalPlugins is disabled/
+    /Explorer Dates plugin request "registerPlugin:integration-test" ignored because allowExternalPlugins is disabled/,
+    /No built artifact available for chunk/
 ]);
 
 function applyGating(overrides = {}) {

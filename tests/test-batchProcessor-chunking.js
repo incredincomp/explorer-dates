@@ -50,11 +50,14 @@ async function testProgressiveLoadingDisabled() {
 
     await runTest('Disposes BatchProcessor when progressive loading toggled off', async provider => {
         const originalGet = vscode.workspace.getConfiguration;
+        const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
         const config = value => () => ({
             get: (key, defaultValue) => (key === 'progressiveLoading' ? value : defaultValue)
         });
         
         try {
+            // Avoid background warmup jobs in this unit test.
+            vscode.workspace.workspaceFolders = [];
             vscode.workspace.getConfiguration = config(true);
             await applyProgressiveLoadingSetting(provider);
             assert.notStrictEqual(provider._batchProcessor, null);
@@ -65,6 +68,7 @@ async function testProgressiveLoadingDisabled() {
             assert.strictEqual(provider._progressiveLoadingEnabled, false);
         } finally {
             vscode.workspace.getConfiguration = originalGet;
+            vscode.workspace.workspaceFolders = originalWorkspaceFolders;
         }
     });
 }
