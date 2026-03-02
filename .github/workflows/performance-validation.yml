@@ -54,7 +54,23 @@ jobs:
       - name: Run bundle & decoration baseline suite
         run: |
           set -euo pipefail
-          if ls tests/test-performance-baseline*.js tests/test-performance-*.js >/dev/null 2>&1; then for f in tests/test-performance*.js; do echo "Running $f"; node "$f"; done; else echo "Skipping performance-baselines tests (missing)"; fi
+          shopt -s nullglob
+          baseline_candidates=(tests/test-performance-baseline*.js tests/test-performance-*.js)
+          baseline_files=()
+          for f in "${baseline_candidates[@]}"; do
+            case "$f" in
+              tests/test-performance-regression*) continue ;;
+            esac
+            baseline_files+=("$f")
+          done
+          if [ ${#baseline_files[@]} -eq 0 ]; then
+            echo "Skipping performance-baselines tests (missing)"
+          else
+            for f in "${baseline_files[@]}"; do
+              echo "Running $f"
+              node "$f"
+            done
+          fi
         env:
           EXPLORER_DATES_UPDATE_PERF_BASELINES: ${{ env.PERF_UPDATE_BASELINES }}
 
