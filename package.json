@@ -1138,6 +1138,7 @@
   "scripts": {
     "lint": "eslint .",
     "test:critical": "npm run lint && npm run test:config && npm run test:config-audit && npm run test:config-scenarios",
+    "test:security-utils": "node -r ./tests/helpers/strictConsole.js tests/test-security-utils.js && node -r ./tests/helpers/strictConsole.js tests/test-security-allowed-paths-behavior.js",
     "test": "npm run test:suite",
     "test:suite": "npm run compile && npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:extras && npm run test:performance",
     "test:config": "node -r ./tests/helpers/strictConsole.js tests/verify-config.js",

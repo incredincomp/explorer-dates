@@ -1,6 +1,7 @@
 const DEFAULT_WARNING_PATTERNS = [
     /Security workspace boundary enforcement relaxed/,
-    /Duplicate explorerDates\.resetToDefaults registration skipped/
+    /Duplicate explorerDates\.resetToDefaults registration skipped/,
+    /Freshness source unavailable, falling back to unknown.*"policy":"(git|github)"/
 ];
 
 const activePatterns = new Map();

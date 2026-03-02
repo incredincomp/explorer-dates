@@ -1296,13 +1296,17 @@ class FileDateDecorationProviderImpl {
         }
     }
 
-    _logFreshnessWarningOnce(reason, uri) {
+    _logFreshnessWarningOnce(reason, uri, sourcePolicy = 'auto') {
         try {
-            const key = reason || 'unknown';
+            const normalizedPolicy = String(sourcePolicy || 'auto').toLowerCase();
+            const normalizedReason = reason || 'unknown';
+            const key = `${normalizedPolicy}:${normalizedReason}`;
             if (this._freshnessWarningReasons.has(key)) return;
             this._freshnessWarningReasons.add(key);
-            this._logger?.warn?.('Freshness source unavailable, falling back to unknown', {
-                reason: key,
+            const logMethod = (normalizedPolicy === 'git' || normalizedPolicy === 'github') ? 'warn' : 'debug';
+            this._logger?.[logMethod]?.('Freshness source unavailable, falling back to unknown', {
+                reason: normalizedReason,
+                policy: normalizedPolicy,
                 uri: uri ? getUriPath(uri) : null
             });
         } catch {
@@ -1502,7 +1506,7 @@ class FileDateDecorationProviderImpl {
         });
         this._storeFreshnessCache(cacheKey, freshness);
         if (freshness?.source === 'unknown') {
-            this._logFreshnessWarningOnce(freshness?.reason || 'unknown', uri);
+            this._logFreshnessWarningOnce(freshness?.reason || 'unknown', uri, sourcePolicy);
         }
         return freshness;
     }
