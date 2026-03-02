@@ -1498,31 +1498,21 @@ function validateAllChunks() {
 }
 
 function validateBuiltChunks(target = 'node') {
-    const { CHUNK_MAP } = require('../../src/shared/chunkMap');
+    const { CHUNK_MAP, WEB_EXCLUDED_CHUNKS } = require('../../src/shared/chunkMap');
     const chunkNames = Object.keys(CHUNK_MAP);
-    
-    // Chunks excluded from web builds (Node.js-only features)
-    const WEB_EXCLUDED_CHUNKS = [
-        'reporting',
-        'templates', 
-        'advancedCache',
-        'incrementalWorkers',
-        'gitInsights',
-        'runtimeManagementHeavy'
-    ];
     
     const results = {
         target,
         success: true,
         loadedCount: 0,
-        totalCount: target === 'web' ? chunkNames.length - WEB_EXCLUDED_CHUNKS.length : chunkNames.length,
+        totalCount: target === 'web' ? chunkNames.length - WEB_EXCLUDED_CHUNKS.size : chunkNames.length,
         errors: {},
         skipped: []
     };
 
     for (const chunkName of chunkNames) {
         // Skip chunks that are intentionally excluded from web builds
-        if (target === 'web' && WEB_EXCLUDED_CHUNKS.includes(chunkName)) {
+        if (target === 'web' && WEB_EXCLUDED_CHUNKS.has(chunkName)) {
             results.skipped.push(chunkName);
             continue;
         }

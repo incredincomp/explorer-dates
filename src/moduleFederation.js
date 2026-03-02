@@ -3,16 +3,7 @@
  * Splits extension into loadable chunks to reduce initial bundle size
  */
 
-const { CHUNK_MAP } = require('./shared/chunkMap');
-
-const WEB_EXCLUDED_CHUNKS = new Set([
-    'gitInsights',
-    'reporting',
-    'templates',
-    'advancedCache',
-    'runtimeManagementHeavy',
-    'incrementalWorkers'
-]);
+const { CHUNK_MAP, WEB_EXCLUDED_CHUNKS } = require('./shared/chunkMap');
 
 // Configuration for module federation
 const federationConfig = {

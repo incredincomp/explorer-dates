@@ -79,8 +79,22 @@ function generateDevLoaderMap(localRequire) {
     return map;
 }
 
+/**
+ * Chunks that are intentionally excluded from the web (browser) build.
+ * These chunks rely on Node.js-only APIs (e.g. child_process, git, fs).
+ */
+const WEB_EXCLUDED_CHUNKS = new Set([
+    'gitInsights',
+    'reporting',
+    'templates',
+    'advancedCache',
+    'runtimeManagementHeavy',
+    'incrementalWorkers'
+]);
+
 module.exports = {
     CHUNK_MAP,
+    WEB_EXCLUDED_CHUNKS,
     getChunkSourcePath,
     getAllChunkNames,
     generateDevLoaderMap

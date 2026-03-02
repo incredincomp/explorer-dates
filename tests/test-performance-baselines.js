@@ -12,7 +12,7 @@ const {
     BASE_BUNDLE_SIZE,
     calculateBundleSize
 } = require('../src/presetDefinitions');
-const { CHUNK_MAP } = require('../src/shared/chunkMap');
+const { CHUNK_MAP, WEB_EXCLUDED_CHUNKS } = require('../src/shared/chunkMap');
 const { createTestMock, VSCodeUri } = require('./helpers/mockVscode');
 const { BaselineManager } = require('./baseline-manager');
 
@@ -88,12 +88,15 @@ async function readBuiltBundleSnapshot() {
     for (const target of ['node', 'web']) {
         const dir = path.join(__dirname, '..', 'dist', target === 'web' ? 'web-chunks' : 'chunks');
         const dirExists = await pathExists(dir);
+        const targetChunkNames = target === 'web'
+            ? chunkNames.filter(n => !WEB_EXCLUDED_CHUNKS.has(n))
+            : chunkNames;
         if (!dirExists) {
-            snapshot[target].missing = chunkNames.slice();
+            snapshot[target].missing = targetChunkNames.slice();
             continue;
         }
 
-        for (const chunkName of chunkNames) {
+        for (const chunkName of targetChunkNames) {
             const chunkPath = path.join(dir, `${chunkName}.js`);
             try {
                 const stats = await fsp.stat(chunkPath);
