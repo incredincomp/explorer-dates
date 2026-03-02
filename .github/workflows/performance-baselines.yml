@@ -29,6 +29,9 @@ jobs:
       - name: Build extension bundles
         run: npm run package-bundle
 
+      - name: Verify dist parity
+        run: npm run test:dist-parity
+
       - name: Run performance baseline suite
         run: npm run test:performance-baselines
 

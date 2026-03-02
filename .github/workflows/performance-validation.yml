@@ -38,6 +38,9 @@ jobs:
       - name: Build extension bundles
         run: npm run package-bundle
 
+      - name: Verify dist parity
+        run: npm run test:dist-parity
+
       - name: Verify chunk exports ordering
         run: npm run test:chunk-exports
 
