@@ -48,7 +48,7 @@ async function withTrustGuard(operation, operationName = 'operation') {
     try {
         requireWorkspaceTrust(operationName);
         return await operation();
-    } catch (error) {
+    } catch {
         // Error already shown to user via requireWorkspaceTrust
         return null;
     }

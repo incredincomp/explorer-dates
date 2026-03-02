@@ -1,7 +1,6 @@
 const vscode = require('vscode');
-const { normalizePath, getRelativePath, getUriPath } = require('./pathUtils');
-const { isWebEnvironment } = require('./env');
-const { diagLog, diagLogOnce } = require('./webDiagnostics');
+const { normalizePath, getRelativePath } = require('./pathUtils');
+const { diagLogOnce } = require('./webDiagnostics');
 
 const SOURCE_RANK = {
     unknown: 0,

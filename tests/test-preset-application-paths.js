@@ -456,7 +456,7 @@ async function testPresetSettingsInterdependencies() {
         const { PRESET_DEFINITIONS } = require('../src/presetDefinitions');
         const context = createExtensionContext();
         const runtimeManager = new RuntimeConfigManager(context);
-        const { configValues, appliedUpdates } = mockInstall;
+        const { configValues } = mockInstall;
         
         const settingApplicationOrder = [];
         const dependencyViolations = [];
