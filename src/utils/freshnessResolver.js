@@ -78,7 +78,7 @@ function formatBadgeAge(bucket) {
     }
 }
 
-function formatBadge(bucket, source, config, confidence = 'low') {
+function formatBadge(bucket, source, config) {
     const showUnknown = Boolean(getConfigValue(config, 'freshnessShowUnknown', true));
     if (bucket === 'unknown' || source === 'unknown') {
         return showUnknown ? '?' : null;
