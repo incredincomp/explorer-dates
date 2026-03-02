@@ -105,11 +105,11 @@ Because source information cannot fit in a 2-character badge, it is included in 
 - Setting: `explorerDates.badge.sourceLabelMode`
 - Default: `"auto"`
 
-| Value | Behavior |
-|-------|----------|
-| Value | Behavior |
-| `"always"` | Always includes `Source:` in the tooltip. |
-| `"never"`  | Omits `Source:` from all tooltips. |
+| Value     | Behavior |
+|-----------|----------|
+| `"auto"`  | Includes `Source:` when it adds context (for example, Git or low-confidence sources); hides it for high-confidence filesystem timestamps. |
+| `"always"`| Always includes `Source:` in the tooltip. |
+| `"never"` | Omits `Source:` from all tooltips. |
 
 Tooltip example — source is Git (`auto` mode, source line shown):
 ```
