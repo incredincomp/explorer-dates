@@ -44,6 +44,8 @@ function main() {
         `Missing npm scripts referenced by workflows:\n${missing.map((item) => `- ${item.script} (${item.workflow})`).join('\n')}`
     );
 
+    require('./test-public-pr-ci-contract.js');
+
     console.log(`✅ Workflow contract validated: ${workflowScripts.length} npm run references map to package.json scripts.`);
 }
 
