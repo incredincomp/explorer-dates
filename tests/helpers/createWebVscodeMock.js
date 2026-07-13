@@ -368,6 +368,7 @@ function createWebVscodeMock(options = {}) {
     const commandCalls = [];
     const commandRegistry = new Map();
     let fileWatcherCount = 0;
+    const configChangeListeners = new Set();
 
     const resolveWorkspaceFolderValue = (fullKey) => {
         if (Object.prototype.hasOwnProperty.call(workspaceFolderConfigStore, fullKey)) {
@@ -399,6 +400,12 @@ function createWebVscodeMock(options = {}) {
             setValue(configStore, fullKey, value);
         }
         appliedUpdates.push({ key: fullKey, value, target: targetLabel });
+        const event = {
+            affectsConfiguration(section) {
+                return !section || fullKey === section || fullKey.startsWith(`${section}.`);
+            }
+        };
+        configChangeListeners.forEach((listener) => listener(event));
     };
 
     const makeSectionConfig = (section = '') => {
@@ -470,8 +477,13 @@ function createWebVscodeMock(options = {}) {
         createFileSystemWatcher() {
             throw new Error('workspace.createFileSystemWatcher is unavailable in web environments');
         },
-        onDidChangeConfiguration() {
-            return { dispose() {} };
+        onDidChangeConfiguration(listener) {
+            configChangeListeners.add(listener);
+            return {
+                dispose() {
+                    configChangeListeners.delete(listener);
+                }
+            };
         },
         workspaceFolders: workspaceFolderEntries,
         fs: workspaceFs,

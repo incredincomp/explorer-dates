@@ -143,7 +143,14 @@ async function runWebSmokeTest() {
             assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
             const sampleFile = path.join(extensionRoot, 'tests', 'fixtures', 'sample-workspace', 'package.json');
             const sampleUri = harness.vscode.Uri.file(sampleFile).with({ scheme: 'vscode-vfs' });
-            await provider.provideFileDecoration(sampleUri);
+            const originalStat = fs.statSync(sampleFile);
+            const eligibleMtime = new Date(Date.now() - 10 * 60 * 1000);
+            fs.utimesSync(sampleFile, originalStat.atime, eligibleMtime);
+            try {
+                await provider.provideFileDecoration(sampleUri);
+            } finally {
+                fs.utimesSync(sampleFile, originalStat.atime, originalStat.mtime);
+            }
 
             const logText = diagState.logs
                 .map((entry) => `${entry.level}:${entry.message} ${(entry.meta && entry.meta.error) || ''}`)
