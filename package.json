@@ -1145,6 +1145,7 @@
     "test:workflow-contracts": "node -r ./tests/helpers/strictConsole.js tests/test-workflow-script-contracts.js",
     "test:freshness-policy-logging": "node -r ./tests/helpers/strictConsole.js tests/test-freshness-policy-logging.js",
     "test:warning-filters": "node -r ./tests/helpers/strictConsole.js tests/test-warning-filters-scope.js",
+    "test:web-config-event-contract": "node tests/test-web-config-event-contract.js",
     "test:dist-parity": "node scripts/check-dist-parity.js",
     "test:config-audit": "node -r ./tests/helpers/strictConsole.js tests/test-schema-audit.js",
     "test:config-scenarios": "node -r ./tests/helpers/strictConsole.js tests/test-configuration-scenarios.js",
