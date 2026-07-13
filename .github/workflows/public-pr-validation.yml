@@ -1,0 +1,158 @@
+name: Public PR Validation
+
+on:
+  pull_request:
+    branches:
+      - release/1.3
+  push:
+    branches:
+      - release/1.3
+  workflow_dispatch:
+    inputs:
+      validation_ref:
+        description: Exact commit SHA to validate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Public PR Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: "true"
+      NODE_ENV: test
+    steps:
+      - name: Resolve validation identity
+        id: resolve-validation
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_VALIDATION_SHA: ${{ inputs.validation_ref || '' }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ ! "$REQUESTED_VALIDATION_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "workflow_dispatch validation_ref must be a full lowercase 40-character SHA"
+              exit 1
+            fi
+            expected="$REQUESTED_VALIDATION_SHA"
+          else
+            expected="$EVENT_SHA"
+          fi
+          echo "EXPECTED_VALIDATION_SHA=$expected" >> "$GITHUB_ENV"
+          echo "expected_sha=$expected" >> "$GITHUB_OUTPUT"
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Verify and record validation identity
+        shell: bash
+        env:
+          REQUESTED_VALIDATION_SHA: ${{ inputs.validation_ref || '' }}
+          EXPECTED_VALIDATION_SHA: ${{ steps.resolve-validation.outputs.expected_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_VALIDATION_SHA"
+          mkdir -p validation-identity
+          node - <<'NODE'
+          const fs = require('fs');
+          const identity = {
+            requested_sha: process.env.REQUESTED_VALIDATION_SHA,
+            resolved_head: process.env.EXPECTED_VALIDATION_SHA,
+            repository: process.env.REPOSITORY,
+            workflow_run_id: process.env.RUN_ID,
+            event_name: process.env.EVENT_NAME
+          };
+          fs.writeFileSync('validation-identity/identity.json', `${JSON.stringify(identity, null, 2)}\n`);
+          NODE
+          {
+            echo '## Validated commit'
+            echo
+            echo "- Requested SHA: \\`$REQUESTED_VALIDATION_SHA\\`"
+            echo "- Resolved HEAD: \\`$actual\\`"
+            echo "- Event: \\`$EVENT_NAME\\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload validation identity
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-identity-${{ github.run_id }}
+          path: validation-identity/identity.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run critical tests
+        run: npm run test:critical
+
+      - name: Run feature-gate tests
+        run: npm run test:feature-gates
+
+      - name: Generate production bundles
+        run: npm run package-bundle
+
+      - name: Confirm production generation scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          unexpected=()
+          while IFS= read -r path; do
+            case "$path" in
+              dist/*) ;;
+              "") ;;
+              *) unexpected+=("$path") ;;
+            esac
+          done < <(git diff --name-only)
+          if [ "${#unexpected[@]}" -ne 0 ]; then
+            printf 'Unexpected tracked changes after production generation:\n%s\n' "${unexpected[*]}"
+            exit 1
+          fi
+
+      - name: Verify production artifact parity
+        run: npm run test:dist-parity
+
+      - name: Check production whitespace
+        run: git diff --check
+
+      - name: Verify bundle integrity
+        run: npm run test:bundle
+
+      - name: Verify production bundles
+        run: npm run test:verify-bundle
+
+      - name: Run web bundle smoke
+        run: node -r ./tests/helpers/strictConsole.js tests/test-web-bundle-smoke.js
+
+      - name: Run full test suite
+        run: npm run test:suite
+
+      - name: Remove non-authoritative compile output
+        run: |
+          git restore --worktree -- dist src/locales tests/fixtures/sample-workspace/.explorer-dates-profiles.json
+
+      - name: Check whitespace
+        run: git diff --check
