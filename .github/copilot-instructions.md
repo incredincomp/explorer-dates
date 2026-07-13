@@ -12,7 +12,7 @@ Explorer Dates is a VS Code extension that displays file modification timestamps
 - **Primary Pattern**: Chunks loaded dynamically based on feature flags in `src/featureFlags.js`
 - **Build Strategy**: `esbuild-federation.js` creates separate chunks, `esbuild.js` creates main bundle
 - **Feature Loading**: Uses `loadFeatureModule()` pattern to lazy-load components
-- **API Export**: Maintains synchronous compatibility with `context.exports = apiFactory` (function, not call result)
+- **API Export**: `activate()` returns the API factory (function, not call result) without mutating the VS Code `ExtensionContext`
 
 ```javascript
 // Feature flag pattern used throughout
@@ -416,8 +416,7 @@ dist/
 4. Add feature flag to package.json configuration
 
 ### API Compatibility
-- **Synchronous Export**: Always export function reference, not call result: `context.exports = apiFactory`  
-- **Async Version**: Provide `context.exportsAsync` for future async consumers
+- **Synchronous Export**: Always return the function reference from `activate()`, not its call result. Do not add ad hoc properties to `ExtensionContext`.
 - **Backward Compatibility**: Maintain function signature, cache internally
 
 ## Performance Optimization Strategies
