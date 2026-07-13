@@ -984,14 +984,7 @@ async function activate(context) {
             return apiPromise;
         };
         
-        if (apiEnabled) {
-            // Maintain synchronous compatibility: export function, not call result
-            context.exports = apiFactory;
-            // Also expose async version for future use
-            context.exportsAsync = apiFactory;
-        } else {
-            context.exports = undefined;
-            context.exportsAsync = undefined;
+        if (!apiEnabled) {
             logger.info('Explorer Dates API exports disabled via explorerDates.enableExtensionApi');
         }
 

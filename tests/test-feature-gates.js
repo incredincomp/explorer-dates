@@ -68,9 +68,9 @@ async function runScenario(name, overrides, testFn) {
     const context = createExtensionContext();
     let activated = false;
     try {
-        await extension.activate(context);
+        const activationExport = await extension.activate(context);
         activated = true;
-        await testFn(context);
+        await testFn(context, activationExport);
         console.log(`✅ ${name}`);
     } catch (error) {
         console.error(`❌ ${name}:`, error.message);
@@ -149,8 +149,8 @@ async function main() {
 
     await runScenario('Extension API export gate', {
         'explorerDates.enableExtensionApi': false
-    }, async (context) => {
-        assert.strictEqual(context.exports, undefined, 'API exports should be undefined when disabled');
+    }, async (context, activationExport) => {
+        assert.strictEqual(activationExport, undefined, 'API export should be undefined when disabled');
         await expectFeatureDisabledCommand('explorerDates.showApiInfo');
         const disabledMessage =
             infoLog.find((msg) => msg.includes('apiDisabled') || msg.includes('Explorer Dates API is disabled') || msg.includes('Explorer Dates API disabled')) ||
@@ -161,9 +161,10 @@ async function main() {
 
     await runScenario('External plugin restrictions', {
         'explorerDates.allowExternalPlugins': false
-    }, async (context) => {
-        assert.ok(typeof context.exports === 'function', 'API factory should exist when API enabled');
-        const api = await context.exports();
+    }, async (context, activationExport) => {
+        assert.ok(typeof activationExport === 'function', 'API factory should be returned when API enabled');
+        assert.equal(Object.prototype.hasOwnProperty.call(context, 'exports'), false, 'Activation must not mutate ExtensionContext');
+        const api = await activationExport();
         console.log('API result:', api, 'typeof api:', typeof api);
         if (!api) {
             // If API is null, this might be expected behavior when allowExternalPlugins is false
