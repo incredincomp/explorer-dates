@@ -26,7 +26,11 @@ function main() {
     assert(workflow.on && workflow.on.pull_request, 'Workflow must define pull_request');
     assert.deepStrictEqual(workflow.on.pull_request.branches, ['release/1.3']);
     assert.deepStrictEqual(workflow.on.push.branches, ['release/1.3']);
-    assert(workflow.on.workflow_dispatch !== undefined, 'Workflow must support workflow_dispatch');
+    const dispatch = workflow.on.workflow_dispatch;
+    assert(dispatch && dispatch.inputs && dispatch.inputs.validation_ref, 'workflow_dispatch must require validation_ref');
+    assert.strictEqual(dispatch.inputs.validation_ref.required, true);
+    assert.strictEqual(dispatch.inputs.validation_ref.type, 'string');
+    assert.strictEqual(dispatch.inputs.validation_ref.description, 'Exact commit SHA to validate');
     assert.deepStrictEqual(workflow.permissions, { contents: 'read' });
 
     const jobs = Object.values(workflow.jobs || {});
@@ -43,6 +47,14 @@ function main() {
     assert(!workflow.on.pull_request.paths && !workflow.on.pull_request['paths-ignore'], 'Source changes must not bypass validation by path');
     assert(source.includes('node-version: 20'), 'Workflow must pin the supported Node version');
     assert(source.includes('cache: npm'), 'Workflow must enable npm caching');
+    assert(source.includes('^[0-9a-f]{40}$'), 'Manual validation must require a full lowercase SHA');
+    assert(source.includes('inputs.validation_ref || github.sha'), 'Checkout must select the exact manual SHA or event SHA');
+    assert(runs.includes('git rev-parse HEAD'), 'Workflow must verify the checked-out HEAD');
+    assert(runs.includes('EXPECTED_VALIDATION_SHA'), 'Workflow must compare HEAD with the resolved SHA');
+    assert(runs.includes('GITHUB_STEP_SUMMARY'), 'Workflow must summarize the validated SHA');
+    assert(source.includes('actions/upload-artifact@v4'), 'Workflow must upload validation identity');
+    assert(source.includes('validation-identity/identity.json'), 'Workflow must define the identity artifact');
+    assert(source.includes('github.event_name'), 'Workflow must preserve event-specific validation behavior');
 
     const requiredCommands = [
         'npm ci',
