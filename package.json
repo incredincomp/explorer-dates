@@ -1160,6 +1160,7 @@
     "test:stress-crossplatform": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-crossplatform-stress.js",
     "test:performance": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-mode.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-under-load.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-regression.js",
     "test:memory-suite": "node scripts/run-memory-suite.js",
+    "test:memory-safe-sampling": "node tests/test-memory-safe-sampling.js",
     "test:memory-profiles": "node scripts/run-memory-profiles.js",
     "generate-locales": "node scripts/generate-locales.js",
     "compile": "npm run generate-locales && node esbuild-federation.js --chunks && node esbuild.js",

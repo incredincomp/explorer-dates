@@ -56,6 +56,7 @@ const mockInstall = createTestMock({
 console.log(`\n🏗️ Workspace profile: ${memoryProfile.label} (${memoryProfile.fileCount.toLocaleString()} files)`);
 
 const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
+let scheduleIncrementalRefresh = require('../src/chunks/decoration-refresh-chunk').scheduleIncrementalRefresh;
 const sampleFiles = [
     'package.json',
     'README.md',
@@ -94,7 +95,7 @@ function delay(ms) {
         // Apply isolation patches
         if (DISABLE_TIMERS) {
             console.log('⚠️  ISOLATION: Disabling incremental refresh timers');
-            provider._scheduleIncrementalRefresh = () => {
+            scheduleIncrementalRefresh = () => {
                 // Just fire global refresh without timers
                 provider._onDidChangeFileDecorations.fire(undefined);
             };
@@ -155,7 +156,7 @@ function delay(ms) {
             }
 
             if (!DISABLE_INCREMENTAL_REFRESH) {
-                provider._scheduleIncrementalRefresh('memory-soak');
+                scheduleIncrementalRefresh(provider, 'memory-soak');
             }
             await delay(BATCH_DELAY_MS);
 
