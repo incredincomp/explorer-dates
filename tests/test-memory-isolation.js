@@ -11,6 +11,7 @@
  *   DISABLE_INCREMENTAL_REFRESH=1 node --expose-gc tests/test-memory-isolation.js
  */
 
+const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { createTestMock, VSCodeUri, workspaceRoot } = require('./helpers/mockVscode');
@@ -56,7 +57,14 @@ const mockInstall = createTestMock({
 console.log(`\n🏗️ Workspace profile: ${memoryProfile.label} (${memoryProfile.fileCount.toLocaleString()} files)`);
 
 const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
-let scheduleIncrementalRefresh = require('../src/chunks/decoration-refresh-chunk').scheduleIncrementalRefresh;
+const scheduleIncrementalRefreshImpl = require('../src/chunks/decoration-refresh-chunk').scheduleIncrementalRefresh;
+let schedulerInvocations = 0;
+let timerDisabledInvocations = 0;
+let incrementalRefreshDisabledInvocations = 0;
+let scheduleIncrementalRefresh = (provider, reason) => {
+    schedulerInvocations++;
+    return scheduleIncrementalRefreshImpl(provider, reason);
+};
 const sampleFiles = [
     'package.json',
     'README.md',
@@ -96,6 +104,7 @@ function delay(ms) {
         if (DISABLE_TIMERS) {
             console.log('⚠️  ISOLATION: Disabling incremental refresh timers');
             scheduleIncrementalRefresh = () => {
+                timerDisabledInvocations++;
                 // Just fire global refresh without timers
                 provider._onDidChangeFileDecorations.fire(undefined);
             };
@@ -110,8 +119,8 @@ function delay(ms) {
         
         if (DISABLE_INCREMENTAL_REFRESH) {
             console.log('⚠️  ISOLATION: Disabling incremental refresh entirely');
-            provider._scheduleIncrementalRefresh = () => {
-                // No-op
+            scheduleIncrementalRefresh = () => {
+                incrementalRefreshDisabledInvocations++;
             };
         }
         
@@ -155,9 +164,7 @@ function delay(ms) {
                 await provider.provideFileDecoration(uri);
             }
 
-            if (!DISABLE_INCREMENTAL_REFRESH) {
-                scheduleIncrementalRefresh(provider, 'memory-soak');
-            }
+            scheduleIncrementalRefresh(provider, 'memory-soak');
             await delay(BATCH_DELAY_MS);
 
             if ((iteration + 1) % 100 === 0) {
@@ -172,6 +179,24 @@ function delay(ms) {
             } else {
                 peak = Math.max(peak, heapUsedMB());
             }
+        }
+
+        if (DISABLE_INCREMENTAL_REFRESH) {
+            assert.strictEqual(schedulerInvocations, 0, 'Disabled incremental refresh must not invoke the real scheduler');
+            assert.strictEqual(
+                incrementalRefreshDisabledInvocations,
+                ITERATIONS,
+                'Disabled incremental refresh must intercept every scheduled refresh'
+            );
+            assert.strictEqual(timerDisabledInvocations, 0, 'Incremental refresh suppression must precede timer suppression');
+        } else if (DISABLE_TIMERS) {
+            assert.strictEqual(schedulerInvocations, 0, 'Timer isolation must not invoke the real scheduler');
+            assert.strictEqual(timerDisabledInvocations, ITERATIONS, 'Timer isolation must intercept every scheduled refresh');
+            assert.strictEqual(incrementalRefreshDisabledInvocations, 0);
+        } else {
+            assert.strictEqual(schedulerInvocations, ITERATIONS, 'Normal isolation must invoke the real scheduler');
+            assert.strictEqual(timerDisabledInvocations, 0);
+            assert.strictEqual(incrementalRefreshDisabledInvocations, 0);
         }
 
         // Allow timers to complete
