@@ -1137,7 +1137,7 @@
   "icon": "icons/explorer-dates.png",
   "scripts": {
     "lint": "eslint .",
-    "test:critical": "npm run lint && npm run test:workflow-contracts && npm run test:freshness-policy-logging && npm run test:warning-filters && npm run test:config && npm run test:config-audit && npm run test:config-scenarios",
+    "test:critical": "npm run lint && npm run test:workflow-contracts && npm run test:freshness-policy-logging && npm run test:warning-filters && npm run test:config && npm run test:config-audit && npm run test:config-scenarios && npm run test:memory-contract",
     "test:security-utils": "node -r ./tests/helpers/strictConsole.js tests/test-security-utils.js && node -r ./tests/helpers/strictConsole.js tests/test-security-allowed-paths-behavior.js",
     "test": "npm run test:suite",
     "test:suite": "npm run compile && npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:extras && npm run test:performance",
@@ -1160,6 +1160,8 @@
     "test:stress-crossplatform": "node -r ./tests/helpers/strictConsole.js tests/test-advanced-cache-crossplatform-stress.js",
     "test:performance": "node -r ./tests/helpers/strictConsole.js tests/test-performance-baselines.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-mode.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-under-load.js && node -r ./tests/helpers/strictConsole.js tests/test-performance-regression.js",
     "test:memory-suite": "node scripts/run-memory-suite.js",
+    "test:memory-contract": "node scripts/run-memory-contract.js && node tests/test-memory-contract-runner.js",
+    "test:memory-safe-sampling": "node tests/test-memory-safe-sampling.js",
     "test:memory-profiles": "node scripts/run-memory-profiles.js",
     "generate-locales": "node scripts/generate-locales.js",
     "compile": "npm run generate-locales && node esbuild-federation.js --chunks && node esbuild.js",

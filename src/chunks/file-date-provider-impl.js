@@ -170,6 +170,34 @@ class LazyHierarchicalDecorationCache {
 const isWebBuild = env.VSCODE_WEB === 'true';
 
 class FileDateDecorationProviderImpl {
+    _safeHeapUsedMB() {
+        try {
+            const usage = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
+                ? process.memoryUsage()
+                : null;
+            const heapUsed = Number(usage?.heapUsed);
+            return Number.isFinite(heapUsed) && heapUsed >= 0
+                ? Number((heapUsed / 1024 / 1024).toFixed(2))
+                : 0;
+        } catch {
+            return 0;
+        }
+    }
+
+    _safeRssMB() {
+        try {
+            const usage = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
+                ? process.memoryUsage()
+                : null;
+            const rss = Number(usage?.rss);
+            return Number.isFinite(rss) && rss >= 0
+                ? Number((rss / 1024 / 1024).toFixed(2))
+                : 0;
+        } catch {
+            return 0;
+        }
+    }
+
     constructor() {
         this._onDidChangeFileDecorations = new vscode.EventEmitter();
         this.onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
@@ -211,6 +239,12 @@ class FileDateDecorationProviderImpl {
         this._memoryShedCacheLimit = Number(env.EXPLORER_DATES_MEMORY_SHED_CACHE_LIMIT || 1000);
         this._memoryShedRefreshIntervalMs = Number(env.EXPLORER_DATES_MEMORY_SHED_REFRESH_MS || 60000);
         this._refreshIntervalOverride = null;
+        this._memorySheddingEvents = [];
+        this._softHeapAlertThresholdMB = Number(env.EXPLORER_DATES_SOFT_HEAP_ALERT_MB || 2);
+        this._consecutiveSoftHeapBreaches = 0;
+        this._softHeapAlertLogged = false;
+        this._cachePressureThreshold = Number(env.EXPLORER_DATES_CACHE_PRESSURE_RATIO || 0.7);
+        this._cachePressureLogged = false;
         // Periodic refresh / incremental refresh bookkeeping
         this._refreshInterval = null;
         this._refreshTimer = null;                 // explicitly null when no timer is running
