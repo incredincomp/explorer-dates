@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const { isWebEnvironment } = require('../utils/env');
 const { normalizePath } = require('../utils/pathUtils');
 const { ExtensionError, ERROR_CODES, isPermissionError } = require('../utils/errors');
+const { getEnvironmentContract, normalizeStat, FORCE_WORKSPACE_FS_ENV } = require('./environmentContract');
 // Prefer shared utils chunk when available to reduce duplication
 let ensureDate;
 try {
@@ -15,9 +16,8 @@ if (!ensureDate) {
 
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 const isWebBuild = env.VSCODE_WEB === 'true' || isWebEnvironment();
-const forceWorkspaceFs = env.EXPLORER_DATES_FORCE_VSCODE_FS === '1';
 let nodeFs = null;
-if (!isWebBuild && !forceWorkspaceFs) {
+if (!isWebBuild) {
     try {
         nodeFs = require('fs').promises;
     } catch {
@@ -32,8 +32,12 @@ class FileSystemAdapter {
 
     _shouldUseWorkspaceFs(target) {
         try {
-            const uri = this._toUri(target);
-            return !!(uri?.scheme && uri.scheme !== 'file');
+            return getEnvironmentContract({
+                uri: this._toUri(target),
+                isWeb: this.isWeb,
+                remoteName: vscode.env?.remoteName,
+                forceWorkspaceFs: env[FORCE_WORKSPACE_FS_ENV] === '1'
+            }).filesystem === 'workspace.fs';
         } catch {
             return false;
         }
@@ -166,11 +170,12 @@ class FileSystemAdapter {
 
         const uri = this._toUri(target);
         const stat = await vscode.workspace.fs.stat(uri);
+        const normalized = normalizeStat(stat);
         return {
-            ...stat,
-            mtime: ensureDate(stat.mtime),
-            ctime: ensureDate(stat.ctime),
-            birthtime: ensureDate(stat.ctime),
+            ...normalized,
+            mtime: normalized.mtimeMs === null ? ensureDate(stat.mtime) : new Date(normalized.mtimeMs),
+            ctime: normalized.ctimeMs === null ? ensureDate(stat.ctime) : new Date(normalized.ctimeMs),
+            birthtime: normalized.ctimeMs === null ? ensureDate(stat.ctime) : new Date(normalized.ctimeMs),
             isFile: () => stat.type === vscode.FileType.File,
             isDirectory: () => stat.type === vscode.FileType.Directory
         };

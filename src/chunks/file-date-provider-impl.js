@@ -22,7 +22,8 @@ const {
 } = require('../utils/webDiagnostics');
 const {
     resolveFreshness,
-    compareFreshness
+    compareFreshness,
+    resourceIdentity
 } = require('../utils/freshnessResolver');
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 
@@ -1286,10 +1287,7 @@ class FileDateDecorationProviderImpl {
 
     _getFreshnessCacheKey(uri, sourceHint) {
         try {
-            const scheme = uri?.scheme || 'file';
-            const pathValue = getUriPath(uri) || '';
-            const normalized = normalizePath(pathValue);
-            return `${scheme}::${normalized}::${sourceHint || 'auto'}`;
+            return `${resourceIdentity(uri, { platform: process.platform })}::${sourceHint || 'auto'}`;
         } catch {
             return String(uri || 'unknown');
         }
@@ -1574,10 +1572,7 @@ class FileDateDecorationProviderImpl {
     _clearFreshnessCacheForUri(uri) {
         try {
             if (!this._freshnessCache || this._freshnessCache.size === 0) return;
-            const scheme = uri?.scheme || 'file';
-            const pathValue = getUriPath(uri) || '';
-            const normalized = normalizePath(pathValue);
-            const prefix = `${scheme}::${normalized}::`;
+            const prefix = `${resourceIdentity(uri, { platform: process.platform })}::`;
             for (const key of this._freshnessCache.keys()) {
                 if (typeof key === 'string' && key.startsWith(prefix)) {
                     this._freshnessCache.delete(key);

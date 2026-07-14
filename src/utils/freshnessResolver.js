@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const { normalizePath, getRelativePath } = require('./pathUtils');
 const { diagLogOnce } = require('./webDiagnostics');
+const { normalizeTimestamp, resourceIdentity } = require('../filesystem/environmentContract');
 
 const SOURCE_RANK = {
     unknown: 0,
@@ -93,8 +94,9 @@ function formatBadge(bucket, source, config) {
 
 function formatExactTimestamp(ts) {
     try {
-        const date = new Date(ts);
-        if (!Number.isFinite(date.getTime())) return null;
+        const timestampMs = normalizeTimestamp(ts);
+        if (timestampMs === null) return null;
+        const date = new Date(timestampMs);
         const iso = date.toISOString().replace('T', ' ').replace('Z', '');
         return iso;
     } catch {
@@ -168,7 +170,7 @@ async function resolveFromFs(uri, stat, config) {
     if (scheme !== 'file' && !allowVirtualFs) {
         return { freshness: null, reason: 'fs-virtual-disabled' };
     }
-    const mtimeValue = stat?.mtime instanceof Date ? stat.mtime.getTime() : Number(stat?.mtime);
+    const mtimeValue = stat?.mtimeMs ?? normalizeTimestamp(stat?.mtime);
     const nowMs = Date.now();
     if (!Number.isFinite(mtimeValue)) {
         return { freshness: null, reason: 'fs-mtime-missing' };
@@ -196,8 +198,8 @@ async function resolveFromGit(uri, provider, config) {
     } catch (error) {
         return { freshness: null, reason: `git-error:${error?.message || 'unknown'}` };
     }
-    const ts = Number(gitResult?.timestampMs);
-    if (!Number.isFinite(ts) || ts <= 0) {
+    const ts = normalizeTimestamp(gitResult?.timestampMs);
+    if (ts === null || ts <= 0) {
         return { freshness: null, reason: gitResult?.error || 'git-no-timestamp' };
     }
     const freshness = buildFreshnessResult({
@@ -336,8 +338,8 @@ async function resolveFromGitHub(uri, config) {
     const commit = entry?.commit || null;
     const author = commit?.author?.name || entry?.author?.login || undefined;
     const message = commit?.message || undefined;
-    const timestampMs = commit?.author?.date ? new Date(commit.author.date).getTime() : NaN;
-    if (!Number.isFinite(timestampMs)) {
+    const timestampMs = normalizeTimestamp(commit?.author?.date);
+    if (timestampMs === null) {
         return { freshness: null, reason: 'github-no-timestamp' };
     }
     const freshness = buildFreshnessResult({
@@ -417,5 +419,7 @@ module.exports = {
     formatSourceLabel,
     compareFreshness,
     SOURCE_RANK,
-    CONFIDENCE_RANK
+    CONFIDENCE_RANK,
+    normalizeTimestamp,
+    resourceIdentity
 };

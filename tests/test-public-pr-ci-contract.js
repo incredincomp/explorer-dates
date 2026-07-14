@@ -61,6 +61,7 @@ function main() {
         'npm run lint',
         'npm run test:critical',
         'npm run test:feature-gates',
+        'npm run test:file-date-awareness-contract',
         'npm run package-bundle',
         'npm run test:dist-parity',
         'npm run test:bundle',
