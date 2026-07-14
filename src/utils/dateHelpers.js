@@ -34,7 +34,7 @@ if (chunk && (chunk.ensureDate || chunk.isDateLike || chunk.getCurrentTimestamp)
             const parsed = Date.parse(value);
             return isNaN(parsed) ? new Date() : new Date(parsed);
         }
-        return new Date();
+        return new Date(NaN);
     }
 
     module.exports = { ensureDate, isDateLike, getCurrentTimestamp };

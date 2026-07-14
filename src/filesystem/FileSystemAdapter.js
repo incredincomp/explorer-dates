@@ -3,15 +3,6 @@ const { isWebEnvironment } = require('../utils/env');
 const { normalizePath } = require('../utils/pathUtils');
 const { ExtensionError, ERROR_CODES, isPermissionError } = require('../utils/errors');
 // Prefer shared utils chunk when available to reduce duplication
-let ensureDate;
-try {
-    const shared = require('../chunks/utils-shared-chunk');
-    if (shared) ensureDate = shared.ensureDate;
-} catch { /* ignore */ }
-if (!ensureDate) {
-    const dateHelpers = require('../utils/dateHelpers');
-    ensureDate = dateHelpers.ensureDate;
-}
 
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 const isWebBuild = env.VSCODE_WEB === 'true' || isWebEnvironment();
@@ -161,16 +152,14 @@ class FileSystemAdapter {
     async stat(target) {
         const useWorkspaceFs = this._shouldUseWorkspaceFs(target);
         if (!this.isWeb && nodeFs && !useWorkspaceFs) {
-            return nodeFs.stat(this._toPath(target));
+            return nodeFs.stat(this._toPath(target)).then((stat) => ({ ...stat, __source: 'native-fs' }));
         }
 
         const uri = this._toUri(target);
         const stat = await vscode.workspace.fs.stat(uri);
         return {
             ...stat,
-            mtime: ensureDate(stat.mtime),
-            ctime: ensureDate(stat.ctime),
-            birthtime: ensureDate(stat.ctime),
+            __source: 'workspace-fs',
             isFile: () => stat.type === vscode.FileType.File,
             isDirectory: () => stat.type === vscode.FileType.Directory
         };

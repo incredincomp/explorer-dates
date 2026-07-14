@@ -20,9 +20,9 @@ async function runTests() {
             const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: null }) };
             const config = mock.vscode.workspace.getConfiguration('explorerDates');
             const freshness = await resolveFreshness({ uri, stat, provider, config, workspaceKind: 'desktop' });
-            assert.strictEqual(freshness.source, 'fs', 'Expected fs source');
+            assert.strictEqual(freshness.source, 'workspace-fs', 'Expected workspace-fs source');
             assert.strictEqual(freshness.bucket, '2d', 'Expected 2d bucket');
-            assert.strictEqual(freshness.confidence, 'high', 'Expected high confidence for file scheme');
+            assert.strictEqual(freshness.confidence, 'trusted', 'Expected trusted confidence for workspace fs');
         } finally {
             mock.dispose();
         }
@@ -72,7 +72,7 @@ async function runTests() {
             const config = mock.vscode.workspace.getConfiguration('explorerDates');
             const freshness = await resolveFreshness({ uri, stat, provider, config, workspaceKind: 'desktop' });
             assert.strictEqual(freshness.source, 'git', 'Expected git source');
-            assert.strictEqual(freshness.confidence, 'medium', 'Expected medium confidence for git');
+            assert.strictEqual(freshness.confidence, 'heuristic', 'Expected heuristic confidence for optional git');
             assert.strictEqual(freshness.author, 'Test Author', 'Expected author from git');
         } finally {
             mock.dispose();
@@ -501,8 +501,8 @@ async function runTests() {
                 workspaceKind: 'web'
             });
 
-            assert.strictEqual(freshness.source, 'fs', 'allowVirtualFs=true with trustworthy mtime should use fs source');
-            assert.strictEqual(freshness.confidence, 'medium', 'Virtual fs source should have medium confidence');
+            assert.strictEqual(freshness.source, 'workspace-fs', 'allowVirtualFs=true with trustworthy mtime should use workspace-fs source');
+            assert.strictEqual(freshness.confidence, 'trusted', 'Virtual fs source should have trusted confidence');
         } finally {
             mock.dispose();
         }
@@ -525,8 +525,8 @@ async function runTests() {
                 workspaceKind: 'desktop'
             });
 
-            assert.notStrictEqual(freshness.source, 'fs', 'Future mtime should not produce fs source');
-            const fsAttempt = (freshness.attempts || []).find(a => a.source === 'fs');
+            assert.strictEqual(freshness.source, 'unknown', 'Future mtime should produce unknown source');
+            const fsAttempt = (freshness.attempts || []).find(a => a.source === 'workspace-fs');
             assert.ok(fsAttempt, 'FS attempt should still be recorded');
             assert.ok(fsAttempt.reason, 'FS attempt should carry a rejection reason');
         } finally {
