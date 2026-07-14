@@ -18,17 +18,19 @@ async function main() {
         config: { 'explorerDates.performanceMode': false }
     });
     const { FileDateDecorationProvider } = require('../src/fileDateDecorationProvider');
+    const { maybeShedWorkload } = require('../src/chunks/decoration-memory-chunk');
 
     const provider = new FileDateDecorationProvider();
+    const originalMemoryUsage = process.memoryUsage;
 
     try {
         const heapSamples = [10, 12]; // baseline value then +2 MB spike
         let calls = 0;
-        provider._safeHeapUsedMB = () => {
+        process.memoryUsage = () => {
             const idx = Math.min(calls, heapSamples.length - 1);
             const value = heapSamples[idx];
             calls++;
-            return value;
+            return { heapUsed: value * 1024 * 1024, rss: value * 1024 * 1024 };
         };
 
         provider._maxCacheSize = 1000;
@@ -36,8 +38,8 @@ async function main() {
         provider._memoryBaselineMB = 0;
 
         // First call sets baseline; second triggers shedding
-        provider._maybeShedWorkload(); // establishes baseline
-        provider._maybeShedWorkload(); // triggers shedding
+        maybeShedWorkload(provider); // establishes baseline
+        maybeShedWorkload(provider); // triggers shedding
 
         assert.strictEqual(provider._memorySheddingActive, true, 'Memory shedding should activate when over threshold');
         assert.ok(provider._maxCacheSize <= 10, 'Cache size should be capped to shed limit');
@@ -92,6 +94,7 @@ async function main() {
         fs.writeFileSync(logPath, JSON.stringify(logPayload, null, 2));
         console.log(`📝 Memory shedding log recorded at ${logPath}`);
     } finally {
+        process.memoryUsage = originalMemoryUsage;
         await provider.dispose();
         mockInstall.dispose();
         delete process.env.EXPLORER_DATES_MEMORY_SHEDDING;
