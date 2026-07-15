@@ -112,6 +112,9 @@ jobs:
       - name: Run feature-gate tests
         run: npm run test:feature-gates
 
+      - name: Run file date awareness environment contract
+        run: npm run test:file-date-awareness-contract
+
       - name: Generate production bundles
         run: npm run package-bundle
 

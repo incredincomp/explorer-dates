@@ -55,6 +55,40 @@ Version 1.3.0 splits non-essential subsystems into lazy chunks so teams can disa
 
 The main provider class that implements VS Code's `FileDecorationProvider` API.
 
+### File Date Awareness Environment Contract
+
+All file-date reads follow the contract in `src/filesystem/environmentContract.js`:
+
+| Environment | `file:` resource | Virtual/provider resource |
+| --- | --- | --- |
+| Node desktop | Node `fs` | VS Code `workspace.fs` |
+| Remote workspace (SSH, WSL, Dev Container, Codespaces) | VS Code `workspace.fs` | VS Code `workspace.fs` |
+| Browser/web | VS Code `workspace.fs` | VS Code `workspace.fs` |
+| Any environment with `EXPLORER_DATES_FORCE_VSCODE_FS=1` | VS Code `workspace.fs` | VS Code `workspace.fs` |
+
+The rule is evaluated at operation time so tests and hosts can force the
+workspace provider without reloading the extension. Resource cache identities
+include URI scheme, authority, normalized path, and the host case-sensitivity
+policy. Local Windows file identities are case-insensitive; provider identities
+remain case-sensitive unless the provider explicitly supplies another policy.
+
+Timestamps are normalized to finite epoch milliseconds. Invalid or missing
+values never use the current time as a fallback, which keeps badges and tests
+deterministic. Freshness resolution then follows the configured ladder:
+filesystem, Git, GitHub/provider metadata, and finally unknown. Virtual and
+browser resources use provider metadata when available and otherwise remain
+unknown unless a trusted virtual filesystem timestamp is explicitly enabled.
+
+Watcher, Git HEAD, manual refresh, and per-resource refresh events invalidate
+the corresponding resource identity or all freshness identities before VS Code
+is asked to repaint.
+
+The Public PR Validation workflow runs the environment contract test before
+production bundle generation. Real SSH, Windows, WSL, Dev Container,
+Codespaces, and browser-only certification remain deferred until those hosts
+are available; this contract and its mocks provide deterministic coverage for
+their routing and fallback behavior in the meantime.
+
 **Key Responsibilities:**
 - Provides date decorations for files in the Explorer
 - Manages layered caching (memory + persistent advanced cache) to minimize file system operations
