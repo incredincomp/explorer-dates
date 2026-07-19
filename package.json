@@ -1138,8 +1138,12 @@
   "scripts": {
     "test:file-date-awareness-contract": "node tests/test-file-date-awareness-environment-contract.js",
     "test:report-contract": "node -r ./tests/helpers/strictConsole.js tests/test-report-contract.js",
+    "test:command-outcome-contract": "node -r ./tests/helpers/strictConsole.js tests/test-command-outcome-contract.js",
+    "test:report-fixture-contract": "node -r ./tests/helpers/strictConsole.js tests/test-report-fixture-contract.js",
+    "test:report-lifecycle-contract": "node -r ./tests/helpers/strictConsole.js tests/test-report-lifecycle-contract.js",
+    "test:extension-host-command-smoke": "xvfb-run -a -s '-screen 0 1280x800x24' node tests/run-extension-host-smoke.js",
     "lint": "eslint .",
-    "test:critical": "npm run lint && npm run test:workflow-contracts && npm run test:freshness-policy-logging && npm run test:warning-filters && npm run test:config && npm run test:config-audit && npm run test:config-scenarios && npm run test:activation-api-export-contract",
+    "test:critical": "npm run lint && npm run test:command-outcome-contract && npm run test:report-fixture-contract && npm run test:report-lifecycle-contract && npm run test:workflow-contracts && npm run test:freshness-policy-logging && npm run test:warning-filters && npm run test:config && npm run test:config-audit && npm run test:config-scenarios && npm run test:activation-api-export-contract",
     "test:security-utils": "node -r ./tests/helpers/strictConsole.js tests/test-security-utils.js && node -r ./tests/helpers/strictConsole.js tests/test-security-allowed-paths-behavior.js",
     "test": "npm run test:suite",
     "test:suite": "npm run compile && npm run lint && npm run test:config && npm run test:config-scenarios && npm run test:feature-gates && npm run test:flows && npm run test:bundle && npm run test:verify-bundle && npm run test:extras && npm run test:performance",

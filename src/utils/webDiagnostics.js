@@ -103,14 +103,16 @@ function recordCommandInvocation(commandId) {
     diagLog('info', 'Command invoked', { commandId });
 }
 
-function recordCommandResult(commandId, ok, error) {
+function recordCommandResult(commandId, ok, error, outcomeCategory, errorContext) {
     if (!isWebDiagnosticsEnabled()) return;
+    const category = outcomeCategory || (ok ? 'behavioral-success' : 'unhandled-command-failure');
+    const sanitizedError = error ? { name: error.name || 'Error', message: error.message || String(error), code: error.code || null } : null;
     if (ok) {
-        diagLog('info', 'Command completed', { commandId });
+        diagLog('info', 'Command completed', { commandId, outcomeCategory: category });
     } else {
-        diagLog('error', 'Command failed', { commandId, error: error?.message, stack: error?.stack });
+        diagLog('error', 'Command failed', { commandId, outcomeCategory: category, error: sanitizedError, errorContext: errorContext || null });
         const state = getWebDiagnosticsState();
-        state.errors.push({ commandId, error: error?.message, stack: error?.stack });
+        state.errors.push({ commandId, outcomeCategory: category, error: sanitizedError, errorContext: errorContext || null });
     }
 }
 

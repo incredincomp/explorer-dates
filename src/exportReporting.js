@@ -12,6 +12,7 @@ try {
 if (!ensureDate) { const dateHelpers = require('./utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 const { getLocalization } = require('./utils/localization');
 const { formatFileSize } = require('./utils/formatters');
+const { commandCancellation, commandFailure } = require('./utils/commandOutcome');
 const {
     REPORT_SCHEMA_VERSION, DEFAULT_EXCLUDED_SEGMENTS, normalizePath: normalizeReportPath,
     normalizeTimeRange, rangeStart, normalizeStat, createInclusionPolicy,
@@ -310,9 +311,9 @@ class ExportReportingManager {
             return formattedReport;
         } catch (error) {
             logger.error('Failed to generate file modification report:', error);
-            if (error?.code === 'REPORT_CANCELLED') return null;
+            if (error?.code === 'REPORT_CANCELLED') return commandCancellation();
             vscode.window.showErrorMessage(`Failed to generate report${options.outputPath ? ` for ${options.outputPath}` : ''}: ${error?.message || 'unknown error'}`);
-            return null;
+            return commandFailure(error, { operation: 'report-generation', outputPath: options.outputPath || null });
         }
     }
 
@@ -869,6 +870,7 @@ ${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.si
         } catch (error) {
             logger.error('Failed to show report dialog:', error);
             vscode.window.showErrorMessage('Failed to generate report');
+            return commandFailure(error, { operation: 'report-dialog' });
         }
     }
 
