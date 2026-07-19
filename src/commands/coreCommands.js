@@ -1,5 +1,7 @@
 const vscode = require('vscode');
 const { fileSystem } = require('../filesystem/FileSystemAdapter');
+const { formatFileSize } = require('../utils/formatters');
+const { normalizeStat, validDate } = require('../reporting/reportContract');
 const {
     recordCommandRegistration,
     recordCommandInvocation,
@@ -226,22 +228,24 @@ function registerCoreCommands({ context, fileDateProvider, logger, l10n }) {
             }
 
             const stat = await fileSystem.stat(targetUri);
-            const fileName = getFileName(targetUri.fsPath || targetUri.path);
-            const fileSize = fileDateProvider?._formatFileSize(stat.size, 'auto') || `${stat.size} bytes`;
-            const modified = (stat.mtime instanceof Date ? stat.mtime : new Date(stat.mtime)).toLocaleString();
-            const created = (stat.birthtime instanceof Date ? stat.birthtime : new Date(stat.birthtime || stat.mtime)).toLocaleString();
+            const normalized = normalizeStat(stat);
+            const displayPath = targetUri.fsPath || targetUri.path || targetUri.toString();
+            const fileName = getFileName(displayPath);
+            const fileSize = normalized.size === null ? 'Unavailable' : formatFileSize(normalized.size, 'auto');
+            const modified = validDate(normalized.modified)?.toLocaleString() || 'Unavailable';
+            const created = validDate(normalized.created)?.toLocaleString() || 'Unavailable (not provided)';
 
             const details = `File: ${fileName}\n` +
                 `Size: ${fileSize}\n` +
                 `Modified: ${modified}\n` +
                 `Created: ${created}\n` +
-                `Path: ${targetUri.fsPath || targetUri.path}`;
+                `Path: ${displayPath}`;
 
             vscode.window.showInformationMessage(details, { modal: true });
-            logger.info(`File details shown for: ${targetUri.fsPath || targetUri.path}`);
+            logger.info(`File details shown for: ${displayPath}`);
         } catch (error) {
             logger.error('Failed to show file details', error);
-            vscode.window.showErrorMessage(`Failed to show file details: ${error.message}`);
+            vscode.window.showErrorMessage(`Failed to show file details: ${error?.code === 'ENOENT' ? 'The selected resource no longer exists.' : 'The selected resource could not be read.'}`);
         }
     }));
 

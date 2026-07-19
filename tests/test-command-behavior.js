@@ -82,6 +82,11 @@ async function testCoreCommands() {
     await mock.vscode.commands.executeCommand('explorerDates.clearPreview');
     assert.strictEqual(previewSettings, null, 'Expected preview settings cleared');
 
+    const detailsUri = VSCodeUri.file(path.join(mock.vscode.workspace.workspaceFolders[0].uri.fsPath, 'package.json'));
+    await mock.vscode.commands.executeCommand('explorerDates.showFileDetails', detailsUri);
+    assert(mock.infoLog.some((msg) => typeof msg === 'string' && msg.includes('File: package.json')),
+        'Show File Details must use the shared formatter without a provider-private method');
+
     mock.dispose();
 }
 
