@@ -430,8 +430,8 @@ class ExportReportingManager {
                 extension: getExtension(relativePath),
                 activities: evidence,
                 evidence,
-                activityCount: evidence.length,
-                activityUnavailable: false,
+                activityCount: evidence.length > 0 || normalizedStat.modified ? evidence.length : null,
+                activityUnavailable: evidence.length === 0 && !normalizedStat.modified,
                 lastActivity
             };
         } catch (error) {
@@ -585,7 +585,7 @@ class ExportReportingManager {
         const lines = ['Path,Size,Created,Modified,Type,Extension,ActivityCount,ActivitySources,LastActivity'];
         for (const file of report.files) lines.push([
             file.path, file.size, validDate(file.created)?.toISOString(), validDate(file.modified)?.toISOString(),
-            file.type, file.extension, file.activityCount, (file.evidence || []).map(e => e.source).join('|'), validDate(file.lastActivity)?.toISOString()
+            file.type, file.extension, file.activityCount ?? 'Unknown', (file.evidence || []).map(e => e.source).join('|') || (file.activityUnavailable ? 'unavailable' : ''), validDate(file.lastActivity)?.toISOString()
         ].map(quote).join(','));
         return lines.join('\n');
     }
@@ -595,7 +595,7 @@ class ExportReportingManager {
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const date = value => validDate(value)?.toLocaleString() || 'Unavailable';
-        const rows = report.files.map(file => `<tr><td>${escape(file.path)}</td><td>${escape(this.formatFileSize(file.size || 0))}</td><td>${escape(date(file.modified))}</td><td>${escape(file.type)}</td><td>${escape(file.activityCount)}</td><td>${escape((file.evidence || []).map(e => e.source).join(', ') || 'Unavailable')}</td></tr>`).join('');
+        const rows = report.files.map(file => `<tr><td>${escape(file.path)}</td><td>${escape(this.formatFileSize(file.size || 0))}</td><td>${escape(date(file.modified))}</td><td>${escape(file.type)}</td><td>${escape(file.activityCount ?? 'Unknown')}</td><td>${escape((file.evidence || []).map(e => e.source).join(', ') || (file.activityUnavailable ? 'Unavailable' : ''))}</td></tr>`).join('');
         const active = report.summary.mostActiveFiles.length ? report.summary.mostActiveFiles.map(file => `<tr><td>${escape(file.path)}</td><td>${escape(file.activityCount)}</td><td>${escape(date(file.lastActivity))}</td></tr>`).join('') : '<tr><td colspan="3">No known activity evidence in this range.</td></tr>';
         return `<!DOCTYPE html>
 <html>
@@ -660,7 +660,7 @@ ${report.summary.recentlyModified.map(file => `| ${cell(file.path)} | ${cell(val
 
 | Path | Size | Modified | Type | Activities |
 |------|------|----------|------|------------|
-${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.size || 0)} | ${cell(validDate(file.modified)?.toISOString() || 'Unavailable')} | ${cell(file.type)} | ${file.activityCount} |`)
+${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.size || 0)} | ${cell(validDate(file.modified)?.toISOString() || 'Unavailable')} | ${cell(file.type)} | ${cell(file.activityCount ?? 'Unknown')} |`)
     .join('\n')}
 `;
     }
