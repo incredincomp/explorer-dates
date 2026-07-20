@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "foundationBaseSha": "fd10acca7173768a7de10b389f80505ce36e9a13",
+  "foundationBaseTree": "0dc323c7d4d87ddbb903fbf6f6c45569af7604a1",
+  "mutations": [
+    {
+      "id": "MUT-FND-001",
+      "category": "registration",
+      "targetFile": "src/commands/coreCommands.js",
+      "targetFunction": "registerCoreCommands",
+      "mechanism": "replace the contributed showFileDetails registration ID with an unmanifested ID",
+      "before": "subscriptions.push(registerCommand('explorerDates.showFileDetails', async (uri) => {",
+      "after": "subscriptions.push(registerCommand('explorerDates.__mutated_showFileDetails', async (uri) => {",
+      "detector": "node scripts/validate-product-surface.mjs",
+      "expectedReason": "undeclared-runtime-registration|missingCommands|registration-count",
+      "applicability": "static-source-contract"
+    },
+    {
+      "id": "MUT-FND-002",
+      "category": "command-outcome",
+      "targetFile": "src/commands/coreCommands.js",
+      "targetFunction": "showFileDetails failure path",
+      "mechanism": "return success from the handled provider-failure path",
+      "before": "return commandFailure(error, { operation: 'show-file-details', errorCode: error?.code || null });",
+      "after": "return commandSuccess();",
+      "detector": "npm run test:command-outcome-contract",
+      "expectedReason": "handled failure must produce one result record|false-success|Expected",
+      "applicability": "source-command-contract"
+    },
+    {
+      "id": "MUT-FND-003",
+      "category": "report-fixture",
+      "targetFile": "src/reporting/reportContract.js",
+      "targetFunction": "createInclusionPolicy",
+      "mechanism": "remove .git from the excluded directory policy",
+      "before": "'.git', 'node_modules', 'dist'",
+      "after": "'node_modules', 'dist'",
+      "detector": "npm run test:report-fixture-contract",
+      "expectedReason": "deepStrictEqual|14|6|8|excluded|included",
+      "applicability": "source-report-contract"
+    },
+    {
+      "id": "MUT-FND-004",
+      "category": "runtime-parity",
+      "targetFile": "src/commands/coreCommands.js",
+      "targetFunction": "showFileDetails success path",
+      "mechanism": "change the source outcome while leaving the committed desktop/web bundles stale",
+      "before": "logger.info(`File details shown for: ${displayPath}`);\n            return commandSuccess();",
+      "after": "logger.info(`File details shown for: ${displayPath}`);\n            return commandEmpty();",
+      "detector": "node scripts/check-runtime-parity.mjs",
+      "expectedReason": "source-mismatch|coreCommands.js|failed",
+      "applicability": "source-to-artifact-parity"
+    }
+  ]
+}

@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$EXPECTED_VALIDATION_SHA"
-          mkdir -p validation-identity
+          mkdir -p "$RUNNER_TEMP/validation-identity"
           node - <<'NODE'
           const fs = require('fs');
           const identity = {
@@ -81,7 +81,7 @@ jobs:
             workflow_run_id: process.env.RUN_ID,
             event_name: process.env.EVENT_NAME
           };
-          fs.writeFileSync('validation-identity/identity.json', `${JSON.stringify(identity, null, 2)}\n`);
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/validation-identity/identity.json`, `${JSON.stringify(identity, null, 2)}\n`);
           NODE
           {
             echo '## Validated commit'
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: validation-identity-${{ github.run_id }}
-          path: validation-identity/identity.json
+          path: ${{ runner.temp }}/validation-identity/identity.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -105,6 +105,17 @@ jobs:
 
       - name: Run lint
         run: npm run lint
+
+      - name: Run product surface contract
+        run: npm run test:product-surface-contract
+
+      - name: Run runtime parity contract
+        run: npm run test:runtime-parity-contract
+
+      - name: Run mutation foundation
+        env:
+          EXPECTED_VALIDATION_SHA: ${{ steps.resolve-validation.outputs.expected_sha }}
+        run: npm run test:mutation-foundation
 
       - name: Run command outcome contract
         run: npm run test:command-outcome-contract

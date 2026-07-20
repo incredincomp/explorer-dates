@@ -1,0 +1,3955 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "deterministic-from-repository-state",
+  "repository": "incredincomp/explorer-dates",
+  "auditedSha": "derive-at-validation",
+  "auditedTree": "derive-at-validation",
+  "counts": {
+    "contributedCommands": 44,
+    "runtimeOnlyCommands": 2,
+    "settings": 70,
+    "menuEntries": 35,
+    "keybindings": 10
+  },
+  "commands": [
+    {
+      "id": "explorerDates.refreshDateDecorations",
+      "title": "Refresh Date Decorations",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 61,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-chunk.js",
+        "line": 242
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+r",
+          "when": "explorerViewletVisible"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showMetrics",
+      "title": "Show Performance Metrics",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 98,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-assets-chunk.js",
+        "line": 403
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.openLogs",
+      "title": "Open Logs",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 135,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 135
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.runWebDiagnostics",
+      "title": "Run Web Diagnostics",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "extension.js",
+        "line": 1022,
+        "count": 1
+      },
+      "handler": {
+        "file": "extension.js",
+        "line": 1021
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showCurrentConfig",
+      "title": "Show Current Configuration",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 149,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 149
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.resetToDefaults",
+      "title": "Reset to Default Settings",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 176,
+        "count": 2
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 176
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "coverage-missing",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.migrateSettings",
+      "title": "Migrate Settings",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 28,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 28
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.organizeSettings",
+      "title": "Organize Settings",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 69,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 69
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.validateConfiguration",
+      "title": "Validate Configuration",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 92,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 92
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.cleanLegacySettings",
+      "title": "Clean Legacy Settings",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 121,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 121
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showMigrationHistory",
+      "title": "Show Migration History",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 146,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 146
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.exportConfiguration",
+      "title": "Export Configuration",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 274,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 274
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.clearTelemetryData",
+      "title": "Clear Telemetry Data",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 203,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 203
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.applyCustomColors",
+      "title": "Apply Custom Colors",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 211,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 211
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.toggleDecorations",
+      "title": "Toggle Date Decorations",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 198,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 198
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+d",
+          "when": "explorerViewletVisible"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.copyFileDate",
+      "title": "Copy File Date",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 214,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 214
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": true,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "explorer/context",
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+c",
+          "when": "explorerViewletFocus && !explorerResourceIsFolder"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showFileDetails",
+      "title": "Show File Details",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 237,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 237
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": true,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "explorer/context"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+i",
+          "when": "explorerViewletFocus && !explorerResourceIsFolder"
+        }
+      ],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.toggleFadeOldFiles",
+      "title": "Toggle Fade Old Files",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 272,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 272
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+f",
+          "when": "explorerViewletVisible"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showFileHistory",
+      "title": "Show File History",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 286,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 286
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": true,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "explorer/context",
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.compareWithPrevious",
+      "title": "Compare with Previous Version",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 342,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/coreCommands.js",
+        "line": 342
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": true,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "explorer/context",
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showWorkspaceActivity",
+      "title": "Show Workspace File Activity",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 61,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-assets-chunk.js",
+        "line": 385
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+a",
+          "when": "workspaceFolderCount > 0 && explorerDates.analysisCommandsAvailable"
+        }
+      ],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showPerformanceAnalytics",
+      "title": "Show Performance Analytics",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 117,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-assets-chunk.js",
+        "line": 374
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showChunkStatus",
+      "title": "Show Chunk Status",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 200,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 200
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.optimizeBundle",
+      "title": "Optimize Bundle Size",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 225,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 225
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.applyPreset",
+      "title": "Apply Configuration Preset",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 148,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 148
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.suggestOptimalPreset",
+      "title": "Suggest Optimal Configuration",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 189,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 189
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.configureRuntime",
+      "title": "Configure Runtime Chunks",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 177,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 177
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.validateTeamConfig",
+      "title": "Validate Team Configuration",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 243,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 243
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showKeyboardShortcuts",
+      "title": "Show Keyboard Shortcuts",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 381,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 381
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.showFeatureTour",
+      "title": "Show Feature Tour",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 6,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 6
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.showQuickSetup",
+      "title": "Show Quick Setup Wizard",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 21,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 21
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.showWhatsNew",
+      "title": "What's New in Explorer Dates",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 36,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/onboardingCommands.js",
+        "line": 36
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": false
+    },
+    {
+      "id": "explorerDates.openTemplateManager",
+      "title": "Open Template Manager",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "extension.js",
+        "line": 1204,
+        "count": 1
+      },
+      "handler": {
+        "file": "extension.js",
+        "line": 1204
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+t",
+          "when": "workspaceFolderCount > 0 && explorerDates.workspaceTemplatesAvailable"
+        }
+      ],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.saveTemplate",
+      "title": "Save Current Configuration as Template",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "extension.js",
+        "line": 1241,
+        "count": 1
+      },
+      "handler": {
+        "file": "extension.js",
+        "line": 1241
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.generateReport",
+      "title": "Generate File Modification Report",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "extension.js",
+        "line": 1287,
+        "count": 1
+      },
+      "handler": {
+        "file": "extension.js",
+        "line": 1287
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+e",
+          "when": "workspaceFolderCount > 0 && explorerDates.exportReportingAvailable"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.showApiInfo",
+      "title": "Show Extension API Information",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "extension.js",
+        "line": 1340,
+        "count": 1
+      },
+      "handler": {
+        "file": "extension.js",
+        "line": 1340
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "interactive",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.debugCache",
+      "title": "Debug Cache Performance",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 139,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 139
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+b",
+          "when": "explorerViewletVisible && explorerDates.analysisCommandsAvailable"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.runDiagnostics",
+      "title": "Run Diagnostics (Fix Missing Decorations)",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 170,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 170
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [
+        {
+          "key": "ctrl+shift+h",
+          "when": "explorerViewletVisible && explorerDates.analysisCommandsAvailable"
+        }
+      ],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.quickFix",
+      "title": "Quick Fix Common Issues",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 327,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 327
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.testDecorations",
+      "title": "Test Decoration Provider",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 240,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 240
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.monitorDecorations",
+      "title": "Monitor VS Code Decoration Requests",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 289,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 289
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.testVSCodeRendering",
+      "title": "Test VS Code Decoration Rendering",
+      "category": "Explorer Dates",
+      "ownership": "public-user",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 308,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/commands/analysisCommands.js",
+        "line": 308
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.previewConfiguration",
+      "title": "Preview Configuration (Internal)",
+      "category": "Explorer Dates",
+      "ownership": "internal",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 76,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-chunk.js",
+        "line": 198
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    },
+    {
+      "id": "explorerDates.clearPreview",
+      "title": "Clear Configuration Preview (Internal)",
+      "category": "Explorer Dates",
+      "ownership": "internal",
+      "declaration": {
+        "file": "package.json",
+        "path": "contributes.commands"
+      },
+      "registration": {
+        "file": "src/commands/coreCommands.js",
+        "line": 87,
+        "count": 1
+      },
+      "handler": {
+        "file": "src/chunks/onboarding-chunk.js",
+        "line": 202
+      },
+      "desktopSupport": true,
+      "webSupport": true,
+      "workspaceRequirement": "feature-dependent",
+      "trustRequirement": "feature-dependent",
+      "selectedResourceRequirement": false,
+      "fileFolderApplicability": "feature-dependent",
+      "supportedUriSchemes": [
+        "file",
+        "vscode-vfs",
+        "provider-dependent"
+      ],
+      "gitRequirement": "feature-dependent",
+      "featureGate": null,
+      "contextKeys": [],
+      "menuLocations": [
+        "commandPalette"
+      ],
+      "commandPaletteCondition": null,
+      "keybindings": [],
+      "expectedInteractionType": "command",
+      "commandOutcomeContract": "explicit-or-legacy-command-wrapper",
+      "sourceContractTests": [],
+      "productionContractTests": [],
+      "realHostEvidenceStatus": "manual-certification-pending",
+      "certificationStatus": "static-reconciled",
+      "referencedBySurface": true
+    }
+  ],
+  "runtimeOnlyCommands": [
+    {
+      "id": "explorerDates.clearTelemetryData.force",
+      "registration": {
+        "file": "src/commands/migrationCommands.js",
+        "line": 206,
+        "count": 1
+      },
+      "purpose": "explicit destructive telemetry clear path",
+      "intendedCaller": "internal feature flow",
+      "remainInternal": true,
+      "noContributionReason": "runtime-only implementation command",
+      "tests": [],
+      "collisionRisk": "must not collide with contributed command IDs"
+    },
+    {
+      "id": "explorerDates.restorePreviousPreset",
+      "registration": {
+        "file": "src/commands/runtimeCommands.js",
+        "line": 163,
+        "count": 1
+      },
+      "purpose": "runtime preset restoration",
+      "intendedCaller": "internal feature flow",
+      "remainInternal": true,
+      "noContributionReason": "runtime-only implementation command",
+      "tests": [],
+      "collisionRisk": "must not collide with contributed command IDs"
+    }
+  ],
+  "settings": [
+    {
+      "key": "explorerDates.showDateDecorations",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js",
+        "src/chunks/decoration-refresh-chunk.js",
+        "src/chunks/decorations-advanced.js",
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/analysisCommands.js",
+        "src/commands/coreCommands.js",
+        "src/decorationDiagnostics.js",
+        "src/presetDefinitions.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show last modified dates as decorations in the Explorer",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.dateDecorationFormat",
+      "type": "string",
+      "default": "smart",
+      "scope": "window",
+      "enum": [
+        "smart",
+        "relative-short",
+        "relative-long",
+        "absolute-short",
+        "absolute-long"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/accessibility.js",
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/coreCommands.js",
+        "src/presetDefinitions.js",
+        "src/utils/settingsMigration.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Format for date decorations in Explorer",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.excludedFolders",
+      "type": "array",
+      "default": [
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "out",
+        ".vscode-test"
+      ],
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/commands/analysisCommands.js",
+        "src/exportReporting.js",
+        "src/smartExclusion.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Folders to exclude from date decorations for better performance",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.excludedPatterns",
+      "type": "array",
+      "default": [
+        "**/*.tmp",
+        "**/*.log",
+        "**/.git/**",
+        "**/node_modules/**"
+      ],
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/commands/analysisCommands.js",
+        "src/exportReporting.js",
+        "src/smartExclusion.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "File patterns (glob) to exclude from date decorations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableLogging",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/logger-impl-chunk.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable detailed logging for debugging purposes",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.locale",
+      "type": "string",
+      "default": "auto",
+      "scope": "window",
+      "enum": [
+        "en",
+        "es",
+        "fr",
+        "de",
+        "ja",
+        "zh",
+        "auto"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/localization-core.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Language for date formatting (auto uses VS Code's display language)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.highContrastMode",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/accessibility.js",
+        "src/commands/coreCommands.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable high-contrast styling for decorations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.cacheTimeout",
+      "type": "number",
+      "default": 30000,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 5000,
+        "maximum": 300000
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/commands/analysisCommands.js",
+        "src/utils/settingsMigration.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Cache timeout in milliseconds (5000-300000)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.maxCacheSize",
+      "type": "number",
+      "default": 10000,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 100,
+        "maximum": 50000
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsMigration.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Maximum number of cached file decorations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.colorScheme",
+      "type": "string",
+      "default": "none",
+      "scope": "window",
+      "enum": [
+        "none",
+        "recency",
+        "file-type",
+        "subtle",
+        "vibrant",
+        "custom"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/accessibility.js",
+        "src/chunks/decoration-provide-chunk.js",
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/analysisCommands.js",
+        "src/commands/coreCommands.js",
+        "src/commands/migrationCommands.js",
+        "src/decorationDiagnostics.js",
+        "src/presetDefinitions.js",
+        "src/themeIntegration.js",
+        "src/utils/settingsMigration.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Color scheme for date decorations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessSourcePolicy",
+      "type": "string",
+      "default": "auto",
+      "scope": "window",
+      "enum": [
+        "auto",
+        "fs",
+        "git",
+        "github",
+        "unknown"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Preferred freshness source policy (auto follows source ladder)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessShowUnknown",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js",
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show unknown freshness badges when no trustworthy source is available",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessAllowVirtualFs",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Allow filesystem timestamps for non-file (virtual) URI schemes when trusted",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessTooltipVerbosity",
+      "type": "string",
+      "default": "full",
+      "scope": "window",
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Verbosity of freshness tooltip details",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.badge.sourceLabelMode",
+      "type": "string",
+      "default": "auto",
+      "scope": "window",
+      "enum": [
+        "auto",
+        "always",
+        "never"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Controls when the freshness source is shown in the tooltip (badges are age-only due to VS Code's 2-character badge limit)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessBucketMinutesNow",
+      "type": "number",
+      "default": 60,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": 240
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Minutes threshold for the 'now' freshness bucket",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessBucketHoursToday",
+      "type": "number",
+      "default": 24,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": 72
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Hours threshold for the 'today' freshness bucket",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessBucketDaysTwo",
+      "type": "number",
+      "default": 2,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": 14
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Days threshold for the '2d' freshness bucket",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.freshnessBucketDaysWeek",
+      "type": "number",
+      "default": 7,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 2,
+        "maximum": 60
+      },
+      "readers": [
+        "src/utils/freshnessResolver.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Days threshold for the '1w' freshness bucket",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.customColors",
+      "type": "object",
+      "default": {
+        "veryRecent": "#00ff00",
+        "recent": "#ffff00",
+        "old": "#ff0000"
+      },
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/settingsMigration.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": null,
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.migrateLegacyCustomColorsOnStartup",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/settingsMigration.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Allow Explorer Dates to migrate legacy explorerDates.customColors into workbench.colorCustomizations during startup. Disabled by default to avoid changing editor color settings without explicit consent.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.fadeOldFiles",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/commands/coreCommands.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Fade decorations for files older than specified threshold",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.fadeThreshold",
+      "type": "number",
+      "default": 30,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": 365
+      },
+      "readers": [
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Days after which to fade file decorations (when fadeOldFiles is enabled)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.showFileSize",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/commands/coreCommands.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show file size alongside modification date (e.g., '5m|~1K')",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.fileSizeFormat",
+      "type": "string",
+      "default": "auto",
+      "scope": "window",
+      "enum": [
+        "auto",
+        "bytes",
+        "kb",
+        "mb"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js",
+        "src/commands/coreCommands.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Format for file size display (auto = smart formatting)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableContextMenu",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Add Explorer Dates options to file context menu",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.showGitInfo",
+      "type": "string",
+      "default": "none",
+      "scope": "window",
+      "enum": [
+        "none",
+        "author",
+        "both"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/coreCommands.js",
+        "src/decorationDiagnostics.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show Git information alongside dates",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.badgePriority",
+      "type": "string",
+      "default": "time",
+      "scope": "window",
+      "enum": [
+        "time",
+        "author",
+        "size"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/coreCommands.js",
+        "src/onboarding.js",
+        "src/presetDefinitions.js",
+        "src/utils/settingsMigration.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Which information should occupy the short (2-char) badge: time, author initials, or size",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.showStatusBar",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/onboarding-assets-chunk.js",
+        "src/workspaceTemplates.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show file modification info in status bar for selected files",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.smartExclusions",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/smartExclusion.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Auto-detect and exclude common build/cache folders for better performance",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.workspaceExclusionProfiles",
+      "type": "object",
+      "default": {},
+      "scope": "application",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/workspace-intel-io-chunk.js",
+        "src/smartExclusion.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Per-workspace exclusion patterns (automatically managed)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.batchSize",
+      "type": "number",
+      "default": 50,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 10,
+        "maximum": 200
+      },
+      "readers": [
+        "src/batchProcessor.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Number of files to process in each batch for better performance",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.progressiveLoading",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-batch-chunk.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable progressive loading for large directories",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.persistentCache",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/advancedCache.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable persistent cache across VS Code sessions",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.maxMemoryUsage",
+      "type": "number",
+      "default": 50,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 10,
+        "maximum": 500
+      },
+      "readers": [
+        "src/advancedCache.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Maximum memory usage in MB for caching",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.strictPersistentCacheValidation",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/advancedCache.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "When enabled, persisted cache snapshots are strictly validated and malformed entries are rejected on load (safer but less forgiving)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.accessibilityMode",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/accessibility.js",
+        "src/chunks/ui-adapters.js",
+        "src/commands/coreCommands.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable enhanced accessibility features including screen reader support",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.keyboardNavigation",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/accessibility.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable keyboard navigation shortcuts for Explorer Dates features",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.showWelcomeOnStartup",
+      "type": "boolean",
+      "default": true,
+      "scope": "application",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Show welcome message and feature discovery on first startup",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableOnboardingSystem",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable onboarding system and welcome experience.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableAnalysisCommands",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/localization-core.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/analysisCommands.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable analysis and diagnostic commands.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableWorkspaceIntelligence",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable workspace intelligence features for large workspaces.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableIncrementalWorkers",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable incremental workers for progressive analysis.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.autoThemeAdaptation",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decorations-advanced.js",
+        "src/chunks/ui-adapters.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Automatically adapt colors when VS Code theme changes",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableWorkspaceTemplates",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/localization-core.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable workspace template management for saving and sharing configurations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.templateSyncPath",
+      "type": "string",
+      "default": "",
+      "scope": "application",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/workspaceTemplates.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Path to sync templates across team (leave empty for local-only templates)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableExtensionApi",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/extensionApi.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable public API for other extensions to integrate with Explorer Dates",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.allowExternalPlugins",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/extensionApi.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Allow external plugins to register custom decoration providers",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableGitInsights",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/featureFlags.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable Git-based file history and change comparison (unavailable on VS Code for Web)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableReporting",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/utils/settingsMigration.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "(Legacy) Enable file modification reporting and analytics features. Migrated to `explorerDates.enableExportReporting`.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableExportReporting",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/localization-core.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/localization.js",
+        "src/utils/settingsMigration.js",
+        "src/utils/settingsOrganizer.js",
+        "src/workspaceTemplates.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable export reporting and analytics features (CSV/JSON/HTML).",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.reportFormats",
+      "type": "array",
+      "default": [
+        "json",
+        "html"
+      ],
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/exportReporting.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Available export formats for file modification reports",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.activityTrackingDays",
+      "type": "number",
+      "default": 30,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": 365
+      },
+      "readers": [
+        "src/exportReporting.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Number of days to track file activity for reporting (1-365)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.timeTrackingIntegration",
+      "type": "string",
+      "default": "none",
+      "scope": "window",
+      "enum": [
+        "none",
+        "generic",
+        "toggl",
+        "clockify"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/exportReporting.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Time tracking tool integration for exporting file activity data",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.performanceMode",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js",
+        "src/chunks/decoration-provider-impl-chunk.js",
+        "src/chunks/file-date-provider-impl.js",
+        "src/chunks/preset-definitions-chunk.js",
+        "src/chunks/workspace-scan-chunk.js",
+        "src/commands/coreCommands.js",
+        "src/exportReporting.js",
+        "src/presetDefinitions.js",
+        "src/utils/settingsOrganizer.js",
+        "extension.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable performance mode to reduce CPU and memory usage for large workspaces",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.featureLevel",
+      "type": "string",
+      "default": "auto",
+      "scope": "window",
+      "enum": [
+        "auto",
+        "full",
+        "enhanced",
+        "standard",
+        "minimal"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/commands/coreCommands.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Feature profile that tunes performance and behavior for different workspace sizes",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.smartFileWatching",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/chunks/watcher-manager-chunk.js",
+        "src/presetDefinitions.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable the adaptive smart file watching pipeline for better performance in large workspaces",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.smartWatcherMaxPatterns",
+      "type": "number",
+      "default": 20,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 1,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/watcher-manager-chunk.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Maximum number of glob patterns to use for smart watcher analysis",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.smartWatcherExtensions",
+      "type": "array",
+      "default": [
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "mts",
+        "cts",
+        "vue",
+        "py",
+        "go",
+        "rb",
+        "rs",
+        "java",
+        "kt",
+        "swift",
+        "cs",
+        "cpp",
+        "c",
+        "php",
+        "scala",
+        "sql",
+        "md",
+        "mdx",
+        "json",
+        "jsonc",
+        "yml",
+        "yaml",
+        "toml",
+        "ini",
+        "txt",
+        "html",
+        "css",
+        "scss"
+      ],
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/watcher-manager-chunk.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "File extensions prioritized by the smart watcher (normalized without leading dot)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.adaptiveBatchProcessing",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/batchProcessor.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Automatically adapt batch sizes to workspace scale and queue depth",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.maxTrackedActivityFiles",
+      "type": "number",
+      "default": 3000,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 0,
+        "maximum": null
+      },
+      "readers": [
+        "src/exportReporting.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Maximum number of files to retain in activity tracking (0 disables activity tracking)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.badgeRefreshInterval",
+      "type": "number",
+      "default": 60000,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": 10000,
+        "maximum": 600000
+      },
+      "readers": [
+        "src/chunks/decoration-refresh-chunk.js",
+        "src/chunks/decorations-advanced.js",
+        "src/chunks/file-date-provider-impl.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Interval (ms) to periodically refresh badges and clear caches (10s–10m)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.security.enforceWorkspaceBoundaries",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable workspace boundary enforcement for security-sensitive operations",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.security.allowedExtraPaths",
+      "type": "array",
+      "default": [],
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Additional paths to allow when enforcing workspace boundaries",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.security.allowTestPaths",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Allow test paths during testing environments (relaxes boundary enforcement)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableAdvancedCache",
+      "type": "boolean",
+      "default": true,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/preset-definitions-chunk.js",
+        "src/commands/runtimeCommands.js",
+        "src/featureFlags.js",
+        "src/presetDefinitions.js",
+        "src/teamConfigPersistence.impl.js",
+        "src/teamConfigPersistence.logic.js",
+        "src/utils/settingsOrganizer.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable the optional advanced persistent cache (improves startup in large workspaces)",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.consoleLogLevel",
+      "type": "string",
+      "default": "warn",
+      "scope": "window",
+      "enum": [
+        "debug",
+        "info",
+        "warn",
+        "error"
+      ],
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/logger-impl-chunk.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Console log level for internal diagnostic messages",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.webDiagnosticsCanary",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Web-only: force a visible decoration canary (debug use only).",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.webDiagnosticsBuiltinColors",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/decoration-provide-chunk.js",
+        "src/chunks/file-date-provider-impl.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Web-only: map custom decoration colors to built-in theme tokens for diagnostics.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    },
+    {
+      "key": "explorerDates.enableTelemetry",
+      "type": "boolean",
+      "default": false,
+      "scope": "window",
+      "enum": null,
+      "bounds": {
+        "minimum": null,
+        "maximum": null
+      },
+      "readers": [
+        "src/chunks/file-date-provider-impl.js",
+        "src/utils/settingsMigration.js"
+      ],
+      "writers": [],
+      "changeListeners": [],
+      "affectedFeatures": [],
+      "desktopWebApplicability": "feature-dependent",
+      "documentation": "Enable optional diagnostic telemetry (opt-in). When enabled, telemetry events are recorded locally in extension global state. You can also enable telemetry via the EXPLORER_DATES_TELEMETRY environment flag for ad-hoc diagnostics.",
+      "testReferences": [],
+      "reconciliationStatus": "static-reconciled"
+    }
+  ],
+  "featureGroups": [
+    {
+      "id": "activation-deactivation",
+      "owningSourcePaths": [
+        "extension.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "source-contract-covered",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "decorations",
+      "owningSourcePaths": [
+        "src/fileDateDecorationProvider.js",
+        "src/chunks"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "file-date-freshness",
+      "owningSourcePaths": [
+        "src/fileDateDecorationProvider.js",
+        "src/filesystem"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "filesystem-provider",
+      "owningSourcePaths": [
+        "src/filesystem/FileSystemAdapter.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "source-contract-covered",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "git",
+      "owningSourcePaths": [
+        "src/commands/coreCommands.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "cache-watcher-lifecycle",
+      "owningSourcePaths": [
+        "src/advancedCache.js",
+        "src/smartWatcher.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "reporting-serialization",
+      "owningSourcePaths": [
+        "src/exportReporting.js",
+        "src/reporting"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "source-contract-covered",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "templates-configuration",
+      "owningSourcePaths": [
+        "src/workspaceTemplates.js",
+        "src/commands"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "diagnostics-onboarding",
+      "owningSourcePaths": [
+        "src/utils/webDiagnostics.js",
+        "src/onboarding.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    },
+    {
+      "id": "public-extension-api",
+      "owningSourcePaths": [
+        "src/extensionApi.js",
+        "src/chunks/extension-api-chunk.js"
+      ],
+      "declaredCapabilities": [],
+      "principalTests": [],
+      "productionArtifactApplicability": "desktop-and-supported-web",
+      "certificationStatus": "static-reconciled",
+      "knownGaps": [
+        "manual and environment-specific certification pending"
+      ]
+    }
+  ],
+  "runtimeParity": {
+    "sourceFiles": [
+      "extension.js",
+      "src/commands/coreCommands.js",
+      "src/exportReporting.js",
+      "src/reporting/reportContract.js",
+      "src/utils/commandOutcome.js"
+    ],
+    "sourceHashes": {
+      "extension.js": "2be27fdd447b0ae5aebf144984a16abf7239b498ecd28e9d8d24512e5fa0d75b",
+      "src/commands/coreCommands.js": "1ccceb75383f8b5d676d1625c998a66b12ba332361650446a4a8fa5b6a241f9f",
+      "src/exportReporting.js": "093e7589841cda4fc82374a800863659231c0a50b7765e01cd2d2eddd0df21c1",
+      "src/reporting/reportContract.js": "1482db7bcb0dd19fee9a0462a4d0bd249ca79bf20a3de434d18529d52e469281",
+      "src/utils/commandOutcome.js": "614a27223bd61131651e5336e08f2dd38c7a2dd22b2d861bd3f2c8401fb6c469"
+    },
+    "desktopBundle": "77d61fef45b1b0e2889dd0758631da5dc8f4382eb75234ab6c2a0c0e38e68ffe",
+    "webBundle": "7066c26fe0eaf6ba42a22dffb5706e2818474b8de2406102b36960f34775e9a6"
+  }
+}
