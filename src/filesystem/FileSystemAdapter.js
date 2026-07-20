@@ -213,6 +213,29 @@ class FileSystemAdapter {
         }
     }
 
+    async rename(from, to, options = { overwrite: false }) {
+        const sourcePath = this._toPath(from);
+        const targetPath = this._toPath(to);
+        try {
+            const useWorkspaceFs = this._shouldUseWorkspaceFs(from) || this._shouldUseWorkspaceFs(to);
+            if (!this.isWeb && nodeFs && !useWorkspaceFs) {
+                return nodeFs.rename(sourcePath, targetPath);
+            }
+            if (typeof vscode.workspace.fs.rename === 'function') {
+                await vscode.workspace.fs.rename(this._toUri(from), this._toUri(to), options);
+            } else if (this._toUri(from).scheme === 'file' && this._toUri(to).scheme === 'file') {
+                // Some test/legacy providers expose workspace.fs without rename; preserve
+                // atomic local-file behavior when the provider cannot offer that primitive.
+                const localFs = nodeFs || require('fs').promises;
+                await localFs.rename(sourcePath, targetPath);
+            } else {
+                throw new Error('The active filesystem provider cannot rename report output.');
+            }
+        } catch (error) {
+            this._handleFsError('rename file', `${sourcePath} -> ${targetPath}`, error);
+        }
+    }
+
     async mkdir(target, options = { recursive: true }) {
         const targetPath = this._toPath(target);
         try {

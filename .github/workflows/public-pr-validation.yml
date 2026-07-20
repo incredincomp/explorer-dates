@@ -106,6 +106,23 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Run command outcome contract
+        run: npm run test:command-outcome-contract
+
+      - name: Run report fixture contract
+        run: npm run test:report-fixture-contract
+
+      - name: Run report lifecycle contract
+        run: npm run test:report-lifecycle-contract
+      - name: Run report lifecycle matrix
+        run: npm run test:report-lifecycle-matrix
+      - name: Run production desktop report contract
+        run: npm run test:production-report-desktop-contract
+      - name: Run production web report contract
+        run: npm run test:production-report-web-contract
+      - name: Run report mutation adequacy
+        run: npm run test:report-mutation-adequacy
+
       - name: Run critical tests
         run: npm run test:critical
 

@@ -17,6 +17,7 @@ const { fileSystem } = require('./src/filesystem/FileSystemAdapter');
 const { registerCoreCommands } = require('./src/commands/coreCommands');
 const { registerOnboardingCommands } = require('./src/commands/onboardingCommands');
 const { registerMigrationCommands } = require('./src/commands/migrationCommands');
+const { commandCancellation, commandEmpty, commandSuccess, isCommandOutcome, OUTCOME_CATEGORIES } = require('./src/utils/commandOutcome');
 const { initializeTemplateStore } = require('./src/utils/templateStore');
 const { SettingsMigrationManager } = require('./src/utils/settingsMigration');
 const { ExtensionError, ERROR_CODES, ChunkLoadError, handleChunkFailure } = require('./src/utils/errors');
@@ -1282,11 +1283,15 @@ async function activate(context) {
         context.subscriptions.push(saveTemplate);
 
         // Register export/reporting commands
+        const recordedReportErrors = new WeakSet();
         const generateReport = vscode.commands.registerCommand('explorerDates.generateReport', async () => {
+            recordCommandInvocation('explorerDates.generateReport');
             try {
                 if (isWebEnvironment()) {
                     vscode.window.showInformationMessage('Export reporting is unavailable in VS Code for Web.');
-                    return;
+                    const outcome = commandEmpty();
+                    recordCommandResult('explorerDates.generateReport', true, null, outcome.category);
+                    return outcome.value;
                 }
                 
                 // Workspace trust guard
@@ -1307,9 +1312,23 @@ async function activate(context) {
                 if (!reportingManager) {
                     raiseChunkUnavailable('Export reporting', 'exportReporting');
                 }
-                await reportingManager.showReportDialog();
-                logger.info('Report generation started');
+                const result = await reportingManager.showReportDialog();
+                const outcome = isCommandOutcome(result) ? result :
+                    result === undefined ? commandCancellation() :
+                        result === null ? commandEmpty() : commandSuccess(result);
+                const isFailure = outcome.category === OUTCOME_CATEGORIES.HANDLED_COMMAND_FAILURE || outcome.category === OUTCOME_CATEGORIES.UNHANDLED_COMMAND_FAILURE;
+                recordCommandResult('explorerDates.generateReport', !isFailure, outcome.error, outcome.category, outcome.errorContext);
+                if (isFailure) {
+                    const error = outcome.error || new Error('Report generation failed');
+                    if (error && (typeof error === 'object' || typeof error === 'function')) recordedReportErrors.add(error);
+                    throw error;
+                }
+                logger.info('Report generation completed', { outcomeCategory: outcome.category });
+                return outcome.value;
             } catch (error) {
+                if (!recordedReportErrors.has(error)) {
+                    recordCommandResult('explorerDates.generateReport', false, error, OUTCOME_CATEGORIES.UNHANDLED_COMMAND_FAILURE);
+                }
                 logger.error('Failed to generate report', error);
                 vscode.window.showErrorMessage(l10n.getString('failedToGenerateReport', error.message));
                 throw error;

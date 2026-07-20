@@ -11,13 +11,20 @@ try {
 } catch { /* ignore */ }
 if (!ensureDate) { const dateHelpers = require('./utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 const { getLocalization } = require('./utils/localization');
+const { formatFileSize } = require('./utils/formatters');
+const { commandCancellation, commandFailure, commandAlreadyRunning } = require('./utils/commandOutcome');
+const {
+    REPORT_SCHEMA_VERSION, DEFAULT_EXCLUDED_SEGMENTS, normalizePath: normalizeReportPath,
+    normalizeTimeRange, rangeStart, normalizeStat, createInclusionPolicy,
+    inRange, sortFiles, createSummary, validDate
+} = require('./reporting/reportContract');
 const l10n = getLocalization();
 
 const logger = getLogger();
 const env = (typeof process !== 'undefined' && process.env) ? process.env : {};
 const isWeb = env.VSCODE_WEB === 'true';
-const DEFAULT_EXCLUDED_FOLDERS = ['node_modules', '.git', 'dist', 'build', 'out', '.vscode-test'];
-const DEFAULT_EXCLUDED_PATTERNS = ['**/*.tmp', '**/*.log', '**/.git/**', '**/node_modules/**'];
+const DEFAULT_EXCLUDED_FOLDERS = DEFAULT_EXCLUDED_SEGMENTS;
+const DEFAULT_EXCLUDED_PATTERNS = ['**/*.tmp', '**/*.log'];
 const DEFAULT_MAX_TRACKED_FILES = 3000;
 const MAX_TRACK_HISTORY_PER_FILE = 100;
 const MAX_TRACKED_FILES_LIMIT = 20000;
@@ -27,10 +34,15 @@ const MAX_TRACKED_FILES_LIMIT = 20000;
  * Handles file modification reports, time tracking integration, and project analytics
  */
 class ExportReportingManager {
-    constructor() {
+    constructor(deps = {}) {
+        this._fileSystem = deps.fileSystem || fileSystem;
+        this._logger = deps.logger || logger;
+        this._l10n = deps.l10n || l10n;
+        this._phaseHook = typeof deps.phaseHook === 'function' ? deps.phaseHook : null;
+        this._disposed = false;
         this.fileActivityCache = new Map();
         this._trackedFileOrder = new Map();
-        this.allowedFormats = ['json', 'csv', 'html', 'markdown'];
+        this.allowedFormats = ['json', 'html'];
         this.activityTrackingDays = 30;
         this.activityCutoffMs = null;
         this.timeTrackingIntegration = 'none';
@@ -50,6 +62,8 @@ class ExportReportingManager {
         };
         this._lightweightMode = env.EXPLORER_DATES_LIGHTWEIGHT_MODE === '1';
         this._trackingDisabled = false;
+        this._reportInProgress = null;
+        this._reportPolicy = createInclusionPolicy();
         this._loadConfiguration();
         this._setupConfigurationWatcher();
         this.initialize();
@@ -59,8 +73,10 @@ class ExportReportingManager {
         try {
             const config = vscode.workspace.getConfiguration('explorerDates');
             const configuredFormats = config.get('reportFormats', ['json', 'html']);
-            const defaults = ['json', 'csv', 'html', 'markdown'];
-            this.allowedFormats = Array.from(new Set([...configuredFormats, ...defaults]));
+            const supported = new Set(['json', 'csv', 'html', 'markdown']);
+            this.allowedFormats = Array.from(new Set((Array.isArray(configuredFormats) ? configuredFormats : [])
+                .map(format => String(format).toLowerCase()).filter(format => supported.has(format))));
+            if (this.allowedFormats.length === 0) this.allowedFormats = ['json'];
             const days = config.get('activityTrackingDays', 30);
             this.activityTrackingDays = Math.max(1, Math.min(365, days));
             this.activityCutoffMs = this.activityTrackingDays * 24 * 60 * 60 * 1000;
@@ -73,8 +89,14 @@ class ExportReportingManager {
             this._excludedRegexes = this.excludedPatterns
                 .map((pattern) => this._createPatternRegex(pattern))
                 .filter(Boolean);
+            const workspaceExclusions = vscode.workspace.getConfiguration('files').get('exclude', {}) || {};
+            const enabledWorkspaceExclusions = Object.keys(workspaceExclusions).filter(key => workspaceExclusions[key] !== false);
+            this._reportPolicy = createInclusionPolicy({
+                excludedSegments: this.excludedFolders,
+                excludedPatterns: [...this.excludedPatterns, ...enabledWorkspaceExclusions]
+            });
         } catch (error) {
-            logger.error('Failed to load reporting configuration', error);
+            this._logger.error('Failed to load reporting configuration', error);
         }
     }
 
@@ -248,69 +270,99 @@ class ExportReportingManager {
     }
 
     async generateFileModificationReport(options = {}) {
+        if (this._disposed) return commandFailure(new Error('Reporting manager is disposed.'), { operation: 'report-generation', code: 'DISPOSED' });
+        if (this._reportInProgress) {
+            vscode.window.showInformationMessage('Explorer Dates is already generating a report. Please wait for it to finish.');
+            return commandAlreadyRunning();
+        }
+        const run = this._generateFileModificationReport(options);
+        this._reportInProgress = run;
+        try {
+            return await run;
+        } finally {
+            if (this._reportInProgress === run) this._reportInProgress = null;
+        }
+    }
+
+    async _generateFileModificationReport(options = {}) {
         try {
             const {
                 format = 'json',
                 timeRange = 'all',
                 includeDeleted = false,
-                outputPath = null
+                outputPath = null,
+                progress = null,
+                cancellationToken = null
             } = options;
+            const canonicalTimeRange = normalizeTimeRange(timeRange);
 
             if (!this.allowedFormats.includes(format)) {
-                const warning = l10n.getString('reportFormatDisabled', format, this.allowedFormats.join(', '));
+                const warning = this._l10n.getString('reportFormatDisabled', format, this.allowedFormats.join(', '));
                 vscode.window.showWarningMessage(warning);
                 logger.warn(warning);
                 return null;
             }
 
-            const report = await this.collectFileData(timeRange, includeDeleted);
+            await this._phase('scanning-workspace', { progress, cancellationToken });
+            const report = await this.collectFileData(canonicalTimeRange, includeDeleted, { progress, cancellationToken });
+            await this._phase('creating-summary', { progress, cancellationToken });
+            this._throwIfCancelled(cancellationToken);
+            await this._phase('formatting-report', { progress, cancellationToken });
             const formattedReport = await this.formatReport(report, format);
             
             if (outputPath) {
-                await this.saveReport(formattedReport, outputPath);
-                vscode.window.showInformationMessage(l10n.getString('reportSaved', outputPath));
+                await this.saveReport(formattedReport, outputPath, { cancellationToken, phaseHook: this._phaseHook });
+                const savedPath = outputPath instanceof vscode.Uri ? (outputPath.fsPath || outputPath.path) : outputPath;
+                const action = await vscode.window.showInformationMessage(`Report saved to ${savedPath}`, 'Open Report', 'Reveal in File Explorer');
+                if (action === 'Open Report') await vscode.commands.executeCommand('vscode.open', outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath));
+                if (action === 'Reveal in File Explorer') await vscode.commands.executeCommand('revealFileInOS', outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath));
             }
             
             return formattedReport;
         } catch (error) {
-            logger.error('Failed to generate file modification report:', error);
-            vscode.window.showErrorMessage(l10n.getString('reportGenerateFailed'));
-            return null;
+            this._logger.error('Failed to generate file modification report:', error);
+            if (error?.code === 'REPORT_CANCELLED') return commandCancellation();
+            vscode.window.showErrorMessage(`Failed to generate report${options.outputPath ? ` for ${options.outputPath}` : ''}: ${error?.message || 'unknown error'}`);
+            return commandFailure(error, { operation: 'report-generation', outputPath: options.outputPath || null });
         }
     }
 
-    async collectFileData(timeRange, includeDeleted) {
+    async collectFileData(timeRange, includeDeleted, options = {}) {
         const files = [];
         const workspaceFolders = vscode.workspace.workspaceFolders;
         
         if (!workspaceFolders) {
-            return { files: [], summary: this.createSummary([]) };
+            return { schemaVersion: REPORT_SCHEMA_VERSION, files: [], summary: createSummary([]), timeRange: normalizeTimeRange(timeRange) };
         }
-
+        this._reportProgress(options.progress, 'Preparing workspace roots', 0);
+        const gitEvidence = await this.collectGitEvidence(workspaceFolders, timeRange, options);
         for (const folder of workspaceFolders) {
-            const folderFiles = await this.scanWorkspaceFolder(folder.uri, timeRange, includeDeleted);
+            const folderFiles = await this.scanWorkspaceFolder(folder.uri, timeRange, includeDeleted, {
+                ...options, gitEvidence, workspaceName: folder.name
+            });
             files.push(...folderFiles);
         }
 
-        const summary = this.createSummary(files);
+        const summary = createSummary(files);
         summary.integrationTarget = this.timeTrackingIntegration;
         summary.activityTrackingDays = this.activityTrackingDays;
         
         return {
+            schemaVersion: REPORT_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
             workspace: workspaceFolders.map(f => f.uri.fsPath),
-            timeRange: timeRange,
-            files: files,
+            workspaceName: workspaceFolders.map(f => f.name).join(', '),
+            timeRange: normalizeTimeRange(timeRange),
+            files: sortFiles(files),
             summary: summary
         };
     }
 
-    async scanWorkspaceFolder(folderUri, timeRange, includeDeleted) {
+    async scanWorkspaceFolder(folderUri, timeRange, includeDeleted, options = {}) {
         const files = [];
-        const config = vscode.workspace.getConfiguration('explorerDates');
-        const excludePatterns = config.get('excludedPatterns', []);
-        
         try {
+            this._throwIfCancelled(options.cancellationToken);
+            this._reportProgress(options.progress, 'Scanning files');
             const entries = await vscode.workspace.fs.readDirectory(folderUri);
             
             for (const [name, type] of entries) {
@@ -318,17 +370,17 @@ class ExportReportingManager {
                 const relativePath = vscode.workspace.asRelativePath(fileUri);
                 
                 // Check exclusion patterns
-                if (this.isExcluded(relativePath, excludePatterns)) {
+                if (this._reportPolicy.isExcluded(relativePath)) {
                     continue;
                 }
                 
                 if (type === vscode.FileType.File) {
-                    const fileData = await this.getFileData(fileUri, timeRange);
+                    const fileData = await this.getFileData(fileUri, timeRange, options);
                     if (fileData) {
                         files.push(fileData);
                     }
                 } else if (type === vscode.FileType.Directory) {
-                    const subFiles = await this.scanWorkspaceFolder(fileUri, timeRange, includeDeleted);
+                    const subFiles = await this.scanWorkspaceFolder(fileUri, timeRange, includeDeleted, options);
                     files.push(...subFiles);
                 }
             }
@@ -340,42 +392,116 @@ class ExportReportingManager {
             }
             
         } catch (error) {
-            logger.error(`Failed to scan folder ${folderUri.fsPath || folderUri.path}:`, error);
+            if (error?.code === 'REPORT_CANCELLED') throw error;
+            this._logger.error(`Failed to scan folder ${folderUri.fsPath || folderUri.path}:`, error);
+            throw error;
         }
         
         return files;
     }
 
-    async getFileData(uri, timeRange) {
+    async getFileData(uri, timeRange, options = {}) {
         try {
+            this._throwIfCancelled(options.cancellationToken);
             const stat = await vscode.workspace.fs.stat(uri);
             const relativePath = vscode.workspace.asRelativePath(uri);
             const cacheKey = uri.fsPath || uri.path;
             const normalizedKey = this._normalizeKey(cacheKey);
             const entry = this.fileActivityCache.get(normalizedKey);
-            const activities = entry?.activities || [];
-            
-            // Filter activities by time range
-            const filteredActivities = this.filterActivitiesByTimeRange(activities, timeRange);
+            const now = Date.now();
+            const normalizedStat = normalizeStat(stat);
+            const activities = (entry?.activities || []).filter(activity => inRange(activity.timestamp, timeRange, now));
+            const evidence = [];
+            const seen = new Set();
+            const addEvidence = (item) => {
+                const date = validDate(item.timestamp);
+                if (!date) return;
+                // One timestamp/action is one known event even when the same
+                // change arrived through mtime, watcher, user, and Git paths.
+                const key = `${date.toISOString()}|${item.action || 'modified'}`;
+                if (seen.has(key)) return;
+                seen.add(key); evidence.push({ ...item, timestamp: date });
+            };
+            for (const activity of activities) addEvidence(activity);
+            if (inRange(normalizedStat.modified, timeRange, now)) addEvidence({
+                action: 'modified', source: 'filesystem', timestamp: normalizedStat.modified
+            });
+            for (const git of options.gitEvidence?.get(normalizedKey) || []) {
+                if (inRange(git.timestamp, timeRange, now)) addEvidence(git);
+            }
+            if (normalizeTimeRange(timeRange) !== 'all' && evidence.length === 0) return null;
+            evidence.sort((a, b) => a.timestamp - b.timestamp);
+            const lastActivity = evidence.length ? evidence[evidence.length - 1].timestamp : normalizedStat.modified;
             
             return {
                 path: relativePath,
                 fullPath: entry?.path || cacheKey,
-                size: stat.size,
-                created: ensureDate(stat.ctime),
-                modified: ensureDate(stat.mtime),
+                size: normalizedStat.size,
+                created: normalizedStat.created,
+                modified: normalizedStat.modified,
                 type: this.getFileType(relativePath),
                 extension: getExtension(relativePath),
-                activities: filteredActivities,
-                activityCount: filteredActivities.length,
-                lastActivity: filteredActivities.length > 0
-                    ? filteredActivities[filteredActivities.length - 1].timestamp
-                    : ensureDate(stat.mtime)
+                activities: evidence,
+                evidence,
+                activityCount: evidence.length > 0 || normalizedStat.modified ? evidence.length : null,
+                activityUnavailable: evidence.length === 0 && !normalizedStat.modified,
+                lastActivity
             };
         } catch (error) {
-            logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
-            return null;
+            if (error?.code === 'REPORT_CANCELLED') throw error;
+            this._logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
+            throw error;
         }
+    }
+
+    _throwIfCancelled(token) {
+        if (token?.isCancellationRequested) {
+            const error = new Error('Report generation was cancelled.');
+            error.code = 'REPORT_CANCELLED';
+            throw error;
+        }
+    }
+
+    _reportProgress(progress, message, increment) {
+        if (typeof progress === 'function') progress(message, increment);
+    }
+
+    async _phase(name, options = {}) {
+        this._throwIfCancelled(options.cancellationToken);
+        if (this._phaseHook) await this._phaseHook(name, options);
+        this._throwIfCancelled(options.cancellationToken);
+    }
+
+    async collectGitEvidence(workspaceFolders, timeRange, options = {}) {
+        const result = new Map();
+        if (isWeb) return result;
+        let execFile;
+        try { execFile = require('child_process').execFile; } catch { return result; }
+        const seenRoots = new Set();
+        for (const folder of workspaceFolders) {
+            this._throwIfCancelled(options.cancellationToken);
+            const root = folder.uri.fsPath;
+            if (!root) continue;
+            const gitRoot = await new Promise(resolve => execFile('git', ['-C', root, 'rev-parse', '--show-toplevel'], { timeout: 3000 }, (error, stdout) => resolve(error ? null : stdout.trim())));
+            if (!gitRoot || seenRoots.has(gitRoot)) continue;
+            seenRoots.add(gitRoot);
+            this._reportProgress(options.progress, 'Collecting Git activity');
+            const since = rangeStart(timeRange);
+            const args = ['-C', gitRoot, 'log', '--all', '--name-only', '--format=%ct'];
+            if (since !== null) args.push(`--since=${new Date(since).toISOString()}`);
+            const output = await new Promise(resolve => execFile('git', args, { timeout: 10000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => resolve(error ? '' : stdout)));
+            let timestamp = null;
+            for (const line of String(output).split(/\r?\n/)) {
+                if (/^\d+$/.test(line.trim())) { timestamp = new Date(Number(line.trim()) * 1000); continue; }
+                const relative = normalizeReportPath(line.trim());
+                if (!relative || !timestamp) continue;
+                const absolute = normalizeReportPath(require('path').join(gitRoot, relative));
+                const key = this._normalizeKey(absolute);
+                if (!result.has(key)) result.set(key, []);
+                result.get(key).push({ action: 'modified', source: 'git', timestamp });
+            }
+        }
+        return result;
     }
 
     filterActivitiesByTimeRange(activities, timeRange) {
@@ -452,81 +578,7 @@ class ExportReportingManager {
     }
 
     createSummary(files) {
-        const summary = {
-            totalFiles: files.length,
-            totalSize: files.reduce((sum, file) => sum + (file.size || 0), 0),
-            fileTypes: {},
-            activityByDay: {},
-            mostActiveFiles: [],
-            recentlyModified: [],
-            largestFiles: [],
-            oldestFiles: [],
-            activitySourceBreakdown: {
-                user: this._activitySourceStats.user || 0,
-                watcher: this._activitySourceStats.watcher || 0
-            }
-        };
-
-        // File types
-        files.forEach(file => {
-            const type = file.type || 'unknown';
-            summary.fileTypes[type] = (summary.fileTypes[type] || 0) + 1;
-        });
-
-        // Activity by day (tracked window)
-        const retentionWindow = new Date(Date.now() - this.activityTrackingDays * 24 * 60 * 60 * 1000);
-        files.forEach(file => {
-            file.activities.forEach(activity => {
-                if (activity.timestamp >= retentionWindow) {
-                    const day = activity.timestamp.toISOString().split('T')[0];
-                    summary.activityByDay[day] = (summary.activityByDay[day] || 0) + 1;
-                }
-            });
-        });
-
-        // Most active files (top 10)
-        summary.mostActiveFiles = files
-            .sort((a, b) => b.activityCount - a.activityCount)
-            .slice(0, 10)
-            .map(file => ({
-                path: file.path,
-                activityCount: file.activityCount,
-                lastActivity: file.lastActivity
-            }));
-
-        // Recently modified (top 20)
-        summary.recentlyModified = files
-            .filter(file => file.modified)
-            .sort((a, b) => b.modified - a.modified)
-            .slice(0, 20)
-            .map(file => ({
-                path: file.path,
-                modified: file.modified,
-                size: file.size
-            }));
-
-        // Largest files (top 10)
-        summary.largestFiles = files
-            .sort((a, b) => (b.size || 0) - (a.size || 0))
-            .slice(0, 10)
-            .map(file => ({
-                path: file.path,
-                size: file.size,
-                modified: file.modified
-            }));
-
-        // Oldest files (top 10)
-        summary.oldestFiles = files
-            .filter(file => file.modified)
-            .sort((a, b) => a.modified - b.modified)
-            .slice(0, 10)
-            .map(file => ({
-                path: file.path,
-                modified: file.modified,
-                size: file.size
-            }));
-
-        return summary;
+        return createSummary(files);
     }
 
     async formatReport(report, format) {
@@ -545,89 +597,58 @@ class ExportReportingManager {
     }
 
     formatAsCSV(report) {
-        const lines = [
-            'Path,Size,Created,Modified,Type,Extension,ActivityCount,LastActivity'
-        ];
-        
-        report.files.forEach(file => {
-            lines.push([
-                file.path,
-                file.size || 0,
-                file.created ? file.created.toISOString() : '',
-                file.modified ? file.modified.toISOString() : '',
-                file.type,
-                file.extension,
-                file.activityCount,
-                file.lastActivity ? file.lastActivity.toISOString() : ''
-            ].join(','));
-        });
-        
+        const quote = value => {
+            let text = value === null || value === undefined ? '' : String(value);
+            if (/^[=+\-@]/.test(text)) text = `'${text}`;
+            return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        };
+        const lines = ['Path,Size,Created,Modified,Type,Extension,ActivityCount,ActivitySources,LastActivity'];
+        for (const file of report.files) lines.push([
+            file.path, file.size, validDate(file.created)?.toISOString(), validDate(file.modified)?.toISOString(),
+            file.type, file.extension, file.activityCount ?? 'Unknown', (file.evidence || []).map(e => e.source).join('|') || (file.activityUnavailable ? 'unavailable' : ''), validDate(file.lastActivity)?.toISOString()
+        ].map(quote).join(','));
         return lines.join('\n');
     }
 
     formatAsHTML(report) {
+        const escape = value => String(value === null || value === undefined ? '' : value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const date = value => validDate(value)?.toLocaleString() || 'Unavailable';
+        const rows = report.files.map(file => `<tr><td>${escape(file.path)}</td><td>${escape(this.formatFileSize(file.size || 0))}</td><td>${escape(date(file.modified))}</td><td>${escape(file.type)}</td><td>${escape(file.activityCount ?? 'Unknown')}</td><td>${escape((file.evidence || []).map(e => e.source).join(', ') || (file.activityUnavailable ? 'Unavailable' : ''))}</td></tr>`).join('');
+        const active = report.summary.mostActiveFiles.length ? report.summary.mostActiveFiles.map(file => `<tr><td>${escape(file.path)}</td><td>${escape(file.activityCount)}</td><td>${escape(date(file.lastActivity))}</td></tr>`).join('') : '<tr><td colspan="3">No known activity evidence in this range.</td></tr>';
         return `<!DOCTYPE html>
 <html>
 <head>
-    <title>File Modification Report</title>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light"><title>Explorer Dates File Report</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .summary { background-color: #f9f9f9; padding: 15px; margin: 20px 0; }
-        .chart { margin: 20px 0; }
+        :root { color-scheme: dark; --bg:#10141b; --panel:#18212d; --text:#e7edf5; --muted:#a8b4c3; --line:#334255; --accent:#61dafb; }
+        * { box-sizing:border-box; } body { margin:0; padding:2rem; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,sans-serif; }
+        header { display:flex; gap:1rem; align-items:center; } .mark { width:42px;height:42px;object-fit:contain; } h1 { margin:.2rem 0; } .muted { color:var(--muted); }
+        .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.8rem; margin:1.5rem 0; } .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:1rem; } .card strong { display:block; font-size:1.4rem; color:var(--accent); }
+        section { margin:1.5rem 0; } .table-wrap { overflow-x:auto; } table { border-collapse:collapse; width:100%; min-width:680px; } th,td { border:1px solid var(--line); padding:.55rem .7rem; text-align:left; vertical-align:top; } th { background:var(--panel); } details { background:var(--panel); border:1px solid var(--line); padding:.8rem; border-radius:8px; }
+        @media print { :root { color-scheme:light; --bg:#fff;--panel:#f3f4f6;--text:#111;--muted:#555;--line:#bbb;--accent:#064e70; } body { padding:1rem; } }
     </style>
 </head>
 <body>
-    <h1>File Modification Report</h1>
-    <p>Generated: ${new Date(report.generatedAt).toLocaleString()}</p>
-    
-    <div class="summary">
-        <h2>Summary</h2>
-        <p><strong>Total Files:</strong> ${report.summary.totalFiles}</p>
-        <p><strong>Total Size:</strong> ${this.formatFileSize(report.summary.totalSize)}</p>
-        <p><strong>Time Range:</strong> ${report.timeRange}</p>
-    </div>
-    
-    <h2>File Types</h2>
-    <table>
-        <tr><th>Type</th><th>Count</th></tr>
-        ${Object.entries(report.summary.fileTypes)
-            .map(([type, count]) => `<tr><td>${type}</td><td>${count}</td></tr>`)
-            .join('')}
-    </table>
-    
-    <h2>Most Active Files</h2>
-    <table>
-        <tr><th>Path</th><th>Activity Count</th><th>Last Activity</th></tr>
-        ${report.summary.mostActiveFiles
-            .map(file => `<tr><td>${file.path}</td><td>${file.activityCount}</td><td>${new Date(file.lastActivity).toLocaleString()}</td></tr>`)
-            .join('')}
-    </table>
-    
-    <h2>All Files</h2>
-    <table>
-        <tr><th>Path</th><th>Size</th><th>Modified</th><th>Type</th><th>Activity Count</th></tr>
-        ${report.files
-            .map(file => `<tr>
-                <td>${file.path}</td>
-                <td>${this.formatFileSize(file.size || 0)}</td>
-                <td>${file.modified ? new Date(file.modified).toLocaleString() : 'N/A'}</td>
-                <td>${file.type}</td>
-                <td>${file.activityCount}</td>
-            </tr>`)
-            .join('')}
-    </table>
+    <header><img class="mark" src="data:image/png;base64,${this._embeddedLogo()}" alt="Explorer Dates"><div><h1>Explorer Dates File Report</h1><div class="muted">Schema ${escape(report.schemaVersion)} · Generated ${escape(date(report.generatedAt))}</div></div></header>
+    <p class="muted">Workspace: ${escape(report.workspaceName || report.workspace?.join(', '))} · Selected range: ${escape(report.timeRange)}</p>
+    <div class="cards"><div class="card"><strong>${escape(report.summary.totalFiles)}</strong>Included files</div><div class="card"><strong>${escape(this.formatFileSize(report.summary.totalSize))}</strong>Total size</div><div class="card"><strong>${escape(report.summary.mostActiveFiles.length)}</strong>Known active files</div><div class="card"><strong>${escape(Object.values(report.summary.activitySourceBreakdown || {}).reduce((a,b)=>a+b,0))}</strong>Evidence events</div></div>
+    <section><h2>Most Active Files</h2><div class="table-wrap"><table><tr><th>Path</th><th>Activity count</th><th>Last activity</th></tr>${active}</table></div></section>
+    <details><summary>All Files (${escape(report.files.length)})</summary><div class="table-wrap"><table><tr><th>Path</th><th>Size</th><th>Modified</th><th>Type</th><th>Activity count</th><th>Sources</th></tr>${rows}</table></div></details>
 </body>
 </html>`;
     }
 
     formatAsMarkdown(report) {
-        return `# File Modification Report
+        const cell = value => String(value === null || value === undefined ? '' : value).replace(/\r?\n/g, '<br>').replace(/\|/g, '\\|');
+        return `# Explorer Dates File Report
 
-**Generated:** ${new Date(report.generatedAt).toLocaleString()}
-**Time Range:** ${report.timeRange}
+**Schema:** ${cell(report.schemaVersion)}<br>
+**Generated:** ${cell(validDate(report.generatedAt)?.toISOString())}<br>
+**Workspace:** ${cell(report.workspaceName || report.workspace?.join(', '))}<br>
+**Time Range:** ${cell(report.timeRange)}
 
 ## Summary
 
@@ -638,51 +659,68 @@ class ExportReportingManager {
 
 | Type | Count |
 |------|-------|
-${Object.entries(report.summary.fileTypes)
-    .map(([type, count]) => `| ${type} | ${count} |`)
+${Object.entries(report.summary.fileTypes).map(([type, count]) => `| ${cell(type)} | ${count} |`)
     .join('\n')}
 
 ## Most Active Files
 
 | Path | Activity Count | Last Activity |
 |------|----------------|---------------|
-${report.summary.mostActiveFiles
-    .map(file => `| ${file.path} | ${file.activityCount} | ${new Date(file.lastActivity).toLocaleString()} |`)
+${report.summary.mostActiveFiles.map(file => `| ${cell(file.path)} | ${file.activityCount} | ${cell(validDate(file.lastActivity)?.toISOString())} |`)
     .join('\n')}
 
 ## Recently Modified Files
 
 | Path | Modified | Size |
 |------|----------|------|
-${report.summary.recentlyModified
-    .map(file => `| ${file.path} | ${new Date(file.modified).toLocaleString()} | ${this.formatFileSize(file.size)} |`)
+${report.summary.recentlyModified.map(file => `| ${cell(file.path)} | ${cell(validDate(file.modified)?.toISOString())} | ${this.formatFileSize(file.size)} |`)
     .join('\n')}
 
 ## All Files
 
 | Path | Size | Modified | Type | Activities |
 |------|------|----------|------|------------|
-${report.files
-    .map(file => `| ${file.path} | ${this.formatFileSize(file.size || 0)} | ${file.modified ? new Date(file.modified).toLocaleString() : 'N/A'} | ${file.type} | ${file.activityCount} |`)
+${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.size || 0)} | ${cell(validDate(file.modified)?.toISOString() || 'Unavailable')} | ${cell(file.type)} | ${cell(file.activityCount ?? 'Unknown')} |`)
     .join('\n')}
 `;
     }
 
-    async saveReport(content, outputPath) {
+    async saveReport(content, outputPath, options = {}) {
+        let temporary = null;
         try {
             if (isWeb) {
                 const encoded = encodeURIComponent(content);
                 await vscode.env.openExternal(vscode.Uri.parse(`data:text/plain;charset=utf-8,${encoded}`));
-                vscode.window.showInformationMessage(l10n.getString('reportDownloadTriggered'));
+                vscode.window.showInformationMessage(this._l10n.getString('reportDownloadTriggered'));
                 return;
             }
 
             const target = outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath);
-            await fileSystem.writeFile(target, content, 'utf8');
-            logger.info(`Report saved to ${target.fsPath || target.path}`);
+            this._throwIfCancelled(options.cancellationToken);
+            const targetPath = target.fsPath || target.path;
+            temporary = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            await this._phase('writing-temporary-file', options);
+            await this._fileSystem.writeFile(temporary, content, 'utf8');
+            await this._phase('verifying-temporary-file', options);
+            const tempStat = await this._fileSystem.stat(temporary);
+            if (!Number.isFinite(Number(tempStat.size)) || Number(tempStat.size) <= 0) throw new Error('The temporary report is empty or could not be verified.');
+            this._throwIfCancelled(options.cancellationToken);
+            await this._phase('promoting-final-file', options);
+            await this._fileSystem.rename(temporary, target, { overwrite: true });
+            temporary = null;
+            await this._phase('verifying-final-file', options);
+            const verified = await this._fileSystem.stat(target);
+            if (!Number.isFinite(Number(verified.size)) || Number(verified.size) <= 0) {
+                throw new Error('The saved report is empty or could not be verified.');
+            }
+            this._logger.info(`Report saved to ${target.fsPath || target.path}`);
         } catch (error) {
-            logger.error('Failed to save report:', error);
+            this._logger.error('Failed to save report:', error);
             throw error;
+        } finally {
+            if (temporary && typeof this._fileSystem.delete === 'function') {
+                try { await this._fileSystem.delete(temporary, { recursive: false, useTrash: false }); } catch (cleanupError) { this._logger.warn('Failed to clean temporary report file:', cleanupError); }
+            }
         }
     }
 
@@ -781,21 +819,48 @@ ${report.files
     }
 
     isExcluded(filePath, excludePatterns) {
-        return excludePatterns.some(pattern => {
-            const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-            return regex.test(filePath);
+        return this._reportPolicy.isExcluded(filePath) || (excludePatterns || []).some(pattern => {
+            const regex = this._createPatternRegex(pattern);
+            return regex ? regex.test(normalizeReportPath(filePath)) : false;
         });
     }
 
     formatFileSize(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        const formatted = formatFileSize(bytes, 'auto');
+        return formatted.startsWith('~') ? formatted.slice(1) : formatted;
+    }
+
+    _embeddedLogo() {
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const candidates = [
+                path.join(__dirname, '..', 'icons', 'explorer-dates.png'),
+                path.join(__dirname, '..', '..', 'icons', 'explorer-dates.png')
+            ];
+            const logoPath = candidates.find(candidate => fs.existsSync(candidate));
+            return logoPath ? fs.readFileSync(logoPath).toString('base64') : '';
+        } catch {
+            return '';
+        }
     }
 
     async showReportDialog() {
+        if (this._disposed) return commandFailure(new Error('Reporting manager is disposed.'), { operation: 'report-dialog', code: 'DISPOSED' });
+        if (this._reportInProgress) {
+            vscode.window.showInformationMessage('Explorer Dates is already generating a report. Please wait for it to finish.');
+            return commandAlreadyRunning();
+        }
+        const dialogRun = this._showReportDialog();
+        this._reportInProgress = dialogRun;
+        try {
+            return await dialogRun;
+        } finally {
+            if (this._reportInProgress === dialogRun) this._reportInProgress = null;
+        }
+    }
+
+    async _showReportDialog() {
         try {
             const options = {
                 '📊 Generate Full Report': 'full',
@@ -814,7 +879,7 @@ ${report.files
 
             const timeRange = options[selected];
             
-            const formatOptions = ['JSON', 'CSV', 'HTML', 'Markdown'];
+            const formatOptions = this.allowedFormats.map(value => value.toUpperCase() === 'MARKDOWN' ? 'Markdown' : value.toUpperCase());
             const format = await vscode.window.showQuickPick(
                 formatOptions,
                 { placeHolder: l10n.getString('selectReportFormatPlaceholder') }
@@ -823,7 +888,7 @@ ${report.files
             if (!format) return;
 
             const result = await vscode.window.showSaveDialog({
-                defaultUri: vscode.Uri.file(`file-report.${format.toLowerCase()}`),
+                defaultUri: vscode.Uri.file(`explorer-dates-report-${new Date().toISOString().replace(/[:.]/g, '-')}.${format.toLowerCase()}`),
                 filters: {
                     [format]: [format.toLowerCase()]
                 }
@@ -831,15 +896,13 @@ ${report.files
 
             if (!result) return;
 
-            await this.generateFileModificationReport({
-                format: format.toLowerCase(),
-                timeRange: timeRange,
-                outputPath: result.fsPath
-            });
+            const run = async progress => this._generateFileModificationReport({ format: format.toLowerCase(), timeRange, outputPath: result, progress: progress.report ? (message, increment) => progress.report({ message, increment }) : null, cancellationToken: progress.token });
+            return await vscode.window.withProgress({ location: vscode.ProgressLocation?.Notification || 15, title: 'Generating Explorer Dates report', cancellable: true }, run);
 
         } catch (error) {
             logger.error('Failed to show report dialog:', error);
             vscode.window.showErrorMessage('Failed to generate report');
+            return commandFailure(error, { operation: 'report-dialog' });
         }
     }
 

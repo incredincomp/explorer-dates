@@ -33,11 +33,16 @@ try {
     };
 
     const handle = setInterval(checkFn, INTERVAL_MS);
+    // Diagnostics must never be the reason a completed test remains alive.
+    // Keep the interval observable while work is active, but allow Node to
+    // terminate naturally once the test has released its own resources.
+    if (typeof handle.unref === 'function') handle.unref();
 
     // Run one immediate check after threshold to provide fast feedback.
-    setTimeout(() => {
+    const thresholdTimer = setTimeout(() => {
       try { checkFn(); } catch {}
     }, THRESHOLD_MS + 50);
+    if (typeof thresholdTimer.unref === 'function') thresholdTimer.unref();
 
     // Clean up on exit so the process can terminate quickly
     process.on('exit', () => { try { clearInterval(handle); } catch {} });
