@@ -59,7 +59,7 @@ expectFailure('candidate HEAD change during execution fails', () => resolveCandi
 const changedTree = fixture();
 const treeBefore = resolveCandidateIdentity(changedTree.repo, { ...changedTree, expectedValidationSha: changedTree.candidateSha });
 fs.writeFileSync(path.join(changedTree.repo, 'tree-change.txt'), 'tree\n'); git(changedTree.repo, ['add', 'tree-change.txt']); git(changedTree.repo, ['commit', '-qm', 'tree change']);
-const treeAfter = resolveCandidateIdentity(changedTree.repo, { ...changedTree, expectedValidationSha: null });
+const treeAfter = resolveCandidateIdentity(changedTree.repo, { ...changedTree, expectedValidationSha: '' });
 assert.notEqual(treeBefore.candidate.tree, treeAfter.candidate.tree); cases.push({ label: 'candidate tree change during execution fails', status: 'passed' });
 
 const changedStatus = fixture();
