@@ -106,6 +106,15 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Run product surface contract
+        run: npm run test:product-surface-contract
+
+      - name: Run runtime parity contract
+        run: npm run test:runtime-parity-contract
+
+      - name: Run mutation foundation
+        run: npm run test:mutation-foundation
+
       - name: Run command outcome contract
         run: npm run test:command-outcome-contract
 
