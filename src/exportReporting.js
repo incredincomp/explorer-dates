@@ -12,7 +12,7 @@ try {
 if (!ensureDate) { const dateHelpers = require('./utils/dateHelpers'); ensureDate = dateHelpers.ensureDate; }
 const { getLocalization } = require('./utils/localization');
 const { formatFileSize } = require('./utils/formatters');
-const { commandCancellation, commandFailure } = require('./utils/commandOutcome');
+const { commandCancellation, commandFailure, commandAlreadyRunning } = require('./utils/commandOutcome');
 const {
     REPORT_SCHEMA_VERSION, DEFAULT_EXCLUDED_SEGMENTS, normalizePath: normalizeReportPath,
     normalizeTimeRange, rangeStart, normalizeStat, createInclusionPolicy,
@@ -34,7 +34,12 @@ const MAX_TRACKED_FILES_LIMIT = 20000;
  * Handles file modification reports, time tracking integration, and project analytics
  */
 class ExportReportingManager {
-    constructor() {
+    constructor(deps = {}) {
+        this._fileSystem = deps.fileSystem || fileSystem;
+        this._logger = deps.logger || logger;
+        this._l10n = deps.l10n || l10n;
+        this._phaseHook = typeof deps.phaseHook === 'function' ? deps.phaseHook : null;
+        this._disposed = false;
         this.fileActivityCache = new Map();
         this._trackedFileOrder = new Map();
         this.allowedFormats = ['json', 'html'];
@@ -91,7 +96,7 @@ class ExportReportingManager {
                 excludedPatterns: [...this.excludedPatterns, ...enabledWorkspaceExclusions]
             });
         } catch (error) {
-            logger.error('Failed to load reporting configuration', error);
+            this._logger.error('Failed to load reporting configuration', error);
         }
     }
 
@@ -265,9 +270,10 @@ class ExportReportingManager {
     }
 
     async generateFileModificationReport(options = {}) {
+        if (this._disposed) return commandFailure(new Error('Reporting manager is disposed.'), { operation: 'report-generation', code: 'DISPOSED' });
         if (this._reportInProgress) {
             vscode.window.showInformationMessage('Explorer Dates is already generating a report. Please wait for it to finish.');
-            return null;
+            return commandAlreadyRunning();
         }
         const run = this._generateFileModificationReport(options);
         this._reportInProgress = run;
@@ -291,17 +297,21 @@ class ExportReportingManager {
             const canonicalTimeRange = normalizeTimeRange(timeRange);
 
             if (!this.allowedFormats.includes(format)) {
-                const warning = l10n.getString('reportFormatDisabled', format, this.allowedFormats.join(', '));
+                const warning = this._l10n.getString('reportFormatDisabled', format, this.allowedFormats.join(', '));
                 vscode.window.showWarningMessage(warning);
                 logger.warn(warning);
                 return null;
             }
 
+            await this._phase('scanning-workspace', { progress, cancellationToken });
             const report = await this.collectFileData(canonicalTimeRange, includeDeleted, { progress, cancellationToken });
+            await this._phase('creating-summary', { progress, cancellationToken });
+            this._throwIfCancelled(cancellationToken);
+            await this._phase('formatting-report', { progress, cancellationToken });
             const formattedReport = await this.formatReport(report, format);
             
             if (outputPath) {
-                await this.saveReport(formattedReport, outputPath, { cancellationToken });
+                await this.saveReport(formattedReport, outputPath, { cancellationToken, phaseHook: this._phaseHook });
                 const savedPath = outputPath instanceof vscode.Uri ? (outputPath.fsPath || outputPath.path) : outputPath;
                 const action = await vscode.window.showInformationMessage(`Report saved to ${savedPath}`, 'Open Report', 'Reveal in File Explorer');
                 if (action === 'Open Report') await vscode.commands.executeCommand('vscode.open', outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath));
@@ -310,7 +320,7 @@ class ExportReportingManager {
             
             return formattedReport;
         } catch (error) {
-            logger.error('Failed to generate file modification report:', error);
+            this._logger.error('Failed to generate file modification report:', error);
             if (error?.code === 'REPORT_CANCELLED') return commandCancellation();
             vscode.window.showErrorMessage(`Failed to generate report${options.outputPath ? ` for ${options.outputPath}` : ''}: ${error?.message || 'unknown error'}`);
             return commandFailure(error, { operation: 'report-generation', outputPath: options.outputPath || null });
@@ -382,7 +392,9 @@ class ExportReportingManager {
             }
             
         } catch (error) {
-            logger.error(`Failed to scan folder ${folderUri.fsPath || folderUri.path}:`, error);
+            if (error?.code === 'REPORT_CANCELLED') throw error;
+            this._logger.error(`Failed to scan folder ${folderUri.fsPath || folderUri.path}:`, error);
+            throw error;
         }
         
         return files;
@@ -436,8 +448,9 @@ class ExportReportingManager {
                 lastActivity
             };
         } catch (error) {
-            logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
-            return null;
+            if (error?.code === 'REPORT_CANCELLED') throw error;
+            this._logger.error(`Failed to get file data for ${uri.fsPath || uri.path}:`, error);
+            throw error;
         }
     }
 
@@ -451,6 +464,12 @@ class ExportReportingManager {
 
     _reportProgress(progress, message, increment) {
         if (typeof progress === 'function') progress(message, increment);
+    }
+
+    async _phase(name, options = {}) {
+        this._throwIfCancelled(options.cancellationToken);
+        if (this._phaseHook) await this._phaseHook(name, options);
+        this._throwIfCancelled(options.cancellationToken);
     }
 
     async collectGitEvidence(workspaceFolders, timeRange, options = {}) {
@@ -667,29 +686,41 @@ ${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.si
     }
 
     async saveReport(content, outputPath, options = {}) {
+        let temporary = null;
         try {
             if (isWeb) {
                 const encoded = encodeURIComponent(content);
                 await vscode.env.openExternal(vscode.Uri.parse(`data:text/plain;charset=utf-8,${encoded}`));
-                vscode.window.showInformationMessage(l10n.getString('reportDownloadTriggered'));
+                vscode.window.showInformationMessage(this._l10n.getString('reportDownloadTriggered'));
                 return;
             }
 
             const target = outputPath instanceof vscode.Uri ? outputPath : vscode.Uri.file(outputPath);
             this._throwIfCancelled(options.cancellationToken);
             const targetPath = target.fsPath || target.path;
-            const temporary = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
-            await fileSystem.writeFile(temporary, content, 'utf8');
+            temporary = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            await this._phase('writing-temporary-file', options);
+            await this._fileSystem.writeFile(temporary, content, 'utf8');
+            await this._phase('verifying-temporary-file', options);
+            const tempStat = await this._fileSystem.stat(temporary);
+            if (!Number.isFinite(Number(tempStat.size)) || Number(tempStat.size) <= 0) throw new Error('The temporary report is empty or could not be verified.');
             this._throwIfCancelled(options.cancellationToken);
-            await fileSystem.rename(temporary, target, { overwrite: true });
-            const verified = await fileSystem.stat(target);
+            await this._phase('promoting-final-file', options);
+            await this._fileSystem.rename(temporary, target, { overwrite: true });
+            temporary = null;
+            await this._phase('verifying-final-file', options);
+            const verified = await this._fileSystem.stat(target);
             if (!Number.isFinite(Number(verified.size)) || Number(verified.size) <= 0) {
                 throw new Error('The saved report is empty or could not be verified.');
             }
-            logger.info(`Report saved to ${target.fsPath || target.path}`);
+            this._logger.info(`Report saved to ${target.fsPath || target.path}`);
         } catch (error) {
-            logger.error('Failed to save report:', error);
+            this._logger.error('Failed to save report:', error);
             throw error;
+        } finally {
+            if (temporary && typeof this._fileSystem.delete === 'function') {
+                try { await this._fileSystem.delete(temporary, { recursive: false, useTrash: false }); } catch (cleanupError) { this._logger.warn('Failed to clean temporary report file:', cleanupError); }
+            }
         }
     }
 
@@ -815,9 +846,10 @@ ${report.files.map(file => `| ${cell(file.path)} | ${this.formatFileSize(file.si
     }
 
     async showReportDialog() {
+        if (this._disposed) return commandFailure(new Error('Reporting manager is disposed.'), { operation: 'report-dialog', code: 'DISPOSED' });
         if (this._reportInProgress) {
             vscode.window.showInformationMessage('Explorer Dates is already generating a report. Please wait for it to finish.');
-            return null;
+            return commandAlreadyRunning();
         }
         const dialogRun = this._showReportDialog();
         this._reportInProgress = dialogRun;
