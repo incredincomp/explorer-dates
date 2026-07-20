@@ -53,7 +53,7 @@ function main() {
     assert(runs.includes('EXPECTED_VALIDATION_SHA'), 'Workflow must compare HEAD with the resolved SHA');
     assert(runs.includes('GITHUB_STEP_SUMMARY'), 'Workflow must summarize the validated SHA');
     assert(source.includes('actions/upload-artifact@v4'), 'Workflow must upload validation identity');
-    assert(source.includes('validation-identity/identity.json'), 'Workflow must define the identity artifact');
+    assert(source.includes('${{ runner.temp }}/validation-identity/identity.json'), 'Workflow must keep the identity artifact outside the checkout');
     assert(source.includes('github.event_name'), 'Workflow must preserve event-specific validation behavior');
     assert(runs.includes('npm run test:product-surface-contract'), 'Product-surface contract must be required');
     assert(runs.includes('npm run test:runtime-parity-contract'), 'Runtime parity contract must be required');
