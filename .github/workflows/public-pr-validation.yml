@@ -113,6 +113,8 @@ jobs:
         run: npm run test:runtime-parity-contract
 
       - name: Run mutation foundation
+        env:
+          EXPECTED_VALIDATION_SHA: ${{ steps.resolve-validation.outputs.expected_sha }}
         run: npm run test:mutation-foundation
 
       - name: Run command outcome contract

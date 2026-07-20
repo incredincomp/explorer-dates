@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineSha": "fd10acca7173768a7de10b389f80505ce36e9a13",
-  "baselineTree": "0dc323c7d4d87ddbb903fbf6f6c45569af7604a1",
+  "foundationBaseSha": "fd10acca7173768a7de10b389f80505ce36e9a13",
+  "foundationBaseTree": "0dc323c7d4d87ddbb903fbf6f6c45569af7604a1",
   "mutations": [
     {
       "id": "MUT-FND-001",
@@ -13,8 +13,7 @@
       "after": "subscriptions.push(registerCommand('explorerDates.__mutated_showFileDetails', async (uri) => {",
       "detector": "node scripts/validate-product-surface.mjs",
       "expectedReason": "undeclared-runtime-registration|missingCommands|registration-count",
-      "applicability": "static-source-contract",
-      "status": "caught-intended-reason"
+      "applicability": "static-source-contract"
     },
     {
       "id": "MUT-FND-002",
@@ -26,8 +25,7 @@
       "after": "return commandSuccess();",
       "detector": "npm run test:command-outcome-contract",
       "expectedReason": "handled failure must produce one result record|false-success|Expected",
-      "applicability": "source-command-contract",
-      "status": "caught-intended-reason"
+      "applicability": "source-command-contract"
     },
     {
       "id": "MUT-FND-003",
@@ -39,8 +37,7 @@
       "after": "'node_modules', 'dist'",
       "detector": "npm run test:report-fixture-contract",
       "expectedReason": "deepStrictEqual|14|6|8|excluded|included",
-      "applicability": "source-report-contract",
-      "status": "caught-intended-reason"
+      "applicability": "source-report-contract"
     },
     {
       "id": "MUT-FND-004",
@@ -52,8 +49,7 @@
       "after": "logger.info(`File details shown for: ${displayPath}`);\n            return commandEmpty();",
       "detector": "node scripts/check-runtime-parity.mjs",
       "expectedReason": "source-mismatch|coreCommands.js|failed",
-      "applicability": "source-to-artifact-parity",
-      "status": "caught-intended-reason"
+      "applicability": "source-to-artifact-parity"
     }
   ]
 }

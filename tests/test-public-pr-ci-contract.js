@@ -55,6 +55,12 @@ function main() {
     assert(source.includes('actions/upload-artifact@v4'), 'Workflow must upload validation identity');
     assert(source.includes('validation-identity/identity.json'), 'Workflow must define the identity artifact');
     assert(source.includes('github.event_name'), 'Workflow must preserve event-specific validation behavior');
+    assert(runs.includes('npm run test:product-surface-contract'), 'Product-surface contract must be required');
+    assert(runs.includes('npm run test:runtime-parity-contract'), 'Runtime parity contract must be required');
+    assert(runs.includes('npm run test:mutation-foundation'), 'Mutation foundation must be required');
+    assert(source.includes('EXPECTED_VALIDATION_SHA: ${{ steps.resolve-validation.outputs.expected_sha }}'), 'Mutation foundation must receive the exact validation candidate SHA');
+    assert(!source.includes('287e2dc989c2b7abf28a2bec69cf3217317a3ad7'), 'Workflow must not hardcode the PR branch head');
+    assert(!source.includes('fd10acca7173768a7de10b389f80505ce36e9a13'), 'Workflow must not hardcode the foundation base as candidate authority');
 
     const requiredCommands = [
         'npm ci',
