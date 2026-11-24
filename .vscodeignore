@@ -55,6 +55,7 @@ DOCS/COMPLIANCE_INDEX.md
 old-builds/PERFORMANCE_BASELINE_SETUP.md
 docs/**
 explorer-dates.code-workspace
+explorer-dates-smoke-check.txt
 extension.js
 meta.json
 scripts/**

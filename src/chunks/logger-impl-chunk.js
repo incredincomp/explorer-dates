@@ -173,15 +173,25 @@ class Logger {
 }
 
 function getOrCreateLogger() {
-    if (typeof global !== 'undefined') {
-        if (!global[GLOBAL_LOGGER_KEY]) global[GLOBAL_LOGGER_KEY] = new Logger();
-        return global[GLOBAL_LOGGER_KEY];
+    const globalScope = typeof global !== 'undefined'
+        ? global
+        : (typeof globalThis !== 'undefined' ? globalThis : null);
+
+    if (globalScope) {
+        const existing = globalScope[GLOBAL_LOGGER_KEY];
+        if (existing) {
+            if (typeof existing._setImpl === 'function' && !existing._impl) {
+                existing._setImpl(new Logger());
+            }
+            return existing;
+        }
+
+        const logger = new Logger();
+        globalScope[GLOBAL_LOGGER_KEY] = logger;
+        if (globalThis.window) globalThis.window[GLOBAL_LOGGER_KEY] = logger;
+        return logger;
     }
-    if (typeof globalThis !== 'undefined') {
-        if (!globalThis[GLOBAL_LOGGER_KEY]) globalThis[GLOBAL_LOGGER_KEY] = new Logger();
-        if (globalThis.window) globalThis.window[GLOBAL_LOGGER_KEY] = globalThis[GLOBAL_LOGGER_KEY];
-        return globalThis[GLOBAL_LOGGER_KEY];
-    }
+
     return new Logger();
 }
 

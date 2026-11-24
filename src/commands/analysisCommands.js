@@ -21,7 +21,7 @@ const { getSettingsCoordinator } = require('../utils/settingsCoordinator');
 // Localization is lazily imported to avoid bundling the full translations
 // into this chunk at build time. This keeps the analysis chunk small.
 async function _getL10n() {
-    const mod = await import('../utils/localization');
+    const mod = await import('../utils/localization.js');
     return mod.getLocalization();
 }
 

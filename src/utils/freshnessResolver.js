@@ -24,6 +24,31 @@ function getConfigValue(config, key, fallback) {
     }
 }
 
+function getAllowVirtualFs(config, workspaceKind) {
+    const key = 'freshnessAllowVirtualFs';
+    const webDefault = workspaceKind === 'web' ||
+        (!workspaceKind && vscode?.env?.uiKind === vscode?.UIKind?.Web);
+    let inspected;
+    try {
+        inspected = config?.inspect?.(key);
+    } catch {
+        inspected = null;
+    }
+
+    if (inspected && typeof inspected === 'object') {
+        const hasOverride = [
+            inspected.globalValue,
+            inspected.workspaceValue,
+            inspected.workspaceFolderValue
+        ].some(value => value !== undefined);
+        return hasOverride
+            ? Boolean(getConfigValue(config, key, false))
+            : webDefault;
+    }
+
+    return Boolean(getConfigValue(config, key, webDefault));
+}
+
 function getBucketThresholds(config) {
     return {
         nowMinutes: Number(getConfigValue(config, 'freshnessBucketMinutesNow', 60)) || 60,
@@ -84,6 +109,9 @@ function formatBadge(bucket, source, config) {
     if (bucket === 'unknown' || source === 'unknown') {
         return showUnknown ? '?' : null;
     }
+    if (bucket === 'now' && getConfigValue(config, 'freshnessUseNeutralNowBadge', false) === true) {
+        return formatBadgeAge('today');
+    }
     const ageLabel = formatBadgeAge(bucket);
     if (!ageLabel || ageLabel === 'unknown') {
         return showUnknown ? '?' : null;
@@ -129,17 +157,30 @@ function formatTooltip(freshness, config) {
     return lines.join('\n');
 }
 
-function isTimestampTrustworthyForFs(scheme, mtimeMs, nowMs) {
+function hasVerifiedPerFileMtime(uri) {
+    const scheme = uri?.scheme || 'file';
+    // @vscode/test-web's mount provider reports per-file stats and save-time overlay mtimes.
+    return scheme === 'file' || (scheme === 'vscode-test-web' && uri?.authority === 'mount');
+}
+
+function isTimestampTrustworthyForFs(uri, mtimeMs, nowMs) {
     if (!Number.isFinite(mtimeMs) || mtimeMs <= 0) return false;
     const maxFutureSkewMs = 5 * 60 * 1000;
     if (mtimeMs > nowMs + maxFutureSkewMs) return false;
-    if (scheme === 'file') return true;
+    if (hasVerifiedPerFileMtime(uri)) return true;
     const ageMs = nowMs - mtimeMs;
     const minAgeMs = 5 * 60 * 1000;
     const maxAgeMs = 365 * 24 * 60 * 60 * 1000 * 10;
     if (ageMs < minAgeMs) return false;
     if (ageMs > maxAgeMs) return false;
     return true;
+}
+
+function hasSyntheticProviderMtime(uri) {
+    const scheme = uri?.scheme || 'file';
+    return scheme === 'git' ||
+        scheme === 'github' ||
+        (scheme === 'vscode-vfs' && String(uri?.authority || '').startsWith('github'));
 }
 
 function buildFreshnessResult({ source, timestampMs, author, message, confidence, reason }, config) {
@@ -164,9 +205,12 @@ function buildFreshnessResult({ source, timestampMs, author, message, confidence
     };
 }
 
-async function resolveFromFs(uri, stat, config) {
+async function resolveFromFs(uri, stat, config, workspaceKind) {
     const scheme = uri?.scheme || 'file';
-    const allowVirtualFs = Boolean(getConfigValue(config, 'freshnessAllowVirtualFs', false));
+    if (hasSyntheticProviderMtime(uri)) {
+        return { freshness: null, reason: 'fs-synthetic-mtime' };
+    }
+    const allowVirtualFs = getAllowVirtualFs(config, workspaceKind);
     if (scheme !== 'file' && !allowVirtualFs) {
         return { freshness: null, reason: 'fs-virtual-disabled' };
     }
@@ -175,7 +219,7 @@ async function resolveFromFs(uri, stat, config) {
     if (!Number.isFinite(mtimeValue)) {
         return { freshness: null, reason: 'fs-mtime-missing' };
     }
-    if (!isTimestampTrustworthyForFs(scheme, mtimeValue, nowMs)) {
+    if (!isTimestampTrustworthyForFs(uri, mtimeValue, nowMs)) {
         return { freshness: null, reason: 'fs-mtime-untrusted' };
     }
     const confidence = scheme === 'file' ? 'high' : 'medium';
@@ -364,11 +408,17 @@ async function resolveFreshness({ uri, stat, provider, config, workspaceKind }) 
     const policy = getConfigValue(config, 'freshnessSourcePolicy', 'auto');
     const attempts = [];
     const nowMs = Date.now();
+    const filesystemFirst = hasVerifiedPerFileMtime(uri);
 
-    if (shouldAttemptSource(policy, 'fs')) {
-        const fsResult = await resolveFromFs(uri, stat, config);
+    const attemptFs = async () => {
+        const fsResult = await resolveFromFs(uri, stat, config, workspaceKind);
         attempts.push({ source: 'fs', reason: fsResult.reason || null });
-        if (fsResult.freshness) return { ...fsResult.freshness, attempts };
+        return fsResult.freshness;
+    };
+
+    if (filesystemFirst && shouldAttemptSource(policy, 'fs')) {
+        const freshness = await attemptFs();
+        if (freshness) return { ...freshness, attempts };
     }
 
     if (shouldAttemptSource(policy, 'git')) {
@@ -381,6 +431,11 @@ async function resolveFreshness({ uri, stat, provider, config, workspaceKind }) 
         const githubResult = await resolveFromGitHub(uri, config);
         attempts.push({ source: 'github', reason: githubResult.reason || null, cacheKey: githubResult.cacheKey || null });
         if (githubResult.freshness) return { ...githubResult.freshness, attempts };
+    }
+
+    if (!filesystemFirst && shouldAttemptSource(policy, 'fs')) {
+        const freshness = await attemptFs();
+        if (freshness) return { ...freshness, attempts };
     }
 
     diagLogOnce('freshness-unknown', 'info', 'No trustworthy freshness source available', {

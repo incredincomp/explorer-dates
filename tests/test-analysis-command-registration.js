@@ -290,12 +290,85 @@ async function testChunkFailureHandling() {
     console.log('  ✓ Chunk failures handled gracefully');
 }
 
+async function testAnalysisDisabledDuringActivationDoesNotLookLikeChunkFailure() {
+    console.log('🔬 Testing analysis setting changes during activation...');
+
+    clearCaches();
+    const mock = createTestMock({
+        config: { 'explorerDates.enableAnalysisCommands': true }
+    });
+    const featureFlags = require('../src/featureFlags');
+    const originalAnalysisCommands = featureFlags.analysisCommands;
+    let enabledWhenLoadStarted = false;
+    let disabledDuringLoad = false;
+    featureFlags.analysisCommands = async function (...args) {
+        enabledWhenLoadStarted = mock.vscode.workspace
+            .getConfiguration('explorerDates')
+            .get('enableAnalysisCommands', true) === true;
+        mock.configValues['explorerDates.enableAnalysisCommands'] = false;
+        mock.workspaceConfigValues['explorerDates.enableAnalysisCommands'] = false;
+        disabledDuringLoad = true;
+        return originalAnalysisCommands.apply(this, args);
+    };
+
+    try {
+        const { activate } = require('../extension.js');
+        await activate(createExtensionContext(createContextOverrides()));
+
+        if (!disabledDuringLoad) {
+            throw new Error('Expected the analysis setting to change during activation');
+        }
+        if (!enabledWhenLoadStarted) {
+            throw new Error('Expected analysis to be enabled when activation started loading the chunk');
+        }
+        if (infoMessages(mock).some((msg) => msg.includes('Analysis commands unavailable'))) {
+            throw new Error('A setting change during activation must not be reported as a missing analysis bundle');
+        }
+        if (analysisCommandIds().some((command) => commandRegistered(mock, command))) {
+            throw new Error('Analysis handlers must not register after the feature is disabled');
+        }
+    } finally {
+        featureFlags.analysisCommands = originalAnalysisCommands;
+        mock.dispose();
+    }
+
+    console.log('  ✓ Analysis setting race is not reported as a bundle failure');
+}
+
+async function testWorkspaceActivityUsesPackagedLocalizationDependency() {
+    console.log('🔬 Testing packaged analysis command dependencies...');
+
+    clearCaches();
+    const mock = createTestMock({
+        config: { 'explorerDates.enableAnalysisCommands': true }
+    });
+
+    try {
+        const { activate } = require('../extension.js');
+        await activate(createExtensionContext(createContextOverrides()));
+        await mock.vscode.commands.executeCommand('explorerDates.showWorkspaceActivity');
+
+        if (!infoMessages(mock).some((msg) => msg.includes('createWebviewPanel:Workspace File Activity'))) {
+            throw new Error('Workspace activity command did not open its panel');
+        }
+        if (mock.errorLog.some((msg) => String(msg).includes('Failed to show workspace activity'))) {
+            throw new Error('Workspace activity command failed while loading its packaged dependencies');
+        }
+    } finally {
+        mock.dispose();
+    }
+
+    console.log('  ✓ Workspace activity command loaded its localization dependency');
+}
+
 async function runTests() {
     console.log('🧪 Running analysis command registration tests...\n');
     await testAnalysisCommandRegistration();
     await testStartupWarningLogic();
     await testKeybindingCoverage();
     await testChunkFailureHandling();
+    await testAnalysisDisabledDuringActivationDoesNotLookLikeChunkFailure();
+    await testWorkspaceActivityUsesPackagedLocalizationDependency();
     console.log('\n✅ All analysis command registration tests passed!');
 }
 

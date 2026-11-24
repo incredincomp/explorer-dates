@@ -207,7 +207,7 @@ async function buildChunks() {
     external: ['vscode'],
   });
 
-  // Some chunks (e.g. analysis) use the import path '../utils/localization' which
+  // Some chunks (e.g. analysis) import '../utils/localization.js', which
   // at runtime from dist/chunks/ resolves to dist/utils/localization.js (one level
   // up from chunks/).  Create a small redirect so they find the real bundle.
   await fs.promises.mkdir('dist/utils', { recursive: true }).catch(() => {});

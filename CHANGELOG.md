@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.2 - Free Release
+
+- Added the opt-in `explorerDates.freshnessUseNeutralNowBadge` setting to show `T` instead of `!!` for files modified within the “now” freshness window, without changing the exact-time tooltip.
+- Enabled trusted virtual filesystem timestamps by default on the Web extension while preserving the desktop default and explicit setting overrides.
+- Accepted fresh per-file timestamps immediately and preferred Git/GitHub commit metadata over uncertain non-file provider mtimes.
+- Fixed analysis command activation handling when its feature setting changes during startup.
+- Fixed the packaged analysis command's localization import so analysis commands work in Node extension hosts.
+- Fixed logger facade disposal on extension-host reload and connected it to the full logger implementation.
+
 ## 1.3.1+patch.16 - Security & Web Runtime Stabilization (February 26, 2026)
 
 ### Security Enhancements

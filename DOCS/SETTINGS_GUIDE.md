@@ -1,4 +1,4 @@
-# Explorer Dates v1.3.1 - Complete Settings Guide
+# Explorer Dates v1.3.2 - Complete Settings Guide
 
 This guide documents every setting and recommended configuration for Explorer Dates, including v1.3.x feature flags, team configuration options, and bundle optimization strategies.
 
@@ -88,6 +88,12 @@ Explorer Dates can display age-based freshness symbols in the badge when the fre
 | `?`   | Age unknown | Cannot be determined |
 
 The tooltip always shows the full human-readable freshness label (`now`, `today`, `2 days`, `1 week`, `stale`) regardless of the badge symbol used.
+
+Set `explorerDates.freshnessUseNeutralNowBadge` to `true` to show `T` instead of `!!` for the newest files. This works with Performance Mode on or off and preserves the tooltip's freshness label and timestamp. The default is `false`.
+
+#### Virtual Filesystem Timestamps (`explorerDates.freshnessAllowVirtualFs`)
+
+Trusted modification times from VS Code filesystem providers for non-`file` URI schemes are enabled by default in VS Code for the Web and disabled by default on desktop. Set this setting explicitly to override the host-specific default. Verified per-file timestamps are accepted immediately while invalid and implausibly future timestamps remain rejected. Accepted virtual filesystem timestamps have medium confidence. For other non-`file` schemes, Git or GitHub commit metadata is preferred when available; provider mtimes are only a conservatively validated fallback. Known synthetic Git and GitHub snapshot timestamps are never treated as per-file modification times.
 
 #### Freshness Age Thresholds
 

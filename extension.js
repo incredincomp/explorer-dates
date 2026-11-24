@@ -1058,10 +1058,14 @@ async function activate(context) {
         });
         context.subscriptions.push(runWebDiagnosticsCommand);
 
-        // Lazy load analysis commands only when needed
+        // Register analysis handlers during activation when the feature is enabled.
         const registerAnalysisCommandsLazy = async () => {
             const analysisCommands = await dynamicImports.loadAnalysisCommands();
             if (!analysisCommands) {
+                if (!vscode.workspace.getConfiguration('explorerDates').get('enableAnalysisCommands', true)) {
+                    logger.info('Analysis commands skipped because the feature was disabled during activation');
+                    return false;
+                }
                 const loadFailure = typeof featureFlags.getFeatureLoadFailure === 'function'
                     ? featureFlags.getFeatureLoadFailure('analysis')
                     : null;
@@ -1073,27 +1077,29 @@ async function activate(context) {
                     ? 'Analysis chunk is missing. Rebuild with "npm run package-bundle" and reload.'
                     : 'Analysis bundle did not load. Rebuild the extension and reload.';
                 vscode.window.showWarningMessage(`Analysis commands unavailable. ${chunkHint}`);
-                return null;
+                return false;
             }
             // Handle both module export and direct function export
             const registerFn = analysisCommands.registerAnalysisCommands || analysisCommands;
             if (typeof registerFn !== 'function') {
                 vscode.window.showWarningMessage('Analysis commands registration function not found.');
-                return null;
+                return false;
             }
-            return registerFn({
+            await registerFn({
                 context,
                 fileDateProvider,
                 logger,
                 chunkLoader
             });
+            return true;
         };
         
         // Register analysis commands if enabled
         if (analysisEnabled) {
             try {
-                await registerAnalysisCommandsLazy();
-                logger.info('Analysis commands registered successfully');
+                if (await registerAnalysisCommandsLazy()) {
+                    logger.info('Analysis commands registered successfully');
+                }
             } catch (error) {
                 logger.warn('Failed to register analysis commands:', error);
                 vscode.window.showWarningMessage('Explorer Dates analysis commands failed to initialize. Check build artifacts for the analysis chunk and reload.');
