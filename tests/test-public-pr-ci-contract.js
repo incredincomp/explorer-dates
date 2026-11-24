@@ -45,7 +45,7 @@ function main() {
     assert(!/continue-on-error\s*:/i.test(source), 'Required validation cannot use continue-on-error');
     assert(!/draft/i.test(source), 'Draft PRs must not be excluded');
     assert(!workflow.on.pull_request.paths && !workflow.on.pull_request['paths-ignore'], 'Source changes must not bypass validation by path');
-    assert(source.includes('node-version: 20'), 'Workflow must pin the supported Node version');
+    assert(source.includes('node-version: 22.17.1'), 'Workflow must pin Node 22.17.1 for VSCE 4.1.1');
     assert(source.includes('cache: npm'), 'Workflow must enable npm caching');
     assert(source.includes('^[0-9a-f]{40}$'), 'Manual validation must require a full lowercase SHA');
     assert(source.includes('inputs.validation_ref || github.sha'), 'Checkout must select the exact manual SHA or event SHA');
@@ -70,6 +70,7 @@ function main() {
         'npm run test:file-date-awareness-contract',
         'npm run package-bundle',
         'npm run test:dist-parity',
+        'npm run package',
         'npm run test:bundle',
         'npm run test:verify-bundle',
         'node -r ./tests/helpers/strictConsole.js tests/test-web-bundle-smoke.js',

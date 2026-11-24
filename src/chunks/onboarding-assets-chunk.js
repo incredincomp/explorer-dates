@@ -68,8 +68,8 @@ class OnboardingAssets {
         const presetOptions = Object.entries(presets)
             .filter(([, preset]) => !preset.hidden)
             .map(([key, preset]) => `
-            <div class="preset-option" data-preset="${key}" 
-                 onmouseenter="previewConfiguration({preset: '${key}'})" 
+            <div class="preset-option" data-preset="${key}"
+                 onmouseenter="previewConfiguration({preset: '${key}'})"
                  onmouseleave="clearPreview()">
                 <h3>${preset.name}</h3>
                 <p>${preset.description}</p>

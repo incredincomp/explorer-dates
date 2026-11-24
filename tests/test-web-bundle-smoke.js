@@ -142,12 +142,12 @@ async function runWebSmokeTest() {
             const provider = harness.fileDecorationProvider();
             assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
             const sampleFile = path.join(extensionRoot, 'tests', 'fixtures', 'sample-workspace', 'package.json');
-            const sampleUri = harness.vscode.Uri.file(sampleFile).with({ scheme: 'vscode-vfs' });
+            const virtualSampleUri = harness.vscode.Uri.file(sampleFile).with({ scheme: 'vscode-vfs' });
             const originalStat = fs.statSync(sampleFile);
             const eligibleMtime = new Date(Date.now() - 10 * 60 * 1000);
             fs.utimesSync(sampleFile, originalStat.atime, eligibleMtime);
             try {
-                await provider.provideFileDecoration(sampleUri);
+                await provider.provideFileDecoration(virtualSampleUri);
             } finally {
                 fs.utimesSync(sampleFile, originalStat.atime, originalStat.mtime);
             }
@@ -167,8 +167,8 @@ async function runWebSmokeTest() {
                 .toISOString()
                 .replace('T', ' ')
                 .replace('Z', '');
-            const sampleUri = harness.vscode.Uri.file(smokeFilePath);
-            const decoration = await provider.provideFileDecoration(sampleUri);
+            const freshFileUri = harness.vscode.Uri.file(smokeFilePath);
+            const decoration = await provider.provideFileDecoration(freshFileUri);
             assert.ok(['!!', 'T'].includes(decoration?.badge), 'A just-saved file should get a fresh badge immediately');
             assert.ok(
                 decoration?.tooltip?.includes(`Exact time: ${expectedExactTime}`),
