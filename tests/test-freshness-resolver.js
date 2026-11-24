@@ -28,7 +28,7 @@ async function runTests() {
         }
     }
 
-    // Test 2: Non-file scheme with untrusted mtime -> unknown
+    // Test 2: Web defaults to trusting usable virtual filesystem timestamps
     {
         const harness = createWebVscodeMock({
             configValues: {
@@ -39,12 +39,273 @@ async function runTests() {
             const { resolveFreshness } = require('../src/utils/freshnessResolver');
             const uri = harness.vscode.Uri.file('/workspace/file.txt').with({ scheme: 'vscode-vfs' });
             const now = Date.now();
-            const stat = { mtime: new Date(now - 2 * 60 * 1000) };
+            const stat = { mtime: new Date(now - 10 * 60 * 1000) };
             const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: null, available: false }) };
             const config = harness.vscode.workspace.getConfiguration('explorerDates');
             const freshness = await resolveFreshness({ uri, stat, provider, config, workspaceKind: 'web' });
-            assert.strictEqual(freshness.source, 'unknown', 'Expected unknown source for untrusted non-file mtime');
-            assert.strictEqual(freshness.bucket, 'unknown', 'Expected unknown bucket for untrusted non-file mtime');
+            assert.strictEqual(freshness.source, 'fs', 'Expected usable virtual filesystem timestamp by default on web');
+            assert.strictEqual(freshness.confidence, 'medium', 'Virtual filesystem timestamps should have medium confidence');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2a: Desktop keeps the default of rejecting virtual filesystem timestamps
+    {
+        const mock = createTestMock({
+            config: { 'explorerDates.freshnessSourcePolicy': 'auto' },
+            uiKind: 1
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = {
+                scheme: 'vscode-vfs',
+                authority: '',
+                path: '/tmp/example.txt',
+                query: '',
+                toString() { return 'vscode-vfs:/tmp/example.txt'; }
+            };
+            const stat = { mtime: new Date(Date.now() - 10 * 60 * 1000) };
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: null, available: false }) };
+            const config = mock.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({ uri, stat, provider, config, workspaceKind: 'desktop' });
+            assert.strictEqual(freshness.source, 'unknown', 'Desktop should keep virtual filesystem timestamps disabled by default');
+        } finally {
+            mock.dispose();
+        }
+    }
+
+    // Test 2b: An explicit false override on web still rejects virtual filesystem timestamps
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto',
+                freshnessAllowVirtualFs: false
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = harness.vscode.Uri.file('/workspace/file.txt').with({ scheme: 'vscode-vfs' });
+            const stat = { mtime: new Date(Date.now() - 10 * 60 * 1000) };
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: null, available: false }) };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({ uri, stat, provider, config, workspaceKind: 'web' });
+            assert.strictEqual(freshness.source, 'unknown', 'An explicit false setting should override the web default');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2c: Missing virtual filesystem timestamps fall back to Git
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto'
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = harness.vscode.Uri.file('/workspace/file.txt').with({ scheme: 'vscode-vfs' });
+            const timestampMs = Date.now() - 10 * 60 * 1000;
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs }) };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({ uri, stat: {}, provider, config, workspaceKind: 'web' });
+            assert.strictEqual(freshness.source, 'git', 'Missing virtual filesystem mtime should fall back to Git');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2d: Untrusted virtual filesystem timestamps fall back to Git
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto'
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = harness.vscode.Uri.file('/workspace/file.txt').with({ scheme: 'vscode-vfs' });
+            const timestampMs = Date.now() - 10 * 60 * 1000;
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs }) };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(Date.now() - 2 * 60 * 1000) },
+                provider,
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'git', 'Untrusted virtual filesystem mtime should fall back to Git');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2e: Git snapshot provider mtime is synthetic; prefer per-file Git metadata
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto',
+                freshnessAllowVirtualFs: true
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = harness.vscode.Uri.file('/workspace/file.txt').with({ scheme: 'git' });
+            const gitTimestampMs = Date.now() - 2 * 24 * 60 * 60 * 1000;
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: gitTimestampMs }) };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(Date.now() - 10 * 60 * 1000) },
+                provider,
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'git', 'Synthetic Git snapshot mtime should not replace Git commit time');
+            assert.strictEqual(freshness.exactTimestamp, gitTimestampMs, 'Expected the per-file Git commit timestamp');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2f: GitHub-backed URI mtime is synthetic; prefer GitHub commit metadata
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto',
+                freshnessAllowVirtualFs: true
+            }
+        });
+        const originalFetch = global.fetch;
+        try {
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => [{
+                    commit: {
+                        author: { name: 'GitHub Author', date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
+                        message: 'GitHub commit'
+                    }
+                }]
+            });
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = {
+                scheme: 'github',
+                authority: '',
+                path: '/owner/repo/file.txt',
+                query: 'ref=main',
+                toString() { return 'github://owner/repo/file.txt?ref=main'; }
+            };
+            const provider = { _getGitRecencyTimestamp: async () => ({ timestampMs: null }) };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(Date.now() - 10 * 60 * 1000) },
+                provider,
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'github', 'Synthetic GitHub provider mtime should use GitHub commit metadata');
+            assert.strictEqual(freshness.author, 'GitHub Author');
+        } finally {
+            global.fetch = originalFetch;
+            harness.restore();
+        }
+    }
+
+    // Test 2g: The vscode-test-web mount provider supplies per-file mtimes immediately
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto'
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = {
+                scheme: 'vscode-test-web',
+                authority: 'mount',
+                path: '/fresh.txt',
+                query: '',
+                toString() { return 'vscode-test-web://mount/fresh.txt'; }
+            };
+            const timestampMs = Date.now() - 5_000;
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(timestampMs) },
+                provider: { _getGitRecencyTimestamp: async () => ({ timestampMs: null }) },
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'fs', 'Verified per-file mount mtime should be accepted immediately');
+            assert.strictEqual(freshness.bucket, 'now', 'A five-second-old file should receive the now freshness bucket');
+            assert.strictEqual(freshness.confidence, 'medium');
+            assert.strictEqual(freshness.exactTimestamp, timestampMs);
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2h: Other authorities on the test-web scheme retain conservative validation
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto'
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = {
+                scheme: 'vscode-test-web',
+                authority: 'unknown',
+                path: '/fresh.txt',
+                query: '',
+                toString() { return 'vscode-test-web://unknown/fresh.txt'; }
+            };
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(Date.now() - 5_000) },
+                provider: { _getGitRecencyTimestamp: async () => ({ timestampMs: null }) },
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'unknown', 'Unknown test-web providers must retain the conservative age floor');
+        } finally {
+            harness.restore();
+        }
+    }
+
+    // Test 2i: Unknown virtual-provider mtimes defer to available commit metadata
+    {
+        const harness = createWebVscodeMock({
+            configValues: {
+                freshnessSourcePolicy: 'auto'
+            }
+        });
+        try {
+            const { resolveFreshness } = require('../src/utils/freshnessResolver');
+            const uri = {
+                scheme: 'vscode-vfs',
+                authority: 'unknown',
+                path: '/workspace/file.txt',
+                query: '',
+                toString() { return 'vscode-vfs://unknown/workspace/file.txt'; }
+            };
+            const gitTimestampMs = Date.now() - 2 * 24 * 60 * 60 * 1000;
+            const config = harness.vscode.workspace.getConfiguration('explorerDates');
+            const freshness = await resolveFreshness({
+                uri,
+                stat: { mtime: new Date(Date.now() - 10 * 60 * 1000) },
+                provider: { _getGitRecencyTimestamp: async () => ({ timestampMs: gitTimestampMs }) },
+                config,
+                workspaceKind: 'web'
+            });
+            assert.strictEqual(freshness.source, 'git', 'Available per-file commit metadata should precede unknown provider mtime');
+            assert.strictEqual(freshness.exactTimestamp, gitTimestampMs);
         } finally {
             harness.restore();
         }
@@ -472,7 +733,7 @@ async function runTests() {
         }
     }
 
-    // Test 16: freshnessAllowVirtualFs=true with non-file scheme and trustworthy mtime
+    // Test 16: An explicit true setting allows trusted virtual timestamps on desktop
     {
         const mock = createTestMock({
             config: {
@@ -498,10 +759,10 @@ async function runTests() {
                 stat: { mtime: new Date(mtimeMs) },
                 provider: { _getGitRecencyTimestamp: async () => ({ timestampMs: null }) },
                 config,
-                workspaceKind: 'web'
+                workspaceKind: 'desktop'
             });
 
-            assert.strictEqual(freshness.source, 'fs', 'allowVirtualFs=true with trustworthy mtime should use fs source');
+            assert.strictEqual(freshness.source, 'fs', 'Explicitly enabling virtual filesystem timestamps should use fs source');
             assert.strictEqual(freshness.confidence, 'medium', 'Virtual fs source should have medium confidence');
         } finally {
             mock.dispose();

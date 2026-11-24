@@ -441,6 +441,11 @@ class FileDateDecorationProviderImpl {
                             } catch (err) { this._logger?.debug?.('delegated togglePerformanceMode failed', err); }
                         })();
 
+                        if (event.affectsConfiguration('explorerDates.freshnessUseNeutralNowBadge')) {
+                            this.clearAllCaches();
+                            this.refreshAll();
+                        }
+
                         // Update UI-related `setContext` values when relevant explorerDates keys change
                         try {
                             const uiKeys = [

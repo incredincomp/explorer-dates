@@ -269,6 +269,40 @@ async function verifyColorsAppliedInPerformanceMode() {
     });
 }
 
+async function verifyNeutralNowBadge() {
+    for (const performanceMode of [false, true]) {
+        await scenario(`Neutral now badge is opt-in with Performance Mode ${performanceMode ? 'on' : 'off'}`, {
+            'explorerDates.performanceMode': performanceMode,
+            'explorerDates.showDateDecorations': true
+        }, async () => {
+            const provider = new FileDateDecorationProvider();
+            try {
+                const timestamp = Date.UTC(2026, 10, 23, 12);
+                provider._resolveFreshnessForUri = async () => ({
+                    bucket: 'now', source: 'fs', confidence: 'high', exactTimestamp: timestamp
+                });
+                const uri = createFileUri('package.json');
+                const initial = await provider.provideFileDecoration(uri);
+                assert.strictEqual(initial.badge, '!!');
+                assert.match(initial.tooltip, /Freshness: now/);
+                assert.match(initial.tooltip, /2026-11-23 12:00/);
+                const tooltip = initial.tooltip;
+
+                const key = 'explorerDates.freshnessUseNeutralNowBadge';
+                for (const [enabled, expectedBadge] of [[true, 'T'], [false, '!!']]) {
+                    configValues[key] = enabled;
+                    fireConfigChange('explorerDates', key);
+                    const updated = await provider.provideFileDecoration(uri);
+                    assert.strictEqual(updated.badge, expectedBadge);
+                    assert.strictEqual(updated.tooltip, tooltip);
+                }
+            } finally {
+                await provider.dispose();
+            }
+        });
+    }
+}
+
 async function main() {
     try {
         await verifyPerformanceModeSkipsWatchers();
@@ -277,6 +311,7 @@ async function main() {
         await verifyStatusBarIntegrationDisabled();
         await verifyPerformanceMetricsReporting();
         await verifyColorsAppliedInPerformanceMode();
+        await verifyNeutralNowBadge();
         console.log('🎉 Performance mode coverage completed successfully');
     } catch (error) {
         console.error('❌ Performance mode tests failed:', error);

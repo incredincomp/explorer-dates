@@ -54,6 +54,7 @@ async function runWebSmokeTest() {
         extensionPath: harness.extensionUri.fsPath
     });
 
+    let smokeFilePath;
     try {
         await webBundle.activate(context);
 
@@ -137,7 +138,6 @@ async function runWebSmokeTest() {
             const config = harness.vscode.workspace.getConfiguration('explorerDates');
             await config.update('colorScheme', 'recency', harness.vscode.ConfigurationTarget.Global);
             await config.update('performanceMode', false, harness.vscode.ConfigurationTarget.Global);
-            await config.update('freshnessAllowVirtualFs', true, harness.vscode.ConfigurationTarget.Global);
 
             const provider = harness.fileDecorationProvider();
             assert.ok(provider && typeof provider.provideFileDecoration === 'function', 'Web bundle should register a file decoration provider');
@@ -152,6 +152,29 @@ async function runWebSmokeTest() {
                 fs.utimesSync(sampleFile, originalStat.atime, originalStat.mtime);
             }
 
+            smokeFilePath = path.join(
+                extensionRoot,
+                'tests',
+                'fixtures',
+                'sample-workspace',
+                `.freshness-smoke-${process.pid}-${Date.now()}.txt`
+            );
+            fs.writeFileSync(smokeFilePath, 'recently saved');
+            const requestedSaveTime = new Date(Date.now() - 5_000);
+            fs.utimesSync(smokeFilePath, requestedSaveTime, requestedSaveTime);
+            const actualMtimeMs = fs.statSync(smokeFilePath).mtimeMs;
+            const expectedExactTime = new Date(actualMtimeMs)
+                .toISOString()
+                .replace('T', ' ')
+                .replace('Z', '');
+            const sampleUri = harness.vscode.Uri.file(smokeFilePath);
+            const decoration = await provider.provideFileDecoration(sampleUri);
+            assert.ok(['!!', 'T'].includes(decoration?.badge), 'A just-saved file should get a fresh badge immediately');
+            assert.ok(
+                decoration?.tooltip?.includes(`Exact time: ${expectedExactTime}`),
+                'Hover tooltip should show the exact filesystem save time'
+            );
+
             const logText = diagState.logs
                 .map((entry) => `${entry.level}:${entry.message} ${(entry.meta && entry.meta.error) || ''}`)
                 .join('\n');
@@ -162,10 +185,6 @@ async function runWebSmokeTest() {
             assert.ok(
                 !logText.includes('process is not defined'),
                 'Web diagnostics should not report "process is not defined"'
-            );
-            assert.ok(
-                !logText.includes('non-file-scheme'),
-                'Web diagnostics should not short-circuit non-file schemes'
             );
             assert.ok(
                 !logText.includes('Web require unsupported: ../teamConfigPersistence.proxy'),
@@ -196,10 +215,14 @@ async function runWebSmokeTest() {
                 decorationSamples.length > 0,
                 'Web diagnostics should include decoration return samples'
             );
-            const vfsSamples = decorationSamples.filter((entry) => entry.meta && entry.meta.scheme === 'vscode-vfs');
+            const fileSamples = decorationSamples.filter((entry) => entry.meta && entry.meta.scheme === 'file');
             assert.ok(
-                vfsSamples.length > 0,
-                'Web diagnostics should include a decoration sample for vscode-vfs scheme'
+                fileSamples.length > 0,
+                'Web diagnostics should include a decoration sample for a local file'
+            );
+            assert.ok(
+                fileSamples.some((entry) => entry.meta.freshnessSource === 'fs' && entry.meta.freshnessConfidence === 'high'),
+                'Web should use local per-file filesystem timestamps with high confidence'
             );
             const hasTimestampSource = decorationSamples.some((entry) => entry.meta && entry.meta.timestampSource);
             assert.ok(
@@ -240,6 +263,9 @@ async function runWebSmokeTest() {
         console.error('❌ Web bundle smoke test failed:', error);
         process.exitCode = 1;
     } finally {
+        if (smokeFilePath && fs.existsSync(smokeFilePath)) {
+            fs.unlinkSync(smokeFilePath);
+        }
         harness.restore();
         // Force the process to exit even if a hidden handle stays open
         try {

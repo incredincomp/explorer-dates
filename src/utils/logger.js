@@ -26,6 +26,19 @@ class LoggerFacade {
 
     // Activation can set the real impl
     _setImpl(impl) { this._impl = impl; }
+
+    dispose() {
+        const impl = this._impl;
+        this._impl = null;
+        if (typeof impl?.dispose === 'function') {
+            impl.dispose();
+        }
+        if (typeof global !== 'undefined' && global[GLOBAL_LOGGER_KEY] === this) {
+            global[GLOBAL_LOGGER_KEY] = null;
+        } else if (typeof globalThis !== 'undefined' && globalThis[GLOBAL_LOGGER_KEY] === this) {
+            globalThis[GLOBAL_LOGGER_KEY] = null;
+        }
+    }
 }
 
 function getLogger() {

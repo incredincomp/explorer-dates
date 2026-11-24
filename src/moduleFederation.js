@@ -62,7 +62,7 @@ function getChunkExternal(chunkName) {
     const baseExternal = ['vscode', './core', './utils/localization', 'src/utils/localization'];
     const additionalExternal = {
         onboarding: ['./onboarding-assets'],
-        analysis: ['./diagnostics', '../utils/localization'],
+        analysis: ['./diagnostics', '../utils/localization.js'],
         runtimeManagement: ['./team-persistence-chunk', '../chunks/team-persistence-chunk']
     };
     return [...baseExternal, ...(additionalExternal[chunkName] || [])];

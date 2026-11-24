@@ -770,10 +770,10 @@ function createMockVscode(options = {}) {
             }
         },
         FileDecoration: class FileDecoration {
-            constructor(badge) {
+            constructor(badge, tooltip, color) {
                 this.badge = badge;
-                this.tooltip = undefined;
-                this.color = undefined;
+                this.tooltip = tooltip;
+                this.color = color;
                 this.propagate = true;
             }
         },
